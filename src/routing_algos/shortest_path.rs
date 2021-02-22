@@ -8,7 +8,7 @@ use std::time::Instant;
 
 pub struct SPF {
     wrapper: NetworkWrapper<Vec<usize>>,
-    dijkstra_algo: Dijkstra<usize, StreamAwareGraph>,
+    dijkstra_algo: Dijkstra,
     compute_time: u128,
 }
 

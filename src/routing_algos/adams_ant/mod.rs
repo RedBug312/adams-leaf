@@ -23,7 +23,7 @@ fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
 
 pub struct AdamsAnt {
     aco: ACO,
-    yens_algo: Rc<RefCell<YensAlgo<usize, StreamAwareGraph>>>,
+    yens_algo: Rc<RefCell<YensAlgo<StreamAwareGraph>>>,
     wrapper: NetworkWrapper<usize>,
     compute_time: u128,
 }

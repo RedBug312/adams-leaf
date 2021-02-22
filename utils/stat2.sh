@@ -5,4 +5,3 @@
 
 sed -n '/compute time/s|[^0-9]||gp' $@ \
     | pr -$# -t \
-    | datamash -W mean 1-$#; \

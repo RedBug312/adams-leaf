@@ -6,7 +6,8 @@ use crate::network_wrapper::{NetworkWrapper, RoutingCost};
 use crate::recorder::flow_table::prelude::*;
 use crate::util::YensAlgo;
 use crate::MAX_K;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaChaRng;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
@@ -22,17 +23,20 @@ fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
 
 fn gen_n_distinct_outof_k(n: usize, k: usize) -> Vec<usize> {
     let mut vec = Vec::with_capacity(n);
+    let mut rng = ChaChaRng::seed_from_u64(42);
     for i in 0..k {
-        vec.push((rand::thread_rng().gen::<usize>(), i));
+        let random: usize = rng.gen();
+        vec.push((random, i));
     }
     vec.sort();
     vec.into_iter().map(|(_, i)| i).take(n).collect()
 }
 
 pub struct RO {
-    yens_algo: Rc<RefCell<YensAlgo<usize, StreamAwareGraph>>>,
+    yens_algo: Rc<RefCell<YensAlgo<StreamAwareGraph>>>,
     compute_time: u128,
     wrapper: NetworkWrapper<usize>,
+    rng: ChaChaRng,
 }
 
 impl RO {
@@ -47,6 +51,7 @@ impl RO {
             yens_algo,
             compute_time: 0,
             wrapper,
+            rng: ChaChaRng::seed_from_u64(42),
         }
     }
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
@@ -116,8 +121,8 @@ impl RO {
                 return; // 找到可行解，返回
             }
 
-            let target_id: FlowID = rand::thread_rng()
-                .gen_range(0, cur_wrapper.get_flow_table().get_flow_cnt())
+            let target_id: FlowID = self.rng
+                .gen_range(0..cur_wrapper.get_flow_table().get_flow_cnt())
                 .into();
             let target_flow = {
                 // TODO 用更好的機制篩選 avb 資料流

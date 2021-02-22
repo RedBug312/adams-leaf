@@ -60,7 +60,7 @@ impl Ord for WeightedState {
 }
 
 fn select_cluster(visibility: &[f64; MAX_K], pheromone: &[f64; MAX_K], k: usize, q0: f64) -> usize {
-    if rand::thread_rng().gen_range(0.0, 1.0) < q0 {
+    if rand::thread_rng().gen_range(0.0..1.0) < q0 {
         // 直接選可能性最大者
         let (mut max_i, mut max) = (0, std::f64::MIN);
         for i in 0..k {
@@ -76,7 +76,7 @@ fn select_cluster(visibility: &[f64; MAX_K], pheromone: &[f64; MAX_K], k: usize,
         for i in 0..k {
             sum += pheromone[i] * visibility[i];
         }
-        let rand_f = rand::thread_rng().gen_range(0.0, sum);
+        let rand_f = rand::thread_rng().gen_range(0.0..sum);
         let mut accumulation = 0.0;
         for i in 0..k {
             accumulation += pheromone[i] * visibility[i];
