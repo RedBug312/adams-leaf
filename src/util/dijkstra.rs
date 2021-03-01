@@ -1,111 +1,114 @@
-use std::cell::Cell;
-use std::collections::HashMap;
-use std::hash::Hash;
+use std::collections::{HashMap, HashSet};
+use std::f64::INFINITY as INF;
 
 use super::MyMinHeap;
-use crate::graph_util::Graph;
+use crate::graph_util::{StreamAwareGraph};
 
-pub struct Dijkstra<K: Hash + Eq + Copy, G: Graph<K>> {
-    pub(super) g: G,
-    final_dist_map: HashMap<(K, K), (f64, Cell<K>)>,
-    routed_node_table: HashMap<K, bool>,
+pub type Path = Vec<usize>;
+
+
+#[derive(Default)]
+pub struct Dijkstra {
+    dist: HashMap<(usize, usize), f64>,
+    pred: HashMap<(usize, usize), usize>,
+    ignore_nodes: HashSet<usize>,
+    ignore_edges: HashSet<(usize, usize)>,
 }
 
-impl<K: Hash + Eq + Copy, G: Graph<K>> Dijkstra<K, G> {
-    pub fn new(g: G) -> Self {
-        return Dijkstra {
-            g,
-            final_dist_map: HashMap::new(),
-            routed_node_table: HashMap::new(),
-        };
-    }
-    pub fn compute_route(&mut self, src_id: K) {
-        if self.routed_node_table.contains_key(&src_id) {
-            return;
-        }
-        self.routed_node_table.insert(src_id, true);
 
-        let mut min_heap: MyMinHeap<f64, K, Cell<K>> = MyMinHeap::new();
-        min_heap.push(src_id, 0.0, Cell::new(src_id));
+impl Dijkstra {
+    pub fn compute(&mut self, graph: &StreamAwareGraph) {
+        for &root in graph.end_devices.iter() {
+            self.compute_once(graph, root);
+        }
+    }
+    pub fn compute_once(&mut self, graph: &StreamAwareGraph, r: usize) {
+        if self.dist.contains_key(&(r, r)) { return }
+        let mut heap = MyMinHeap::new();
+        let mut seen = HashMap::new();
+
+        seen.insert(r, 0.0);
+        heap.push(r, 0.0.into());
+
         // 從優先權佇列中移除，並塞進最終 dist map
-        while let Some((cur_id, cur_dist, backtrace)) = min_heap.pop() {
-            self.final_dist_map
-                .insert((src_id, cur_id), (cur_dist, backtrace));
+        while let Some((v, rv_dist)) = heap.pop() {
+            match self.dist.contains_key(&(r, v)) {
+                true  => { continue; },
+                false => { self.dist.insert((r, v), rv_dist.into()); },
+            }
+            for &u in graph.node(v).neighbors.iter() {
+                if self.ignore_nodes.contains(&u)
+                    || self.ignore_edges.contains(&(v, u)) { continue; }
 
-            self.g.foreach_edge(cur_id, |next_id, bandwidth| {
-                let next_pair = (src_id, next_id);
-                let next_dist = cur_dist + 1.0 / bandwidth;
-                if self.final_dist_map.contains_key(&next_pair) {
-                    // DO NOTHING
-                } else if let Some((og_dist, backtrace)) = min_heap.get(&next_id) {
-                    if *og_dist > next_dist {
-                        backtrace.set(cur_id);
-                        min_heap.decrease_priority(&next_id, next_dist);
-                    }
-                } else {
-                    min_heap.push(next_id, next_dist, Cell::new(cur_id));
+                let cost = graph.duration_on(&[v, u], 1.0);
+                let ru_dist = self.dist.get(&(r, v)).unwrap() + cost;
+
+                if self.dist.contains_key(&(r, u))
+                    || ru_dist >= *seen.get(&u).unwrap_or(&INF){ continue; }
+
+                self.pred.insert((r, u), v);
+                seen.insert(u, ru_dist);
+                match heap.get(&u) {
+                    Some(_) => { heap.change_priority(&u, ru_dist.into()); },
+                    None    => { heap.push(u, ru_dist.into()); },
                 }
-            });
+            }
         }
     }
-    pub fn get_route(&mut self, src_id: K, dst_id: K) -> Option<(f64, Vec<K>)> {
-        if !self.routed_node_table.contains_key(&src_id) {
-            self.compute_route(src_id);
-        }
-        if let Some(entry) = self.final_dist_map.get(&(src_id, dst_id)) {
-            Some((entry.0, self._recursive_get_route(src_id, dst_id)))
-        } else {
-            // NOTE: 路徑無法連通
-            None
+    pub fn shortest_path(&self, src: usize, dst: usize) -> Option<Path> {
+        match self.dist.contains_key(&(src, dst)) {
+            true  => Some(self._recursive_backtrace(src, dst)),
+            false => None,
         }
     }
-    fn _recursive_get_route(&self, src_id: K, dst_id: K) -> Vec<K> {
-        if src_id == dst_id {
-            vec![src_id]
+    pub fn ignore(&mut self, nodes: HashSet<usize>, edges: HashSet<(usize, usize)>) {
+        self.ignore_nodes = nodes;
+        self.ignore_edges = edges;
+    }
+    fn _recursive_backtrace(&self, src: usize, dst: usize) -> Path {
+        if src == dst {
+            vec![src]
         } else {
-            let prev_id = self.final_dist_map.get(&(src_id, dst_id)).unwrap().1.get();
-            let mut path = self._recursive_get_route(src_id, prev_id);
-            path.push(dst_id);
+            let &pred = self.pred.get(&(src, dst))
+                            .expect("Error when backtrace path");
+            let mut path = self._recursive_backtrace(src, pred);
+            path.push(dst);
             path
         }
     }
 }
 
+
+
 #[cfg(test)]
 mod test {
     use super::Dijkstra;
-    use crate::graph_util::{Graph, StreamAwareGraph};
+    use crate::graph_util::StreamAwareGraph;
     #[test]
-    fn test_dijkstra1() -> Result<(), String> {
-        let mut g = StreamAwareGraph::new();
-        g.add_host(Some(3));
-        g.add_edge((0, 1), 10.0)?;
-        g.add_edge((0, 1), 10.0)?;
-        g.add_edge((1, 2), 20.0)?;
-        g.add_edge((0, 2), 2.0)?;
-        let mut algo = Dijkstra::new(g);
-        assert_eq!(vec![0, 1, 2], algo.get_route(0, 2).unwrap().1);
-        Ok(())
+    fn test_dijkstra_case1() {
+        let mut graph = StreamAwareGraph::default();
+        graph.add_nodes(3, 0);
+        graph.add_edges(vec![
+            (0, 1, 10.0), (0, 1, 10.0), (1, 2, 20.0), (0, 2, 02.0),
+        ]);
+        let mut dijkstra = Dijkstra::default();
+        dijkstra.compute(&graph);
+        assert_eq!(dijkstra.shortest_path(0, 2), Some(vec![0, 1, 2]));
     }
     #[test]
-    fn test_dijkstra2() -> Result<(), String> {
-        let mut g = StreamAwareGraph::new();
-        g.add_host(Some(6));
-        g.add_edge((0, 1), 10.0)?;
-        g.add_edge((1, 2), 20.0)?;
-        g.add_edge((0, 2), 2.0)?;
-        g.add_edge((1, 3), 10.0)?;
-        g.add_edge((0, 3), 3.0)?;
-        g.add_edge((3, 4), 3.0)?;
-
-        let mut algo = Dijkstra::new(g.clone());
-        assert_eq!(vec![0, 1, 3, 4], algo.get_route(0, 4).unwrap().1);
-        assert_eq!(vec![2, 1, 3, 4], algo.get_route(2, 4).unwrap().1);
-        assert!(algo.get_route(0, 5).is_none());
-
-        g.add_edge((4, 5), 2.0)?;
-        let mut algo = Dijkstra::new(g);
-        assert_eq!(vec![0, 1, 3, 4, 5], algo.get_route(0, 5).unwrap().1);
-        Ok(())
+    fn test_dijkstra_case2() {
+        let mut graph = StreamAwareGraph::default();
+        graph.add_nodes(6, 0);
+        graph.add_edges(vec![
+            (0, 1, 10.0), (1, 2, 20.0), (0, 2, 02.0), (1, 3, 10.0),
+            (0, 3, 03.0), (3, 4, 03.0),
+        ]);
+        let mut dijkstra = Dijkstra::default();
+        dijkstra.compute(&graph);
+        assert_eq!(dijkstra.shortest_path(0, 4), Some(vec![0, 1, 3, 4]));
+        assert_eq!(dijkstra.shortest_path(2, 4), Some(vec![2, 1, 3, 4]));
+        assert_eq!(dijkstra.shortest_path(3, 3), Some(vec![3]));
+        assert_eq!(dijkstra.shortest_path(0, 5), None);
     }
 }
+

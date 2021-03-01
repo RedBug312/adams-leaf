@@ -6,3 +6,4 @@ target/*
 plot/log/
 plot/*.dat
 plot/*.png
+*.log

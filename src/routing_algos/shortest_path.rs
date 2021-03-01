@@ -8,18 +8,20 @@ use std::time::Instant;
 
 pub struct SPF {
     wrapper: NetworkWrapper<Vec<usize>>,
-    dijkstra_algo: Dijkstra<usize, StreamAwareGraph>,
+    dijkstra_algo: Dijkstra,
     compute_time: u128,
 }
 
 impl SPF {
     pub fn new(g: StreamAwareGraph) -> Self {
         let wrapper = NetworkWrapper::new(g.clone(), |_, route| route as *const Vec<usize>);
-        SPF {
+        let mut spf = SPF {
             wrapper,
             compute_time: 0,
-            dijkstra_algo: Dijkstra::new(g),
-        }
+            dijkstra_algo: Dijkstra::default(),
+        };
+        spf.dijkstra_algo.compute(&g);
+        spf
     }
 }
 
@@ -74,6 +76,6 @@ impl RoutingAlgo for SPF {
 
 impl SPF {
     fn get_shortest_route<T: Clone>(&mut self, flow: &Flow<T>) -> Vec<usize> {
-        self.dijkstra_algo.get_route(flow.src, flow.dst).unwrap().1
+        self.dijkstra_algo.shortest_path(flow.src, flow.dst).unwrap()
     }
 }

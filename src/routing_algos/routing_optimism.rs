@@ -6,7 +6,8 @@ use crate::network_wrapper::{NetworkWrapper, RoutingCost};
 use crate::recorder::flow_table::prelude::*;
 use crate::util::YensAlgo;
 use crate::MAX_K;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaChaRng;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
@@ -22,35 +23,42 @@ fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
 
 fn gen_n_distinct_outof_k(n: usize, k: usize) -> Vec<usize> {
     let mut vec = Vec::with_capacity(n);
+    let mut rng = ChaChaRng::seed_from_u64(42);
     for i in 0..k {
-        vec.push((rand::thread_rng().gen::<usize>(), i));
+        let rand = rng.gen();
+        let random: usize = rand;
+        vec.push((random, i));
     }
     vec.sort();
     vec.into_iter().map(|(_, i)| i).take(n).collect()
 }
 
 pub struct RO {
-    yens_algo: Rc<RefCell<YensAlgo<usize, StreamAwareGraph>>>,
+    yens_algo: Rc<RefCell<YensAlgo>>,
     compute_time: u128,
     wrapper: NetworkWrapper<usize>,
+    rng: ChaChaRng,
 }
 
 impl RO {
     pub fn new(g: StreamAwareGraph) -> Self {
-        let yens_algo = Rc::new(RefCell::new(YensAlgo::new(g.clone(), MAX_K)));
+        let yens_algo = Rc::new(RefCell::new(YensAlgo::default()));
         let tmp_yens = yens_algo.clone();
+        tmp_yens.borrow_mut().compute(&g, MAX_K);
         let wrapper = NetworkWrapper::new(g, move |flow_enum, &k| {
             let (src, dst) = get_src_dst(flow_enum);
-            tmp_yens.borrow().get_kth_route(src, dst, k) as *const Vec<usize>
+            tmp_yens.borrow().kth_shortest_path(src, dst, k).unwrap() as *const Vec<usize>
         });
         RO {
             yens_algo,
             compute_time: 0,
             wrapper,
+            rng: ChaChaRng::seed_from_u64(42),
         }
     }
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
     fn grasp(&mut self, time: Instant) {
+        let mut rng = ChaChaRng::seed_from_u64(42);
         let mut iter_times = 0;
         let mut min_cost = self.wrapper.compute_all_cost();
         while time.elapsed().as_micros() < Config::get().t_limit {
@@ -70,17 +78,19 @@ impl RO {
             let cost = cur_wrapper.compute_all_cost();
             if cost.compute_without_reroute_cost() < min_cost.compute_without_reroute_cost() {
                 min_cost = cost;
-                #[cfg(debug_assertions)]
-                println!("found min_cost = {:?} at first glance!", cost);
+                // #[cfg(debug_assertions)]
+                // println!("found min_cost = {:?} at first glance!", cost);
             }
 
             #[cfg(debug_assertions)]
             println!("start iteration #{}", iter_times);
-            self.hill_climbing(&time, &mut min_cost, cur_wrapper);
+            self.hill_climbing(&mut rng, &time, &mut min_cost, cur_wrapper);
             if min_cost.avb_fail_cnt == 0 && Config::get().fast_stop {
                 // 找到可行解，且為快速終止模式
                 break;
             }
+            println!("{:?}", iter_times);
+            println!("{:?}", min_cost);
         }
     }
     /// 若有給定候選路徑的子集合，就從中選。若無，則遍歷所有候選路徑
@@ -106,6 +116,7 @@ impl RO {
     }
     fn hill_climbing(
         &mut self,
+        rng: &mut ChaChaRng,
         time: &std::time::Instant,
         min_cost: &mut RoutingCost,
         mut cur_wrapper: NetworkWrapper<usize>,
@@ -116,9 +127,9 @@ impl RO {
                 return; // 找到可行解，返回
             }
 
-            let target_id: FlowID = rand::thread_rng()
-                .gen_range(0, cur_wrapper.get_flow_table().get_flow_cnt())
-                .into();
+            let rand = rng
+                .gen_range(0..cur_wrapper.get_flow_table().get_flow_cnt());
+            let target_id = rand.into();
             let target_flow = {
                 // TODO 用更好的機制篩選 avb 資料流
                 if let Some(t) = self.wrapper.get_flow_table().get_avb(target_id) {
@@ -147,8 +158,8 @@ impl RO {
                 *min_cost = cost.clone();
                 iter_times = 0;
 
-                #[cfg(debug_assertions)]
-                println!("found min_cost = {:?}", cost);
+                // #[cfg(debug_assertions)]
+                // println!("found min_cost = {:?}", cost);
             } else {
                 // 恢復上一動
                 cur_wrapper.update_single_avb(target_flow, old_route);
@@ -161,21 +172,21 @@ impl RO {
         }
     }
     fn get_candidate_count<T: Clone>(&self, flow: &Flow<T>) -> usize {
-        self.yens_algo.borrow().get_route_count(flow.src, flow.dst)
+        self.yens_algo.borrow().count_shortest_paths(flow.src, flow.dst)
     }
 }
 impl RoutingAlgo for RO {
     fn add_flows(&mut self, tsns: Vec<TSNFlow>, avbs: Vec<AVBFlow>) {
-        for flow in tsns.iter() {
-            self.yens_algo
-                .borrow_mut()
-                .compute_routes(flow.src, flow.dst);
-        }
-        for flow in avbs.iter() {
-            self.yens_algo
-                .borrow_mut()
-                .compute_routes(flow.src, flow.dst);
-        }
+        // for flow in tsns.iter() {
+        //     self.yens_algo
+        //         .borrow_mut()
+        //         .compute_routes(flow.src, flow.dst);
+        // }
+        // for flow in avbs.iter() {
+        //     self.yens_algo
+        //         .borrow_mut()
+        //         .compute_routes(flow.src, flow.dst);
+        // }
         let init_time = Instant::now();
         self.wrapper.insert(tsns, avbs, 0);
 

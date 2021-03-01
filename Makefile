@@ -14,15 +14,23 @@ FOLD   := 1 2 3 4 5 6 7
 MEMORY := 1 2 3 4 5 6 7
 
 
-all: start
+all: check
 
 start: $(PNG)
 
 clean:
 	$(RM) $(LOG) $(DAT) $(PNG) $(LOCK)
 
+profile: $(MAIN)
+	cargo run --release -- ro exp_graph.json exp_flow_heavy.json exp_flow_reconf.json 4
 
-$(MAIN):
+check: $(MAIN)
+	cargo run -- ro exp_graph.json exp_flow_heavy.json exp_flow_reconf.json 4 > stdout-new.log
+	diff -I time --color stdout.log stdout-new.log
+
+SOURCES := $(shell find src/ -type f -name '*.rs')
+
+$(MAIN): $(SOURCES)
 	cargo build --release
 
 plot/%.png: plot/%.gpi plot/%.dat
