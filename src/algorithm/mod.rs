@@ -15,7 +15,6 @@ use crate::component::RoutingCost;
 
 pub trait RoutingAlgo {
     fn add_flows(&mut self, tsns: Vec<TSNFlow>, avbs: Vec<AVBFlow>);
-    fn del_flows(&mut self, tsns: Vec<TSNFlow>, avbs: Vec<AVBFlow>);
     fn get_rerouted_flows(&self) -> &Vec<FlowID>;
     fn get_route(&self, id: FlowID) -> &Vec<usize>;
     fn show_results(&self);

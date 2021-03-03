@@ -15,9 +15,8 @@ impl From<f64> for Priority {
     }
 }
 
-impl Into<f64> for Priority {
-    fn into(self) -> f64 {
-        (self.0).0.into_inner()
+impl From<Priority> for f64 {
+    fn from(priority: Priority) -> Self {
+        (priority.0).0.into_inner()
     }
 }
-

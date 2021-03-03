@@ -73,9 +73,6 @@ impl RoutingAlgo for AdamsAnt {
         );
         self.compute_time = init_time.elapsed().as_micros();
     }
-    fn del_flows(&mut self, tsns: Vec<TSNFlow>, avbs: Vec<AVBFlow>) {
-        unimplemented!();
-    }
     fn get_rerouted_flows(&self) -> &Vec<FlowID> {
         unimplemented!();
     }

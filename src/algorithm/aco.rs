@@ -154,6 +154,7 @@ impl ACO {
         let mut rng = ChaChaRng::seed_from_u64(42);
         let time = std::time::Instant::now();
         let mut best_state = WeightedState::new(std::f64::MAX, None);
+        #[allow(unused_variables)]
         let mut epoch = 0;
         while time.elapsed().as_micros() < time_limit {
             epoch += 1;
