@@ -25,7 +25,10 @@ profile: $(MAIN)
 	cargo run --release -- ro exp_graph.json exp_flow_heavy.json exp_flow_reconf.json 4
 
 check: $(MAIN)
-	cargo run -- ro exp_graph.json exp_flow_heavy.json exp_flow_reconf.json 4 > stdout-new.log
+	echo -n "" > stdout-new.log
+	cargo run -- spf exp_graph.json exp_flow_heavy.json exp_flow_reconf.json 4 >> stdout-new.log
+	cargo run -- ro  exp_graph.json exp_flow_heavy.json exp_flow_reconf.json 4 >> stdout-new.log
+	cargo run -- aco exp_graph.json exp_flow_heavy.json exp_flow_reconf.json 4 >> stdout-new.log
 	diff -I time --color stdout.log stdout-new.log
 
 SOURCES := $(shell find src/ -type f -name '*.rs')

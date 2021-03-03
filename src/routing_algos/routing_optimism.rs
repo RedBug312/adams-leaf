@@ -21,9 +21,8 @@ fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
     }
 }
 
-fn gen_n_distinct_outof_k(n: usize, k: usize) -> Vec<usize> {
+fn gen_n_distinct_outof_k(n: usize, k: usize, rng: &mut ChaChaRng) -> Vec<usize> {
     let mut vec = Vec::with_capacity(n);
-    let mut rng = ChaChaRng::seed_from_u64(42);
     for i in 0..k {
         let rand = rng.gen();
         let random: usize = rand;
@@ -37,7 +36,6 @@ pub struct RO {
     yens_algo: Rc<RefCell<YensAlgo>>,
     compute_time: u128,
     wrapper: NetworkWrapper<usize>,
-    rng: ChaChaRng,
 }
 
 impl RO {
@@ -53,7 +51,6 @@ impl RO {
             yens_algo,
             compute_time: 0,
             wrapper,
-            rng: ChaChaRng::seed_from_u64(42),
         }
     }
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
@@ -69,7 +66,7 @@ impl RO {
             for (flow, _) in cur_wrapper.get_flow_table().iter_avb() {
                 let candidate_cnt = self.get_candidate_count(flow);
                 let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
-                let set = gen_n_distinct_outof_k(alpha, candidate_cnt);
+                let set = gen_n_distinct_outof_k(alpha, candidate_cnt, &mut rng);
                 let new_route = self.find_min_cost_route(flow, Some(set));
                 diff.update_info(flow.id, new_route);
             }
