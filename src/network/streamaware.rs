@@ -1,4 +1,4 @@
-use crate::graph_util::{Graph, OnOffGraph};
+use crate::network::{Graph, OnOffGraph};
 use std::collections::HashMap;
 
 pub struct Node {

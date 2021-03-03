@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::f64::INFINITY as INF;
 
 use super::MyMinHeap;
-use crate::graph_util::{StreamAwareGraph};
+use crate::network::StreamAwareGraph;
 
 pub type Path = Vec<usize>;
 
@@ -83,7 +83,7 @@ impl Dijkstra {
 #[cfg(test)]
 mod test {
     use super::Dijkstra;
-    use crate::graph_util::StreamAwareGraph;
+    use crate::network::StreamAwareGraph;
     #[test]
     fn test_dijkstra_case1() {
         let mut graph = StreamAwareGraph::default();

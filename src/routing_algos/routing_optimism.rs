@@ -1,7 +1,7 @@
 use super::RoutingAlgo;
 use crate::config::Config;
 use crate::flow::{AVBFlow, Flow, FlowEnum, FlowID, TSNFlow};
-use crate::graph_util::StreamAwareGraph;
+use crate::network::StreamAwareGraph;
 use crate::network_wrapper::{NetworkWrapper, RoutingCost};
 use crate::recorder::flow_table::prelude::*;
 use crate::util::YensAlgo;

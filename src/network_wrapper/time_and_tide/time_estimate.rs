@@ -1,5 +1,5 @@
 use crate::flow::{AVBFlow, FlowID};
-use crate::graph_util::MemorizingGraph;
+use crate::network::MemorizingGraph;
 use crate::recorder::{flow_table::prelude::*, GCL};
 
 /// AVB 資料流最多可以佔用的資源百分比（模擬 Credit Base Shaper 的效果）
@@ -80,7 +80,7 @@ fn tt_interfere_avb_single_link(link_id: usize, wcd: f64, gcl: &GCL) -> u32 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::graph_util::*;
+    use crate::network::*;
 
     fn init_settings() -> (MemorizingGraph, Vec<AVBFlow>, FlowTable<usize>, GCL) {
         use crate::flow::data::{AVBClass, AVBData};

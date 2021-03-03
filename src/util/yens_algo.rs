@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use super::Dijkstra;
 use super::MyMinHeap;
-use crate::graph_util::StreamAwareGraph;
+use crate::network::StreamAwareGraph;
 
 type Path = Vec<usize>;
 

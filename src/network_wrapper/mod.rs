@@ -1,5 +1,5 @@
 use crate::flow::{AVBFlow, FlowEnum, FlowID, TSNFlow};
-use crate::graph_util::{Graph, MemorizingGraph, StreamAwareGraph};
+use crate::network::{Graph, MemorizingGraph, StreamAwareGraph};
 use crate::recorder::{flow_table::prelude::*, GCL};
 use std::rc::Rc;
 
