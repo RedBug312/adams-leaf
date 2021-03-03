@@ -3,10 +3,10 @@ use crate::utils::config::Config;
 use crate::utils::stream::{AVBFlow, Flow, FlowEnum, FlowID, TSNFlow};
 use crate::network::StreamAwareGraph;
 use crate::component::{NetworkWrapper, RoutingCost};
-use crate::component::flowtable::*;
 use super::aco::ACO;
 use super::base::yens::YensAlgo;
 use crate::MAX_K;
+use crate::component::IFlowTable;
 
 use std::cell::RefCell;
 use std::rc::Rc;

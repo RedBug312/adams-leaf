@@ -3,7 +3,7 @@ use crate::utils::config::Config;
 use crate::utils::stream::{AVBFlow, Flow, FlowEnum, FlowID, TSNFlow};
 use crate::network::StreamAwareGraph;
 use crate::component::{NetworkWrapper, RoutingCost};
-use crate::component::flowtable::*;
+use crate::component::IFlowTable;
 use super::base::yens::YensAlgo;
 use crate::MAX_K;
 use rand::{Rng, SeedableRng};

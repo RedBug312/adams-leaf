@@ -1,10 +1,10 @@
 use super::AdamsAnt;
 use crate::utils::config::Config;
 use crate::component::{NetworkWrapper, RoutingCost};
-use crate::component::flowtable::*;
 use crate::algorithm::aco::ACOJudgeResult;
 use crate::MAX_K;
 use std::time::Instant;
+use crate::component::IFlowTable;
 
 pub fn do_aco(algo: &mut AdamsAnt, time_limit: u128) {
     let time = Instant::now();

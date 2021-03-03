@@ -2,9 +2,9 @@ use super::RoutingAlgo;
 use crate::utils::stream::{AVBFlow, Flow, FlowID, TSNFlow};
 use crate::network::StreamAwareGraph;
 use crate::component::{NetworkWrapper, RoutingCost};
-use crate::component::flowtable::*;
 use super::base::dijkstra::Dijkstra;
 use std::time::Instant;
+use crate::component::IFlowTable;
 
 pub struct SPF {
     wrapper: NetworkWrapper<Vec<usize>>,
