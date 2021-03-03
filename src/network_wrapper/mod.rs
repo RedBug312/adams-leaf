@@ -9,7 +9,8 @@ pub use cost::RoutingCost;
 mod old_new_table;
 use old_new_table::{OldNew, OldNewTable};
 mod time_and_tide;
-use time_and_tide::{compute_avb_latency, schedule_online};
+use time_and_tide::{compute_avb_latency};
+use crate::scheduler::schedule_online;
 
 type Route = Vec<usize>;
 
