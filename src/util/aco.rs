@@ -1,7 +1,8 @@
 extern crate rand;
 use crate::MAX_K;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use std::collections::BinaryHeap;
+use rand_chacha::ChaChaRng;
 
 const R: usize = 60;
 const L: usize = 20;
@@ -59,8 +60,8 @@ impl Ord for WeightedState {
     }
 }
 
-fn select_cluster(visibility: &[f64; MAX_K], pheromone: &[f64; MAX_K], k: usize, q0: f64) -> usize {
-    if rand::thread_rng().gen_range(0.0, 1.0) < q0 {
+fn select_cluster(visibility: &[f64; MAX_K], pheromone: &[f64; MAX_K], k: usize, q0: f64, rng: &mut ChaChaRng) -> usize {
+    if rng.gen_range(0.0..1.0) < q0 {
         // 直接選可能性最大者
         let (mut max_i, mut max) = (0, std::f64::MIN);
         for i in 0..k {
@@ -76,7 +77,7 @@ fn select_cluster(visibility: &[f64; MAX_K], pheromone: &[f64; MAX_K], k: usize,
         for i in 0..k {
             sum += pheromone[i] * visibility[i];
         }
-        let rand_f = rand::thread_rng().gen_range(0.0, sum);
+        let rand_f = rng.gen_range(0.0..sum);
         let mut accumulation = 0.0;
         for i in 0..k {
             accumulation += pheromone[i] * visibility[i];
@@ -150,13 +151,14 @@ impl ACO {
     where
         F: FnMut(&State) -> ACOJudgeResult,
     {
+        let mut rng = ChaChaRng::seed_from_u64(42);
         let time = std::time::Instant::now();
         let mut best_state = WeightedState::new(std::f64::MAX, None);
         let mut epoch = 0;
         while time.elapsed().as_micros() < time_limit {
             epoch += 1;
             let (should_stop, local_best_state) =
-                self.do_single_epoch(&visibility, &mut judge_func);
+                self.do_single_epoch(&visibility, &mut judge_func, &mut rng);
             if local_best_state.get_dist() < best_state.get_dist() {
                 best_state = local_best_state;
             }
@@ -174,6 +176,7 @@ impl ACO {
         &mut self,
         visibility: &Vec<[f64; MAX_K]>,
         judge_func: &mut F,
+        rng: &mut ChaChaRng,
     ) -> (bool, WeightedState)
     where
         F: FnMut(&State) -> ACOJudgeResult,
@@ -184,7 +187,7 @@ impl ACO {
         for _ in 0..self.r {
             let mut cur_state = Vec::<usize>::with_capacity(state_len);
             for i in 0..state_len {
-                let next = select_cluster(&visibility[i], &self.pheromone[i], self.k, self.q0);
+                let next = select_cluster(&visibility[i], &self.pheromone[i], self.k, self.q0, rng);
                 cur_state.push(next);
                 // TODO online pharamon update
             }

@@ -23,17 +23,18 @@ fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
 
 pub struct AdamsAnt {
     aco: ACO,
-    yens_algo: Rc<RefCell<YensAlgo<usize, StreamAwareGraph>>>,
+    yens_algo: Rc<RefCell<YensAlgo>>,
     wrapper: NetworkWrapper<usize>,
     compute_time: u128,
 }
 impl AdamsAnt {
     pub fn new(g: StreamAwareGraph) -> Self {
-        let yens_algo = Rc::new(RefCell::new(YensAlgo::new(g.clone(), MAX_K)));
+        let yens_algo = Rc::new(RefCell::new(YensAlgo::default()));
         let tmp_yens = yens_algo.clone();
+        tmp_yens.borrow_mut().compute(&g, MAX_K);
         let wrapper = NetworkWrapper::new(g, move |flow_enum, &k| {
             let (src, dst) = get_src_dst(flow_enum);
-            tmp_yens.borrow().get_kth_route(src, dst, k) as *const Vec<usize>
+            tmp_yens.borrow().kth_shortest_path(src, dst, k).unwrap() as *const Vec<usize>
         });
 
         AdamsAnt {
@@ -44,22 +45,22 @@ impl AdamsAnt {
         }
     }
     fn get_candidate_count<T: Clone>(&self, flow: &Flow<T>) -> usize {
-        self.yens_algo.borrow().get_route_count(flow.src, flow.dst)
+        self.yens_algo.borrow().count_shortest_paths(flow.src, flow.dst)
     }
 }
 
 impl RoutingAlgo for AdamsAnt {
     fn add_flows(&mut self, tsns: Vec<TSNFlow>, avbs: Vec<AVBFlow>) {
-        for flow in tsns.iter() {
-            self.yens_algo
-                .borrow_mut()
-                .compute_routes(flow.src, flow.dst);
-        }
-        for flow in avbs.iter() {
-            self.yens_algo
-                .borrow_mut()
-                .compute_routes(flow.src, flow.dst);
-        }
+        // for flow in tsns.iter() {
+        //     self.yens_algo
+        //         .borrow_mut()
+        //         .compute_once(flow.src, flow.dst);
+        // }
+        // for flow in avbs.iter() {
+        //     self.yens_algo
+        //         .borrow_mut()
+        //         .compute_once(flow.src, flow.dst);
+        // }
         let init_time = Instant::now();
         self.wrapper.insert(tsns, avbs, 0);
 

@@ -45,7 +45,7 @@ fn compute_visibility(algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
         let id = flow.id;
         for i in 0..algo.get_candidate_count(flow) {
             let yens = algo.yens_algo.borrow();
-            let route = yens.get_kth_route(flow.src, flow.dst, i);
+            let route = yens.kth_shortest_path(flow.src, flow.dst, i).unwrap();
             vis[id.0][i] = 1.0 / route.len() as f64;
         }
 

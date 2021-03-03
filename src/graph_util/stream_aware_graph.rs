@@ -1,7 +1,8 @@
 use crate::graph_util::{Graph, OnOffGraph};
 use std::collections::HashMap;
 
-struct Node {
+pub struct Node {
+    pub neighbors: Vec<usize>,
     is_switch: bool,
     edges: HashMap<usize, (f64, bool)>,
     exist: bool,
@@ -14,6 +15,7 @@ impl Clone for Node {
             edges.insert(id, edge);
         }
         return Node {
+            neighbors: self.neighbors.clone(),
             is_switch: self.is_switch,
             exist: self.exist,
             active: self.active,
@@ -23,14 +25,28 @@ impl Clone for Node {
 }
 
 #[derive(Clone)]
+pub struct Edge {
+    pub ends: (usize, usize),
+    pub bandwidth: f64,
+}
+
+impl Edge {
+    pub fn new(ends: (usize, usize), bandwidth: f64) -> Self {
+        Edge { ends, bandwidth }
+    }
+}
+
+#[derive(Clone, Default)]
 pub struct StreamAwareGraph {
-    nodes: Vec<Node>,
+    pub nodes: Vec<Node>,
+    pub edges: HashMap<(usize, usize), Edge>,
     node_cnt: usize,
     edge_cnt: usize,
     cur_edge_id: usize,
     inactive_edges: Vec<(usize, usize)>,
     inactive_nodes: Vec<usize>,
     pub(super) edge_info: HashMap<(usize, usize), (usize, f64)>,
+    pub end_devices: Vec<usize>,
 }
 impl StreamAwareGraph {
     fn _add_node(&mut self, cnt: Option<usize>, is_switch: bool) -> Vec<usize> {
@@ -46,6 +62,7 @@ impl StreamAwareGraph {
             let id = self.nodes.len();
             self.node_cnt += 1;
             let node = Node {
+                neighbors: vec![],
                 is_switch,
                 exist: true,
                 active: true,
@@ -53,8 +70,27 @@ impl StreamAwareGraph {
             };
             self.nodes.push(node);
             v.push(id);
+            self.end_devices.push(id);
         }
         return v;
+    }
+    pub fn node(&self, id: usize) -> &Node {
+        self.nodes.get(id)
+            .expect("node not found")
+    }
+    pub fn edge(&self, ends: &[usize]) -> &Edge {
+        debug_assert!(ends.len() == 2);
+        debug_assert!(ends[0] != ends[1]);
+        self.edges.get(&(ends[0], ends[1]))
+            .expect("edge not found")
+    }
+    pub fn duration_on(&self, ends: &[usize], size: f64) -> f64 {
+        size / self.edge(ends).bandwidth
+    }
+    pub fn duration_along(&self, path: &Vec<usize>, size: f64) -> f64 {
+        path.windows(2)
+            .map(|ends| self.duration_on(ends, size))
+            .sum()
     }
     fn _check_exist(&self, id: usize) -> bool {
         return id < self.nodes.len() && self.nodes[id].exist;
@@ -64,6 +100,15 @@ impl StreamAwareGraph {
             .edges
             .insert(node_pair.1, (bandwidth, true));
         self.edge_info.insert(node_pair, (id, bandwidth));
+
+        let (end0, end1) = node_pair;
+        self.nodes[end0].neighbors.push(end1);
+        self.nodes[end1].neighbors.push(end0);
+
+        let ends = (end0, end1);
+        self.edges.insert(ends, Edge::new(ends, bandwidth));
+        let ends = (end1, end0);
+        self.edges.insert(ends, Edge::new(ends, bandwidth));
     }
     fn _del_single_edge(&mut self, id_pair: (usize, usize)) -> Result<f64, String> {
         if let Some(e) = self.nodes[id_pair.0].edges.remove(&id_pair.1) {
@@ -92,12 +137,14 @@ impl StreamAwareGraph {
     pub fn new() -> Self {
         StreamAwareGraph {
             nodes: vec![],
+            edges: Default::default(),
             node_cnt: 0,
             edge_cnt: 0,
             cur_edge_id: 0,
             inactive_edges: vec![],
             inactive_nodes: vec![],
             edge_info: HashMap::new(),
+            end_devices: vec![],
         }
     }
     pub fn get_links_id_bandwidth(&self, route: &Vec<usize>) -> Vec<(usize, f64)> {

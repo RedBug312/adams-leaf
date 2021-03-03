@@ -1,5 +1,5 @@
 extern crate rand;
-use rand::{Rng, ThreadRng};
+// use rand::{Rng, ThreadRng};
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -8,185 +8,132 @@ use std::rc::Rc;
 
 use super::Dijkstra;
 use super::MyMinHeap;
-use crate::graph_util::OnOffGraph;
+use crate::graph_util::StreamAwareGraph;
 
-type Path<K> = (f64, Vec<K>);
+type Path = Vec<usize>;
 
-pub struct YensAlgo<K: Hash + Eq + Copy, G: OnOffGraph<K>> {
-    g: G,
+#[derive(Default)]
+pub struct YensAlgo {
+    path: HashMap<(usize, usize), Vec<Path>>,
     k: usize,
-    // TODO 這個 Vec<Path> 的結構是兩層向量，有優化空間
-    route_table: HashMap<(K, K), Vec<Path<K>>>,
-    dijkstra_algo: Dijkstra<K, G>,
-    rng: ThreadRng,
+    dijkstra: Dijkstra,
 }
 
-impl<K: Hash + Eq + Copy + Debug, G: OnOffGraph<K>> YensAlgo<K, G> {
-    pub fn new(g: G, k: usize) -> Self {
-        return YensAlgo {
-            k,
-            rng: rand::thread_rng(),
-            g: g.clone(),
-            route_table: HashMap::new(),
-            dijkstra_algo: Dijkstra::new(g),
-        };
-    }
-    /// 回歸普通的 Dijkstra 算法
-    pub fn get_shortest_route(&mut self, src: K, dst: K) -> Path<K> {
-        self.dijkstra_algo
-            .get_route(src, dst)
-            .expect("連一條路都沒有！！？")
-    }
-    pub fn get_route_count(&self, src: K, dst: K) -> usize {
-        let pair = (src, dst);
-        if let Some(paths) = &self.route_table.get(&pair) {
-            paths.len()
-        } else {
-            panic!("先運行 compute_routes");
-        }
-    }
-    pub fn get_kth_route(&self, src: K, dst: K, k: usize) -> &Vec<K> {
-        let pair = (src, dst);
-        if let Some(paths) = self.route_table.get(&pair) {
-            &paths[k].1
-        } else {
-            panic!("先運行 compute_routes");
-        }
-    }
-    pub fn get_graph(&self) -> &G {
-        &self.g
-    }
-    pub fn compute_routes(&mut self, src: K, dst: K) {
-        if self.route_table.contains_key(&(src, dst)) {
-            return;
-        }
-        let _self = self as *mut Self;
-        let mut paths: HashMap<Rc<Vec<K>>, f64> = HashMap::new();
-        let mut visited_edges: HashMap<K, HashSet<K>> = HashMap::new();
-        let mut min_heap: MyMinHeap<f64, Rc<Vec<K>>> = MyMinHeap::new();
-        let shortest = self
-            .dijkstra_algo
-            .get_route(src, dst)
-            .expect("竟然連一條路都沒有！！？");
-        min_heap.push(Rc::new(shortest.1), shortest.0, ());
-        while let Some((cur_path, dist, _)) = min_heap.pop() {
-            paths.insert(cur_path.clone(), dist);
-            if paths.len() >= self.k {
-                break;
+impl YensAlgo {
+    pub fn compute(&mut self, graph: &StreamAwareGraph, k: usize) {
+        self.k = k;
+        self.dijkstra.compute(graph);
+        // compute_once on all end devices pair takes 20 sec on test case
+        for &src in graph.end_devices.iter() {
+            for &dst in graph.end_devices.iter().filter(|&&node| node != src) {
+                self.compute_once(graph, src, dst, 10);
             }
-            for i in 0..cur_path.len() - 1 {
-                let set = visited_edges.entry(cur_path[i]).or_insert(HashSet::new());
-                set.insert(cur_path[i + 1]);
-            }
-            self._for_each_deviation(&visited_edges, cur_path.clone(), |next_dist, next_path| {
-                let next_path = Rc::new(next_path);
-                if !min_heap.contains_key(&next_path) {
-                    if !paths.contains_key(&next_path) {
-                        // 將給路徑長加上一個隨機的極小值，確保同樣長度的路徑之間存在隨機性
-                        let rand_num = unsafe { (*_self).rng.gen_range(1.0, 1.00001) };
-                        min_heap.push(next_path.clone(), next_dist * rand_num, ());
+        }
+    }
+    pub fn compute_once(&mut self, graph: &StreamAwareGraph, src: usize, dst: usize, k: usize) {
+        if self.path.contains_key(&(src, dst)) { return }
+        debug_assert!(src != dst);
+
+        self.dijkstra.compute_once(graph, src);
+        let shortest = self.dijkstra.shortest_path(src, dst).unwrap();
+        let mut list_a = vec![shortest];
+        let mut heap_b = MyMinHeap::new();
+
+        for k in 0..=k-2 {
+            let prev_path_len = list_a[k].len();
+            for i in 0..=(prev_path_len - 2) {
+                let spur_node = list_a[k][i];
+                let mut root_path = list_a[k][..=i].to_vec();
+
+                // For example, if search for 4th shortest path with spur-node (2)
+                // We should ignore edges (2)───(3), (2)───(5) and node (1)
+                //
+                // (1)───(2)───(3)───(4)  1st
+                //  │     └────(5)───(4)  2nd
+                //  └────(7)───(8)───(4)  3rd
+
+                let ignored_edges = list_a.iter()
+                    .filter(|path| path.len() > i && path[..=i] == list_a[k][..=i])
+                    .map(|path| (path[i], path[i+1]))
+                    .collect();
+                let ignored_nodes = list_a[k][..i].iter()
+                    .cloned()
+                    .collect();
+
+                let mut dijkstra = Dijkstra::default();
+                dijkstra.ignore(ignored_nodes, ignored_edges);
+                dijkstra.compute_once(graph, spur_node);
+
+                match dijkstra.shortest_path(spur_node, dst) {
+                    Some(spur_path) => {
+                        root_path.pop();
+                        root_path.extend(spur_path);
+                        let total_path = root_path;
+                        let total_dist = graph.duration_along(&total_path, 1.0);
+                        heap_b.push(total_path, total_dist.into());
                     }
+                    None => continue,  // spur-dst exists no more paths
                 }
-            });
-        }
-        drop(min_heap);
-        let mut vec: Vec<Path<K>> = paths
-            .into_iter()
-            .map(|(vec, dist)| {
-                if let Ok(vec) = Rc::try_unwrap(vec) {
-                    (dist, vec)
-                } else {
-                    panic!("取 Rc 值時發生問題");
-                }
-            })
-            .collect();
-        vec.sort_by(|a, b| {
-            if a.0 > b.0 {
-                return std::cmp::Ordering::Greater;
-            } else if a.0 < b.0 {
-                return std::cmp::Ordering::Less;
-            } else {
-                return std::cmp::Ordering::Equal;
             }
-        });
-        self.route_table.insert((src, dst), vec);
+            match heap_b.pop() {
+                Some(path) => list_a.push(path.0),
+                None       => break,  // src-dst exists no more paths
+            }
+        }
+        self.path.insert((src, dst), list_a);
     }
-    #[allow(unused_must_use)]
-    fn _for_each_deviation(
-        &mut self,
-        visited_edges: &HashMap<K, HashSet<K>>,
-        cur_path: Rc<Vec<K>>,
-        mut callback: impl FnMut(f64, Vec<K>) -> (),
-    ) {
-        let last_node = *cur_path.last().unwrap();
-        let mut prefix: Vec<K> = vec![];
-        for i in 0..cur_path.len() - 1 {
-            let cur_node = cur_path[i];
-            if i >= 1 {
-                self.g.inactivate_node(cur_path[i - 1]);
-            }
-            if let Some(set) = visited_edges.get(&cur_node) {
-                for &next_node in set.iter() {
-                    self.g.inactivate_edge((cur_node, next_node));
-                }
-            }
-            // TODO 這裡是不是有優化的空間?
-            let mut spf = Dijkstra::new(self.g.clone());
-            if let Some((_, postfix)) = spf.get_route(cur_node, last_node) {
-                let mut next_path = prefix.clone();
-                next_path.extend(postfix);
-                let dist = self.g.get_dist(&next_path);
-                callback(dist, next_path);
-            }
-            prefix.push(cur_node);
-        }
-        self.g.reset();
+    pub fn kth_shortest_path(&self, src: usize, dst: usize, k: usize) -> Option<&Path> {
+        self.path.get(&(src, dst))
+            .and_then(|paths| paths.get(k))
+    }
+    pub fn count_shortest_paths(&self, src: usize, dst: usize) -> usize {
+        self.path.get(&(src, dst))
+            .map(|paths| paths.len())
+            .unwrap_or(0)
     }
 }
+
+
 
 #[cfg(test)]
 mod test {
-    use super::YensAlgo;
-    use crate::graph_util::{Graph, StreamAwareGraph};
+    use super::Yens;
+    use crate::graph::StreamAwareGraph;
     #[test]
-    #[ignore] // 用 cargo test -- --ignored 才可以測試
-    fn test_yens_algo1() -> Result<(), String> {
-        let mut g = StreamAwareGraph::new();
-        g.add_host(Some(100));
-        g.add_edge((0, 1), 10.0)?;
-        g.add_edge((1, 2), 20.0)?;
-        g.add_edge((0, 2), 2.0)?;
-        g.add_edge((1, 4), 10.0)?;
-        g.add_edge((1, 3), 15.0)?;
-        g.add_edge((2, 3), 10.0)?;
-        g.add_edge((2, 4), 10.0)?;
-
-        for i in 4..100 {
-            for j in i + 1..100 {
-                g.add_edge((i, j), (i * j) as f64)?;
+    #[ignore]
+    fn test_yens_compute_once() {
+        let mut graph = StreamAwareGraph::default();
+        graph.add_nodes(6, 93);  // 0..=5 + 99, 6..=98
+        graph.add_nodes(1, 0);
+        graph.add_edges(vec![
+            (0, 1, 10.0), (1, 2, 20.0), (0, 2, 02.0), (1, 4, 10.0),
+            (1, 3, 15.0), (2, 3, 10.0), (2, 4, 10.0)
+        ]);
+        for src in 4..100 {
+            for dst in src+1..100 {
+                graph.add_edges(vec![(src, dst, (src * dst) as f64)]);
             }
         }
+        let mut yens = Yens::default();
 
-        let mut algo = YensAlgo::new(g, 10);
-        algo.compute_routes(0, 2);
-        assert_eq!(&vec![0, 1, 2], algo.get_kth_route(0, 2, 0));
-        assert_eq!(&vec![0, 1, 3, 2], algo.get_kth_route(0, 2, 1));
-        assert_eq!(&vec![0, 1, 4, 2], algo.get_kth_route(0, 2, 2));
-        assert_eq!(4, algo.get_route_count(0, 2));
+        yens.compute_once(&graph, 0, 2, 10);
+        assert_eq!(yens.count_shortest_paths(0, 2), 4);
+        assert_eq!(yens.kth_shortest_path(0, 2, 0), Some(&vec![0, 1, 2]));
+        assert_eq!(yens.kth_shortest_path(0, 2, 1), Some(&vec![0, 1, 3, 2]));
+        assert_eq!(yens.kth_shortest_path(0, 2, 2), Some(&vec![0, 1, 4, 2]));
 
-        algo.compute_routes(0, 99);
-        assert_eq!(&vec![0, 1, 4, 99], algo.get_kth_route(0, 99, 0));
-        assert_eq!(&vec![0, 1, 4, 98, 99], algo.get_kth_route(0, 99, 1));
-        assert_eq!(&vec![0, 1, 4, 97, 99], algo.get_kth_route(0, 99, 2));
-        assert_eq!(10, algo.get_route_count(0, 99));
+        yens.compute_once(&graph, 0, 99, 10);
+        assert_eq!(yens.count_shortest_paths(0, 99), 10);
+        assert_eq!(yens.kth_shortest_path(0, 99, 0), Some(&vec![0, 1, 4, 99]));
+        assert_eq!(yens.kth_shortest_path(0, 99, 1), Some(&vec![0, 1, 4, 98, 99]));
+        assert_eq!(yens.kth_shortest_path(0, 99, 2), Some(&vec![0, 1, 4, 97, 99]));
 
-        algo.compute_routes(0, 5);
-        assert_eq!(&vec![0, 1, 4, 99, 5], algo.get_kth_route(0, 5, 0));
-        assert_eq!(&vec![0, 1, 4, 98, 5], algo.get_kth_route(0, 5, 1));
-        assert_eq!(&vec![0, 1, 4, 97, 5], algo.get_kth_route(0, 5, 2));
-        assert_eq!(&vec![0, 1, 4, 99, 98, 5], algo.get_kth_route(0, 5, 3));
-        assert_eq!(&vec![0, 1, 4, 98, 99, 5], algo.get_kth_route(0, 5, 4));
-        assert_eq!(10, algo.get_route_count(0, 5));
-        return Ok(());
+        yens.compute_once(&graph, 0, 5, 10);
+        assert_eq!(yens.count_shortest_paths(0, 5), 10);
+        assert_eq!(yens.kth_shortest_path(0, 5, 0), Some(&vec![0, 1, 4, 99, 5]));
+        assert_eq!(yens.kth_shortest_path(0, 5, 1), Some(&vec![0, 1, 4, 98, 5]));
+        assert_eq!(yens.kth_shortest_path(0, 5, 2), Some(&vec![0, 1, 4, 97, 5]));
+        assert_eq!(yens.kth_shortest_path(0, 5, 3), Some(&vec![0, 1, 4, 99, 98, 5]));
+        assert_eq!(yens.kth_shortest_path(0, 5, 4), Some(&vec![0, 1, 4, 98, 99, 5]));
     }
 }

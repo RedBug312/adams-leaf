@@ -41,7 +41,7 @@ fn main() -> Result<(), String> {
 
     let mut cost_list = Vec::<RoutingCost>::new();
     let mut sum_comp_time = 0;
-    for _ in 0..Config::get().exp_times {
+    for _ in 0..1 {
         let mut algo: Box<dyn RoutingAlgo> = {
             if algo_type == "aco" {
                 Box::new(AdamsAnt::new(g.clone()))
