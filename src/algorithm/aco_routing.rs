@@ -1,7 +1,7 @@
 use super::AdamsAnt;
 use crate::config::Config;
-use crate::network_wrapper::{NetworkWrapper, RoutingCost};
-use crate::recorder::flow_table::prelude::*;
+use crate::component::{NetworkWrapper, RoutingCost};
+use crate::component::flowtable::*;
 use crate::algorithm::aco::ACOJudgeResult;
 use crate::MAX_K;
 use std::time::Instant;

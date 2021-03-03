@@ -1,4 +1,4 @@
-use crate::recorder::flow_table::prelude::FlowTable;
+use crate::component::FlowTable;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OldNew<T: Clone + Eq> {

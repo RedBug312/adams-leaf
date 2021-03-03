@@ -1,5 +1,5 @@
 use crate::flow::{AVBFlow, FlowID, TSNFlow};
-use crate::network_wrapper::RoutingCost;
+use crate::component::RoutingCost;
 
 mod base;
 mod aco;

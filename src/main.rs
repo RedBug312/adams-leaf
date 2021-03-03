@@ -1,4 +1,4 @@
-use adams_leaf::network_wrapper::RoutingCost;
+use adams_leaf::component::RoutingCost;
 use adams_leaf::algorithm::{AdamsAnt, RoutingAlgo, RO, SPF};
 use adams_leaf::{config::Config, read_flows_from_file, read_topo_from_file};
 use regex::Regex;

@@ -1,6 +1,6 @@
 use crate::flow::{AVBFlow, FlowID};
 use crate::network::MemorizingGraph;
-use crate::recorder::{flow_table::prelude::*, GCL};
+use crate::component::{flowtable::*, GCL};
 
 /// AVB 資料流最多可以佔用的資源百分比（模擬 Credit Base Shaper 的效果）
 const MAX_AVB_SETTING: f64 = 0.75;

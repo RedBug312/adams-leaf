@@ -3,11 +3,10 @@ use std::fs;
 
 pub mod config;
 pub mod flow;
-pub mod network_wrapper;
-pub mod recorder;
 
 pub mod algorithm;
 pub mod scheduler;
+pub mod component;
 pub mod network;
 
 use network::Graph;
