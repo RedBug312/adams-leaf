@@ -5,9 +5,8 @@ pub mod config;
 pub mod flow;
 pub mod network_wrapper;
 pub mod recorder;
-pub mod routing_algos;
-pub mod util;
 
+pub mod algorithm;
 pub mod network;
 
 use network::Graph;

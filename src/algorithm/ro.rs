@@ -4,7 +4,7 @@ use crate::flow::{AVBFlow, Flow, FlowEnum, FlowID, TSNFlow};
 use crate::network::StreamAwareGraph;
 use crate::network_wrapper::{NetworkWrapper, RoutingCost};
 use crate::recorder::flow_table::prelude::*;
-use crate::util::YensAlgo;
+use super::base::yens::YensAlgo;
 use crate::MAX_K;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;

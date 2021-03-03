@@ -1,6 +1,17 @@
 use crate::flow::{AVBFlow, FlowID, TSNFlow};
 use crate::network_wrapper::RoutingCost;
 
+mod base;
+mod aco;
+mod ro;
+mod spf;
+mod ants;
+mod aco_routing;
+
+pub use ants::AdamsAnt;
+pub use ro::RO;
+pub use spf::SPF;
+
 pub trait RoutingAlgo {
     fn add_flows(&mut self, tsns: Vec<TSNFlow>, avbs: Vec<AVBFlow>);
     fn del_flows(&mut self, tsns: Vec<TSNFlow>, avbs: Vec<AVBFlow>);
@@ -10,12 +21,3 @@ pub trait RoutingAlgo {
     fn get_last_compute_time(&self) -> u128;
     fn get_cost(&self) -> RoutingCost;
 }
-
-mod shortest_path;
-pub use shortest_path::SPF;
-
-mod routing_optimism;
-pub use routing_optimism::RO;
-
-mod adams_ant;
-pub use adams_ant::AdamsAnt;

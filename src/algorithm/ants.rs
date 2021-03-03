@@ -4,15 +4,15 @@ use crate::flow::{AVBFlow, Flow, FlowEnum, FlowID, TSNFlow};
 use crate::network::StreamAwareGraph;
 use crate::network_wrapper::{NetworkWrapper, RoutingCost};
 use crate::recorder::flow_table::prelude::*;
-use crate::util::{aco::ACO, YensAlgo};
+use super::aco::ACO;
+use super::base::yens::YensAlgo;
 use crate::MAX_K;
 
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
 
-mod aco_routing;
-use aco_routing::do_aco;
+use super::aco_routing::do_aco;
 
 fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
     match flow {
@@ -22,10 +22,10 @@ fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
 }
 
 pub struct AdamsAnt {
-    aco: ACO,
-    yens_algo: Rc<RefCell<YensAlgo>>,
-    wrapper: NetworkWrapper<usize>,
-    compute_time: u128,
+    pub aco: ACO,
+    pub yens_algo: Rc<RefCell<YensAlgo>>,
+    pub wrapper: NetworkWrapper<usize>,
+    pub compute_time: u128,
 }
 impl AdamsAnt {
     pub fn new(g: StreamAwareGraph) -> Self {
@@ -44,7 +44,7 @@ impl AdamsAnt {
             wrapper,
         }
     }
-    fn get_candidate_count<T: Clone>(&self, flow: &Flow<T>) -> usize {
+    pub fn get_candidate_count<T: Clone>(&self, flow: &Flow<T>) -> usize {
         self.yens_algo.borrow().count_shortest_paths(flow.src, flow.dst)
     }
 }

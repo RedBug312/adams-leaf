@@ -6,8 +6,8 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::rc::Rc;
 
-use super::Dijkstra;
-use super::MyMinHeap;
+use super::dijkstra::Dijkstra;
+use super::heap::MyMinHeap;
 use crate::network::StreamAwareGraph;
 
 type Path = Vec<usize>;

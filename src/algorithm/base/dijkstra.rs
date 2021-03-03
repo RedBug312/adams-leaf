@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::f64::INFINITY as INF;
 
-use super::MyMinHeap;
+use super::heap::MyMinHeap;
 use crate::network::StreamAwareGraph;
 
 pub type Path = Vec<usize>;

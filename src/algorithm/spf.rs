@@ -3,7 +3,7 @@ use crate::flow::{AVBFlow, Flow, FlowID, TSNFlow};
 use crate::network::StreamAwareGraph;
 use crate::network_wrapper::{NetworkWrapper, RoutingCost};
 use crate::recorder::flow_table::prelude::*;
-use crate::util::Dijkstra;
+use super::base::dijkstra::Dijkstra;
 use std::time::Instant;
 
 pub struct SPF {
