@@ -1,5 +1,5 @@
 use iter::{Iter, IterMut};
-use crate::flow::{AVBFlow, FlowEnum, FlowID, TSNFlow};
+use crate::utils::stream::{AVBFlow, FlowEnum, FlowID, TSNFlow};
 use std::rc::Rc;
 pub struct FlowArena {
     avbs: Vec<Option<FlowID>>,
@@ -566,7 +566,7 @@ pub enum OldNew<T: Clone + Eq> {
 
 pub mod iter {
     use super::OldNew;
-    use crate::flow::{FlowEnum, FlowID};
+    use crate::utils::stream::{FlowEnum, FlowID};
     pub enum Iter<'a, F: From<&'a FlowEnum>, T: Clone + Eq> {
         FlowTable {
             ptr: usize,

@@ -1,13 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 
-pub mod config;
-pub mod flow;
-
 pub mod algorithm;
 pub mod scheduler;
 pub mod component;
 pub mod network;
+pub mod utils;
 
 use network::Graph;
 use network::StreamAwareGraph;
@@ -15,7 +13,8 @@ use network::StreamAwareGraph;
 pub const MAX_QUEUE: u8 = 8;
 pub const MAX_K: usize = 20;
 
-use flow::{AVBFlow, TSNFlow};
+use utils::stream::{Flow, AVBFlow, TSNFlow};
+use utils::stream::data::{TSNData, AVBData, AVBClass};
 
 pub fn read_flows_from_file(file_name: &str, times: usize) -> (Vec<TSNFlow>, Vec<AVBFlow>) {
     let mut tsns = Vec::<TSNFlow>::new();
@@ -30,31 +29,31 @@ fn read_flows_from_file_once(tsns: &mut Vec<TSNFlow>, avbs: &mut Vec<AVBFlow>, f
     let all_flows: AllFlows =
         serde_json::from_str(&txt).expect(&format!("無法解析檔案: {}", file_name));
     for cur_flow in all_flows.tt_flows.iter() {
-        tsns.push(flow::Flow {
+        tsns.push(Flow {
             id: 0.into(),
             size: cur_flow.size,
             src: cur_flow.src,
             dst: cur_flow.dst,
             period: cur_flow.period,
             max_delay: cur_flow.max_delay,
-            spec_data: flow::data::TSNData {
+            spec_data: TSNData {
                 offset: cur_flow.offset,
             },
         });
     }
     for cur_flow in all_flows.avb_flows.iter() {
-        avbs.push(flow::Flow {
+        avbs.push(Flow {
             id: 0.into(),
             size: cur_flow.size,
             src: cur_flow.src,
             dst: cur_flow.dst,
             period: cur_flow.period,
             max_delay: cur_flow.max_delay,
-            spec_data: flow::data::AVBData {
+            spec_data: AVBData {
                 avb_class: if cur_flow.avb_type == 'A' {
-                    flow::data::AVBClass::A
+                    AVBClass::A
                 } else if cur_flow.avb_type == 'B' {
-                    flow::data::AVBClass::B
+                    AVBClass::B
                 } else {
                     panic!("AVB type 必需為 `A` 或 `B`");
                 },

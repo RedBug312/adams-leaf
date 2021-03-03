@@ -1,4 +1,4 @@
-use crate::flow::{AVBFlow, FlowID};
+use crate::utils::stream::{AVBFlow, FlowID};
 use crate::network::MemorizingGraph;
 use crate::component::{flowtable::*, GCL};
 

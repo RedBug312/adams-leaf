@@ -1,5 +1,5 @@
 use super::AdamsAnt;
-use crate::config::Config;
+use crate::utils::config::Config;
 use crate::component::{NetworkWrapper, RoutingCost};
 use crate::component::flowtable::*;
 use crate::algorithm::aco::ACOJudgeResult;

@@ -1,5 +1,5 @@
 use super::StreamAwareGraph;
-use crate::flow::FlowID;
+use crate::utils::stream::FlowID;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 

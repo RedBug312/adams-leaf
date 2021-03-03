@@ -1,4 +1,4 @@
-use crate::flow::{AVBFlow, FlowEnum, FlowID, TSNFlow};
+use crate::utils::stream::{AVBFlow, FlowEnum, FlowID, TSNFlow};
 use crate::network::{Graph, MemorizingGraph, StreamAwareGraph};
 use std::rc::Rc;
 

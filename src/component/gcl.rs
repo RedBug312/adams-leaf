@@ -1,4 +1,4 @@
-use super::super::flow::FlowID;
+use crate::utils::stream::FlowID;
 use std::collections::HashMap;
 
 use crate::MAX_QUEUE;

@@ -1,4 +1,4 @@
-use crate::flow::{FlowID, TSNFlow};
+use crate::utils::stream::{FlowID, TSNFlow};
 use crate::component::{flowtable::*, GCL};
 use crate::MAX_QUEUE;
 

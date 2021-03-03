@@ -1,6 +1,6 @@
 use super::{compute_avb_latency, NetworkWrapper, OldNew, OldNewTable};
-use crate::config::Config;
-use crate::flow::{AVBFlow, FlowEnum};
+use crate::utils::config::Config;
+use crate::utils::stream::{AVBFlow, FlowEnum};
 use crate::component::flowtable::*;
 
 #[derive(Clone, Copy, Debug)]

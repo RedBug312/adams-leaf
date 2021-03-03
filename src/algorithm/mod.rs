@@ -1,4 +1,4 @@
-use crate::flow::{AVBFlow, FlowID, TSNFlow};
+use crate::utils::stream::{AVBFlow, FlowID, TSNFlow};
 use crate::component::RoutingCost;
 
 mod base;

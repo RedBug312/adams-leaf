@@ -1,6 +1,6 @@
 use super::RoutingAlgo;
-use crate::config::Config;
-use crate::flow::{AVBFlow, Flow, FlowEnum, FlowID, TSNFlow};
+use crate::utils::config::Config;
+use crate::utils::stream::{AVBFlow, Flow, FlowEnum, FlowID, TSNFlow};
 use crate::network::StreamAwareGraph;
 use crate::component::{NetworkWrapper, RoutingCost};
 use crate::component::flowtable::*;
