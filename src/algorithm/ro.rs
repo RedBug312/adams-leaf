@@ -55,7 +55,7 @@ impl RO {
     }
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
     fn grasp(&mut self, time: Instant) {
-        let mut rng = ChaChaRng::seed_from_u64(42);
+        let mut rng = ChaChaRng::seed_from_u64(420);
         let mut iter_times = 0;
         let mut min_cost = self.wrapper.compute_all_cost();
         while time.elapsed().as_micros() < Config::get().t_limit {
