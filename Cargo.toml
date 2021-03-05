@@ -13,6 +13,7 @@ rand_chacha = "0.3.0"
 rand_pcg = "0.3.0"
 ordered-float = "2.1.1"
 priority-queue = "1.0.5"
+enum_dispatch = "0.3.5"
 
 [lib]
 doctest = false
