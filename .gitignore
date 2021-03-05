@@ -6,4 +6,4 @@ target/*
 plot/log/
 plot/*.dat
 plot/*.png
-*.log
+tests/result.log

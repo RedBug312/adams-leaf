@@ -26,11 +26,8 @@ profile: $(MAIN)
 	cloc src
 
 check: $(MAIN)
-	echo -n "" > result.log
-	cargo run -- spf exp_graph.json exp_flow_heavy.json exp_flow_reconf.json 2 >> result.log
-	cargo run -- ro  exp_graph.json exp_flow_heavy.json exp_flow_reconf.json 2 >> result.log
-	cargo run -- aco exp_graph.json exp_flow_heavy.json exp_flow_reconf.json 2 >> result.log
-	diff -I time --color expect.log result.log
+	cargo test --test integration_test -- --show-output --test-threads=1 > tests/result.log
+	diff -I time -I finished --color tests/expect.log tests/result.log
 
 SOURCES := $(shell find src/ -type f -name '*.rs')
 
