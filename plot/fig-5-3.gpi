@@ -16,4 +16,4 @@ set style data linespoints
 set logscale y
 set grid y
 
-plot [][10:1000] 'plot/fig-5-3.dat' u 1:($2/1000) lt 1 pt 6 ps 2 t 'ACO'
+plot [][10:1000] 'fig-5-3.dat' u 1:($2/1000) lt 1 pt 6 ps 2 t 'ACO'
