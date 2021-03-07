@@ -1,5 +1,5 @@
 use crate::utils::stream::FlowID;
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use crate::MAX_QUEUE;
 
@@ -28,34 +28,28 @@ mod test {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct GCL {
     hyper_p: u32,
     // TODO 這個資料結構有優化的空間
-    gate_evt: Vec<Vec<(u32, u32, u8, FlowID)>>,
-    queue_occupy_evt: Vec<[Vec<(u32, u32, FlowID)>; MAX_QUEUE as usize]>,
+    gate_evt: HashMap<usize, Vec<(u32, u32, u8, FlowID)>>,
+    queue_occupy_evt: HashMap<usize, [Vec<(u32, u32, FlowID)>; MAX_QUEUE as usize]>,
     queue_map: HashMap<(usize, FlowID), u8>,
-    gate_evt_lookup: Vec<Option<Vec<(u32, u32)>>>,
+    gate_evt_lookup: HashMap<usize, Vec<(u32, u32)>>,
 }
 impl GCL {
     pub fn new(hyper_p: u32, edge_count: usize) -> Self {
-        GCL {
-            gate_evt: vec![vec![]; edge_count],
-            gate_evt_lookup: vec![None; edge_count],
-            queue_occupy_evt: vec![Default::default(); edge_count],
-            queue_map: HashMap::new(),
-            hyper_p,
-        }
+        GCL { hyper_p, ..Self::default() }
     }
     pub fn update_hyper_p(&mut self, new_p: u32) {
         self.hyper_p = lcm(self.hyper_p, new_p);
     }
     pub fn clear(&mut self) {
         let edge_cnt = self.gate_evt.len();
-        self.gate_evt = vec![vec![]; edge_cnt];
-        self.gate_evt_lookup = vec![None; edge_cnt];
-        self.queue_occupy_evt = vec![Default::default(); edge_cnt];
-        self.queue_map = HashMap::new();
+        self.gate_evt = Default::default();
+        self.gate_evt_lookup = Default::default();
+        self.queue_occupy_evt = Default::default();
+        self.queue_map = Default::default();
     }
     pub fn get_hyper_p(&self) -> u32 {
         self.hyper_p
@@ -63,15 +57,18 @@ impl GCL {
     /// 回傳 `link_id` 上所有閘門關閉事件。
     /// * `回傳值` - 一個陣列，其內容為 (事件開始時間, 事件持續時間);
     pub fn get_gate_events(&self, link_id: usize) -> &Vec<(u32, u32)> {
-        assert!(self.gate_evt.len() > link_id, "GCL: 指定了超出範圍的邊");
-        if self.gate_evt_lookup[link_id].is_none() {
+        let cache = self.gate_evt_lookup.get(&link_id);
+        if cache.is_none() {
             // 生成快速查找表
             let mut lookup = Vec::<(u32, u32)>::new();
-            let len = self.gate_evt[link_id].len();
+            let default = vec![];
+            let events = self.gate_evt.get(&link_id)
+                .unwrap_or(&default);
+            let len = events.len();
             if len > 0 {
-                let first_evt = self.gate_evt[link_id][0];
+                let first_evt = self.gate_evt.get(&link_id).unwrap()[0];
                 let mut cur_evt = (first_evt.0, first_evt.1);
-                for &(start, duration, ..) in self.gate_evt[link_id][1..len].iter() {
+                for &(start, duration, ..) in self.gate_evt.get(&link_id).unwrap()[1..len].iter() {
                     if cur_evt.0 + cur_evt.1 == start {
                         // 首尾相接
                         cur_evt.1 += duration; // 把閘門事件延長
@@ -85,10 +82,10 @@ impl GCL {
             unsafe {
                 // NOTE 內部可變，因為這只是加速用的
                 let _self = self as *const Self as *mut Self;
-                (*_self).gate_evt_lookup[link_id] = Some(lookup);
+                (*_self).gate_evt_lookup.insert(link_id,lookup);
             }
         }
-        self.gate_evt_lookup[link_id].as_ref().unwrap()
+        self.gate_evt_lookup.get(&link_id).as_ref().unwrap()
     }
     pub fn insert_gate_evt(
         &mut self,
@@ -98,11 +95,12 @@ impl GCL {
         start_time: u32,
         duration: u32,
     ) {
-        self.gate_evt_lookup[link_id] = None;
-        let entry = (start_time, duration, queue_id, flow_id);
-        let evts = &mut self.gate_evt[link_id];
-        match evts.binary_search(&entry) {
-            Ok(_) => panic!("插入重複的閘門事件: link={}, {:?}", link_id, entry),
+        self.gate_evt_lookup.remove(&link_id);
+        let event = (start_time, duration, queue_id, flow_id);
+        let evts = &mut self.gate_evt.entry(link_id)
+            .or_insert(Default::default());
+        match evts.binary_search(&event) {
+            Ok(_) => panic!("插入重複的閘門事件: link={}, {:?}", link_id, event),
             Err(pos) => {
                 if pos > 0 && evts[pos - 1].0 + evts[pos - 1].1 > start_time {
                     // 開始時間位於前一個事件中
@@ -110,10 +108,10 @@ impl GCL {
                         "插入重疊的閘門事件： link={}, {:?} v.s. {:?}",
                         link_id,
                         evts[pos - 1],
-                        entry
+                        event
                     );
                 } else {
-                    evts.insert(pos, entry)
+                    evts.insert(pos, event)
                 }
             }
         }
@@ -129,20 +127,22 @@ impl GCL {
         if duration == 0 {
             return;
         }
-        let entry = (start_time, duration, flow_id);
-        let evts = &mut self.queue_occupy_evt[link_id][queue_id as usize];
-        match evts.binary_search(&entry) {
+        let event = (start_time, duration, flow_id);
+        let evts = &mut self.queue_occupy_evt.entry(link_id)
+            .or_insert(Default::default());
+        let evts = &mut evts[queue_id as usize];
+        match evts.binary_search(&event) {
             // FIXME: 這個異常有機率發生，試著重現看看！
             Ok(_) => panic!(
                 "插入重複的佇列事件: link={}, queue={}, {:?}",
-                link_id, queue_id, entry
+                link_id, queue_id, event
             ),
             Err(pos) => {
                 if pos > 0 && evts[pos - 1].0 + evts[pos - 1].1 >= start_time {
                     // 開始時間位於前一個事件中，則延伸前一個事件
                     evts[pos - 1].1 = start_time + duration - evts[pos - 1].0;
                 } else {
-                    evts.insert(pos, entry)
+                    evts.insert(pos, event)
                 }
             }
         }
@@ -151,12 +151,12 @@ impl GCL {
     ///
     /// 若否，則回傳 None，應可直接塞進去。若有重疊，則會告知下一個空的時間（但不一定塞得進去）
     pub fn get_next_empty_time(&self, link_id: usize, start: u32, duration: u32) -> Option<u32> {
-        assert!(
-            self.gate_evt.len() > link_id,
-            "GCL: 指定了超出範圍的邊: {}/{}",
-            link_id,
-            self.gate_evt.len()
-        );
+        // assert!(
+        //     self.gate_evt.len() > link_id,
+        //     "GCL: 指定了超出範圍的邊: {}/{}",
+        //     link_id,
+        //     self.gate_evt.len()
+        // );
         let s1 = self.get_next_spot(link_id, start);
         let s2 = self.get_next_spot(link_id, start + duration);
         if s1.0 != s2.0 {
@@ -175,7 +175,10 @@ impl GCL {
     /// 回傳一組資料(usize, bool)，前者代表時間，後者代表該時間是閘門事件的開始還是結束（真代表開始）
     fn get_next_spot(&self, link_id: usize, time: u32) -> (u32, bool) {
         // TODO 應該用二元搜索來優化?
-        for &(start, duration, ..) in self.gate_evt[link_id].iter() {
+        let default = Default::default();
+        let evts = &self.gate_evt.get(&link_id)
+            .unwrap_or(&default);
+        for &(start, duration, ..) in evts.iter() {
             if start > time {
                 return (start, true);
             } else if start + duration > time {
@@ -197,7 +200,9 @@ impl GCL {
         queue_id: u8,
         time: u32,
     ) -> Option<u32> {
-        let evts = &self.queue_occupy_evt[link_id][queue_id as usize];
+        let default = Default::default();
+        let evts = &self.queue_occupy_evt.get(&link_id)
+            .unwrap_or(&default)[queue_id as usize];
         for &(start, duration, _) in evts.iter() {
             if start <= time {
                 if start + duration > time {
@@ -211,8 +216,9 @@ impl GCL {
     }
     pub fn delete_flow(&mut self, links: &Vec<usize>, flow_id: FlowID) {
         for &link_id in links.iter() {
-            self.gate_evt_lookup[link_id] = None;
-            let gate_evt = &mut self.gate_evt[link_id];
+            self.gate_evt_lookup.remove(&link_id);
+            let gate_evt = &mut self.gate_evt.entry(link_id)
+                .or_insert(Default::default());
             let mut i = 0;
             self.queue_map.remove(&(link_id, flow_id));
             while i < gate_evt.len() {
@@ -223,7 +229,9 @@ impl GCL {
                 }
             }
             for queue_id in 0..MAX_QUEUE {
-                let queue_evt = &mut self.queue_occupy_evt[link_id][queue_id as usize];
+                let evts = &mut self.queue_occupy_evt.entry(link_id)
+                    .or_insert(Default::default());
+                let queue_evt = &mut evts[queue_id as usize];
                 let mut i = 0;
                 while i < queue_evt.len() {
                     if queue_evt[i].2 == flow_id {
