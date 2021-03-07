@@ -28,14 +28,20 @@ mod test {
     }
 }
 
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+enum Entry {
+    Port(usize, usize),
+    Queue(usize, usize, u8),
+}
+
+type Events = Vec<(u32, u32, FlowID)>;
+
 #[derive(Clone, Debug, Default)]
 pub struct GCL {
     hyper_p: u32,
     // TODO 這個資料結構有優化的空間
-    gate_evt: HashMap<(usize, usize), Vec<(u32, u32, u8, FlowID)>>,
-    queue_occupy_evt: HashMap<(usize, usize, u8), Vec<(u32, u32, FlowID)>>,
-    queue_map: HashMap<((usize, usize), FlowID), u8>,
-    gate_evt_lookup: HashMap<(usize, usize), Vec<(u32, u32)>>,
+    events: HashMap<Entry, Events>,
+    events_cache: HashMap<(usize, usize), Vec<(u32, u32)>>,
 }
 impl GCL {
     pub fn new(hyper_p: u32, _edge_count: usize) -> Self {
@@ -45,11 +51,8 @@ impl GCL {
         self.hyper_p = lcm(self.hyper_p, new_p);
     }
     pub fn clear(&mut self) {
-        let _edge_cnt = self.gate_evt.len();
-        self.gate_evt = Default::default();
-        self.gate_evt_lookup = Default::default();
-        self.queue_occupy_evt = Default::default();
-        self.queue_map = Default::default();
+        self.events = Default::default();
+        self.events_cache = Default::default();
     }
     pub fn get_hyper_p(&self) -> u32 {
         self.hyper_p
@@ -58,18 +61,19 @@ impl GCL {
     /// * `回傳值` - 一個陣列，其內容為 (事件開始時間, 事件持續時間);
     pub fn get_gate_events(&self, ends: (usize, usize)) -> &Vec<(u32, u32)> {
         // assert!(self.gate_evt.len() > link_id, "GCL: 指定了超出範圍的邊");
-        let cache = self.gate_evt_lookup.get(&ends);
+        let cache = self.events_cache.get(&ends);
         if cache.is_none() {
             // 生成快速查找表
             let mut lookup = Vec::<(u32, u32)>::new();
             let empty = vec![];
-            let events = self.gate_evt.get(&ends)
+            let port = Entry::Port(ends.0, ends.1);
+            let events = self.events.get(&port)
                 .unwrap_or(&empty);
             let len = events.len();
             if len > 0 {
-                let first_evt = self.gate_evt.get(&ends).unwrap()[0];
+                let first_evt = self.events.get(&port).unwrap()[0];
                 let mut cur_evt = (first_evt.0, first_evt.1);
-                for &(start, duration, ..) in self.gate_evt.get(&ends).unwrap()[1..len].iter() {
+                for &(start, duration, ..) in self.events.get(&port).unwrap()[1..len].iter() {
                     if cur_evt.0 + cur_evt.1 == start {
                         // 首尾相接
                         cur_evt.1 += duration; // 把閘門事件延長
@@ -83,22 +87,23 @@ impl GCL {
             unsafe {
                 // NOTE 內部可變，因為這只是加速用的
                 let _self = self as *const Self as *mut Self;
-                (*_self).gate_evt_lookup.insert(ends, lookup);
+                (*_self).events_cache.insert(ends, lookup);
             }
         }
-        self.gate_evt_lookup.get(&ends).as_ref().unwrap()
+        self.events_cache.get(&ends).as_ref().unwrap()
     }
     pub fn insert_gate_evt(
         &mut self,
         ends: (usize, usize),
         flow_id: FlowID,
-        queue_id: u8,
+        _queue_id: u8,
         start_time: u32,
         duration: u32,
     ) {
-        self.gate_evt_lookup.remove(&ends);
-        let event = (start_time, duration, queue_id, flow_id);
-        let evts = &mut self.gate_evt.entry(ends)
+        self.events_cache.remove(&ends);
+        let port = Entry::Port(ends.0, ends.1);
+        let event = (start_time, duration, flow_id);
+        let evts = &mut self.events.entry(port)
             .or_insert(Default::default());
         match evts.binary_search(&event) {
             Ok(_) => panic!("插入重複的閘門事件: link={}, {:?}", ends.0, event),
@@ -129,7 +134,8 @@ impl GCL {
             return;
         }
         let event = (start_time, duration, flow_id);
-        let evts = &mut self.queue_occupy_evt.entry((ends.0, ends.1, queue_id))
+        let queue = Entry::Queue(ends.0, ends.1, queue_id);
+        let evts = &mut self.events.entry(queue)
             .or_insert(Default::default());
         match evts.binary_search(&event) {
             // FIXME: 這個異常有機率發生，試著重現看看！
@@ -170,7 +176,8 @@ impl GCL {
     fn get_next_spot(&self, ends: (usize, usize), time: u32) -> (u32, bool) {
         // TODO 應該用二元搜索來優化?
         let empty = vec![];
-        let evts = self.gate_evt.get(&ends)
+        let port = Entry::Port(ends.0, ends.1);
+        let evts = self.events.get(&port)
             .unwrap_or(&empty);
         for &(start, duration, ..) in evts {
             if start > time {
@@ -181,12 +188,6 @@ impl GCL {
         }
         (self.hyper_p, true)
     }
-    // pub fn get_queueid(&self, ends: (usize, usize), flow_id: FlowID) -> u8 {
-    //     *self.queue_map.get(&(link_id, flow_id)).unwrap()
-    // }
-    pub fn set_queueid(&mut self, queueid: u8, ends: (usize, usize), flow_id: FlowID) {
-        self.queue_map.insert((ends, flow_id), queueid);
-    }
     /// 回傳 None 者，代表當前即是空的
     pub fn get_next_queue_empty_time(
         &self,
@@ -195,7 +196,8 @@ impl GCL {
         time: u32,
     ) -> Option<u32> {
         let empty = vec![];
-        let evts = &self.queue_occupy_evt.get(&(ends.0, ends.1, queue_id))
+        let queue = Entry::Queue(ends.0, ends.1, queue_id);
+        let evts = &self.events.get(&queue)
             .unwrap_or(&empty);
         for &(start, duration, _) in evts.iter() {
             if start <= time {
@@ -210,20 +212,21 @@ impl GCL {
     }
     pub fn delete_flow(&mut self, links: &Vec<(usize, usize)>, flow_id: FlowID) {
         for &ends in links {
-            self.gate_evt_lookup.remove(&ends);
-            let gate_evt = &mut self.gate_evt.entry(ends)
+            self.events_cache.remove(&ends);
+            let port = Entry::Port(ends.0, ends.1);
+            let gate_evt = &mut self.events.entry(port)
                 .or_insert(Default::default());
             let mut i = 0;
-            self.queue_map.remove(&(ends, flow_id));
             while i < gate_evt.len() {
-                if gate_evt[i].3 == flow_id {
+                if gate_evt[i].2 == flow_id {
                     gate_evt.remove(i);
                 } else {
                     i += 1;
                 }
             }
             for queue_id in 0..MAX_QUEUE {
-                let queue_evt = &mut self.queue_occupy_evt.entry((ends.0, ends.1, queue_id))
+                let queue = Entry::Queue(ends.0, ends.1, queue_id);
+                let queue_evt = &mut self.events.entry(queue)
                     .or_insert(Default::default());
                 let mut i = 0;
                 while i < queue_evt.len() {

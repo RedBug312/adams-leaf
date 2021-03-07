@@ -112,7 +112,6 @@ fn schedule_fixed_og<T: Eq + Clone, TABLE: IFlowTable<INFO = T>, F: Fn(&TSNFlow,
             let link_id = links[i].0;
             let queue_id = ro[i];
             let trans_time = ((MTU as f64) / links[i].1).ceil() as u32;
-            gcl.set_queueid(queue_id, link_id, flow_id);
             // 考慮 hyper period 中每個狀況
             let p = flow.period as usize;
             for time_shift in (0..gcl.get_hyper_p()).step_by(p) {
