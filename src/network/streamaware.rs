@@ -147,11 +147,12 @@ impl StreamAwareGraph {
             end_devices: vec![],
         }
     }
-    pub fn get_links_id_bandwidth(&self, route: &Vec<usize>) -> Vec<(usize, f64)> {
+    pub fn get_links_id_bandwidth(&self, route: &Vec<usize>) -> Vec<((usize, usize), f64)> {
         let mut vec = vec![];
         for i in 0..route.len() - 1 {
-            if let Some(tuple) = self.edge_info.get(&(route[i], route[i + 1])) {
-                vec.push(tuple.clone());
+            let ends = (route[i], route[i + 1]);
+            if let Some(tuple) = self.edge_info.get(&ends) {
+                vec.push((ends, tuple.1));
             } else {
                 panic!("get_link_ids: 不連通的路徑");
             }

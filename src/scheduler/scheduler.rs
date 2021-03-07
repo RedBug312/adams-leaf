@@ -4,7 +4,7 @@ use crate::MAX_QUEUE;
 
 type FT<T> = FlowTable<T>;
 type DT<T> = DiffFlowTable<T>;
-type Links = Vec<(usize, f64)>;
+type Links = Vec<((usize, usize), f64)>;
 
 const MTU: usize = 1500;
 
@@ -152,7 +152,7 @@ fn schedule_fixed_og<T: Eq + Clone, TABLE: IFlowTable<INFO = T>, F: Fn(&TSNFlow,
 fn calculate_offsets(
     flow: &TSNFlow,
     all_offsets: &Vec<Vec<u32>>,
-    links: &Vec<(usize, f64)>,
+    links: &Vec<((usize, usize), f64)>,
     ro: &Vec<u8>,
     gcl: &GCL,
 ) -> Vec<u32> {

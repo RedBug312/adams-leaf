@@ -102,11 +102,11 @@ impl<T: Clone + Eq> NetworkWrapper<T> {
         for (flow, _) in diff.iter_tsn() {
             // NOTE: 拔除 GCL
             let route = self.get_route(flow.id);
-            let links: Vec<usize> = self
+            let links = self
                 .graph
                 .get_links_id_bandwidth(route)
                 .iter()
-                .map(|(id, _)| *id)
+                .map(|(ends, _)| *ends)
                 .collect();
             self.gcl.delete_flow(&links, flow.id);
         }

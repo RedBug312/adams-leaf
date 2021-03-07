@@ -23,9 +23,9 @@ pub fn compute_avb_latency<T: Clone + Eq>(
 ) -> u32 {
     let overlap_flow_id = g.get_overlap_flows(route);
     let mut end_to_end_lanency = 0.0;
-    for (i, (link_id, bandwidth)) in g.get_links_id_bandwidth(route).into_iter().enumerate() {
+    for (i, (ends, bandwidth)) in g.get_links_id_bandwidth(route).into_iter().enumerate() {
         let wcd = wcd_on_single_link(flow, bandwidth, flow_table, &overlap_flow_id[i]);
-        end_to_end_lanency += wcd + tt_interfere_avb_single_link(link_id, wcd as f64, gcl) as f64;
+        end_to_end_lanency += wcd + tt_interfere_avb_single_link(ends, wcd as f64, gcl) as f64;
     }
     end_to_end_lanency as u32
 }
@@ -56,9 +56,9 @@ fn wcd_on_single_link<T: Clone + Eq>(
     }
     wcd
 }
-fn tt_interfere_avb_single_link(link_id: usize, wcd: f64, gcl: &GCL) -> u32 {
+fn tt_interfere_avb_single_link(ends: (usize, usize), wcd: f64, gcl: &GCL) -> u32 {
     let mut i_max = 0;
-    let all_gce = gcl.get_gate_events(link_id);
+    let all_gce = gcl.get_gate_events(ends);
     for mut j in 0..all_gce.len() {
         let (mut i_cur, mut rem) = (0, wcd as i32);
         while rem >= 0 {
