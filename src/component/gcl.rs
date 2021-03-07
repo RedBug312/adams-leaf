@@ -44,7 +44,7 @@ pub struct GCL {
     events_cache: HashMap<(usize, usize), Vec<(u32, u32)>>,
 }
 impl GCL {
-    pub fn new(hyper_p: u32, _edge_count: usize) -> Self {
+    pub fn new(hyper_p: u32) -> Self {
         Self { hyper_p, ..Default::default() }
     }
     pub fn update_hyper_p(&mut self, new_p: u32) {

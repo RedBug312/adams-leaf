@@ -3,7 +3,7 @@ extern crate rand;
 use std::collections::HashMap;
 use super::dijkstra::Dijkstra;
 use super::heap::MyMinHeap;
-use crate::network::StreamAwareGraph;
+use crate::network::Network;
 
 type Path = Vec<usize>;
 
@@ -15,7 +15,7 @@ pub struct YensAlgo {
 }
 
 impl YensAlgo {
-    pub fn compute(&mut self, graph: &StreamAwareGraph, k: usize) {
+    pub fn compute(&mut self, graph: &Network, k: usize) {
         self.k = k;
         self.dijkstra.compute(graph);
         // compute_once on all end devices pair takes 20 sec on test case
@@ -25,7 +25,7 @@ impl YensAlgo {
             }
         }
     }
-    pub fn compute_once(&mut self, graph: &StreamAwareGraph, src: usize, dst: usize, k: usize) {
+    pub fn compute_once(&mut self, graph: &Network, src: usize, dst: usize, k: usize) {
         if self.path.contains_key(&(src, dst)) { return }
         debug_assert!(src != dst);
 
@@ -93,11 +93,11 @@ impl YensAlgo {
 #[cfg(test)]
 mod test {
     use super::Yens;
-    use crate::graph::StreamAwareGraph;
+    use crate::graph::Network;
     #[test]
     #[ignore]
     fn test_yens_compute_once() {
-        let mut graph = StreamAwareGraph::default();
+        let mut graph = Network::default();
         graph.add_nodes(6, 93);  // 0..=5 + 99, 6..=98
         graph.add_nodes(1, 0);
         graph.add_edges(vec![

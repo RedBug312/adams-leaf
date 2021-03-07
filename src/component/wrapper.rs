@@ -1,5 +1,5 @@
-use crate::utils::stream::{AVBFlow, FlowEnum, FlowID, TSNFlow};
-use crate::network::{Graph, MemorizingGraph, StreamAwareGraph};
+use crate::{network::MemorizingGraph, utils::stream::{AVBFlow, FlowEnum, FlowID, TSNFlow}};
+use crate::network::Network;
 use crate::component::flowtable::{IFlowTable, FlowTable, DiffFlowTable};
 use crate::component::GCL;
 use std::rc::Rc;
@@ -22,14 +22,14 @@ pub struct NetworkWrapper<T: Clone + Eq> {
 }
 
 impl<T: Clone + Eq> NetworkWrapper<T> {
-    pub fn new<F>(graph: StreamAwareGraph, get_route_func: F) -> Self
+    pub fn new<F>(graph: Network, get_route_func: F) -> Self
     where
         F: 'static + Fn(&FlowEnum, &T) -> *const Route,
     {
         NetworkWrapper {
             flow_table: FlowTable::new(),
             old_new_table: None,
-            gcl: GCL::new(1, graph.get_edge_cnt()),
+            gcl: GCL::new(1),
             tsn_fail: false,
             graph: MemorizingGraph::new(graph),
             get_route_func: Rc::new(get_route_func),

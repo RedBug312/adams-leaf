@@ -1,6 +1,6 @@
 use super::RoutingAlgo;
 use crate::{MAX_K, utils::stream::{AVBFlow, FlowEnum, FlowID, TSNFlow}};
-use crate::network::StreamAwareGraph;
+use crate::network::Network;
 use crate::component::{NetworkWrapper, RoutingCost};
 use super::base::yens::YensAlgo;
 use std::{cell::RefCell, rc::Rc, time::Instant};
@@ -19,7 +19,7 @@ pub struct SPF {
 }
 
 impl SPF {
-    pub fn new(g: StreamAwareGraph) -> Self {
+    pub fn new(g: Network) -> Self {
         let yens_algo = Rc::new(RefCell::new(YensAlgo::default()));
         let tmp_yens = yens_algo.clone();
         tmp_yens.borrow_mut().compute(&g, MAX_K);

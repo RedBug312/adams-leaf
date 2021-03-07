@@ -1,7 +1,7 @@
 use super::RoutingAlgo;
 use crate::utils::config::Config;
 use crate::utils::stream::{AVBFlow, Flow, FlowEnum, FlowID, TSNFlow};
-use crate::network::StreamAwareGraph;
+use crate::network::Network;
 use crate::component::{NetworkWrapper, RoutingCost};
 use crate::component::IFlowTable;
 use super::base::yens::YensAlgo;
@@ -39,7 +39,7 @@ pub struct RO {
 }
 
 impl RO {
-    pub fn new(g: StreamAwareGraph) -> Self {
+    pub fn new(g: Network) -> Self {
         let yens_algo = Rc::new(RefCell::new(YensAlgo::default()));
         let tmp_yens = yens_algo.clone();
         tmp_yens.borrow_mut().compute(&g, MAX_K);
