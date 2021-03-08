@@ -1,4 +1,4 @@
-use super::StreamAwareGraph;
+use super::Network;
 use crate::utils::stream::FlowID;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -6,21 +6,21 @@ use std::rc::Rc;
 /// 每條邊上記憶了其承載的資料流識別碼。使用淺層複製，圖的節點、邊、頻寬、開關等資訊都將共用，僅有記憶被複製。
 #[derive(Clone)]
 pub struct MemorizingGraph {
-    inner: Rc<StreamAwareGraph>,
+    inner: Rc<Network>,
     edge_info: HashMap<(usize, usize), HashSet<FlowID>>,
 }
 
 impl std::ops::Deref for MemorizingGraph {
-    type Target = StreamAwareGraph;
+    type Target = Network;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
 impl MemorizingGraph {
-    pub fn new(graph: StreamAwareGraph) -> Self {
+    pub fn new(graph: Network) -> Self {
         let mut edge_info = HashMap::<(usize, usize), HashSet<FlowID>>::new();
-        for (key, _) in graph.edge_info.iter() {
+        for (key, _) in graph.edges.iter() {
             edge_info.insert(key.clone(), HashSet::new());
         }
         MemorizingGraph {
@@ -76,7 +76,7 @@ mod test {
     }
     #[test]
     fn test_remember_forget_flow() -> Result<(), String> {
-        let mut g = StreamAwareGraph::new();
+        let mut g = Network::new();
         g.add_host(Some(5));
         g.add_edge((0, 1), 10.0)?;
         g.add_edge((1, 2), 20.0)?;

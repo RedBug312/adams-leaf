@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use crate::network::Graph;
-use crate::network::StreamAwareGraph;
+use crate::network::Network;
 use crate::utils::stream::{Flow, AVBFlow, TSNFlow};
 use crate::utils::stream::data::{TSNData, AVBData, AVBClass};
 
@@ -51,17 +50,14 @@ fn read_flows_from_file_once(tsns: &mut Vec<TSNFlow>, avbs: &mut Vec<AVBFlow>, f
     }
 }
 
-pub fn read_topo_from_file(file_name: &str) -> StreamAwareGraph {
+pub fn read_topo_from_file(file_name: &str) -> Network {
     let txt = fs::read_to_string(file_name).expect(&format!("找不到檔案: {}", file_name));
     let json: GraphJSON =
         serde_json::from_str(&txt).expect(&format!("無法解析檔案: {}", file_name));
-    let mut g = StreamAwareGraph::new();
-    g.add_host(Some(json.host_cnt));
-    g.add_switch(Some(json.switch_cnt));
-    for (n1, n2, bandwidth) in json.edges.into_iter() {
-        g.add_edge((n1, n2), bandwidth).expect("插入邊失敗");
-    }
-    g
+    let mut network = Network::new();
+    network.add_nodes(json.host_cnt, json.switch_cnt);
+    network.add_edges(json.edges);
+    network
 }
 
 #[derive(Serialize, Deserialize)]

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::f64::INFINITY as INF;
 
 use super::heap::MyMinHeap;
-use crate::network::StreamAwareGraph;
+use crate::network::Network;
 
 pub type Path = Vec<usize>;
 
@@ -17,12 +17,12 @@ pub struct Dijkstra {
 
 
 impl Dijkstra {
-    pub fn compute(&mut self, graph: &StreamAwareGraph) {
+    pub fn compute(&mut self, graph: &Network) {
         for &root in graph.end_devices.iter() {
             self.compute_once(graph, root);
         }
     }
-    pub fn compute_once(&mut self, graph: &StreamAwareGraph, r: usize) {
+    pub fn compute_once(&mut self, graph: &Network, r: usize) {
         if self.dist.contains_key(&(r, r)) { return }
         let mut heap = MyMinHeap::new();
         let mut seen = HashMap::new();
@@ -83,10 +83,10 @@ impl Dijkstra {
 #[cfg(test)]
 mod test {
     use super::Dijkstra;
-    use crate::network::StreamAwareGraph;
+    use crate::network::Network;
     #[test]
     fn test_dijkstra_case1() {
-        let mut graph = StreamAwareGraph::default();
+        let mut graph = Network::default();
         graph.add_nodes(3, 0);
         graph.add_edges(vec![
             (0, 1, 10.0), (0, 1, 10.0), (1, 2, 20.0), (0, 2, 02.0),
@@ -97,7 +97,7 @@ mod test {
     }
     #[test]
     fn test_dijkstra_case2() {
-        let mut graph = StreamAwareGraph::default();
+        let mut graph = Network::default();
         graph.add_nodes(6, 0);
         graph.add_edges(vec![
             (0, 1, 10.0), (1, 2, 20.0), (0, 2, 02.0), (1, 3, 10.0),

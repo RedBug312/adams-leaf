@@ -1,6 +1,6 @@
 use crate::algorithm::{AlgorithmEnum, RoutingAlgo, AdamsAnt, RO, SPF};
 use crate::component::RoutingCost;
-use crate::network::StreamAwareGraph;
+use crate::network::Network;
 use crate::utils::stream::{AVBFlow, TSNFlow};
 
 pub struct CNC {
@@ -8,7 +8,7 @@ pub struct CNC {
 }
 
 impl CNC {
-    pub fn new(name: &str, graph: StreamAwareGraph) -> Self {
+    pub fn new(name: &str, graph: Network) -> Self {
         let algorithm = match name {
             "aco" => AdamsAnt::new(graph).into(),
             "ro"  => RO::new(graph).into(),
