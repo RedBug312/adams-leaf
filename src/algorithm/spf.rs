@@ -57,12 +57,12 @@ impl RoutingAlgo for SPF {
     }
     fn show_results(&self) {
         println!("TT Flows:");
-        for (flow, _) in self.wrapper.get_flow_table().iter_tsn() {
+        for flow in self.wrapper.get_flow_table().iter_tsn() {
             let route = self.get_route(flow.id);
             println!("flow id = {:?}, route = {:?}", flow.id, route);
         }
         println!("AVB Flows:");
-        for (flow, _) in self.wrapper.get_flow_table().iter_avb() {
+        for flow in self.wrapper.get_flow_table().iter_avb() {
             let route = self.get_route(flow.id);
             let cost = self.wrapper.compute_single_avb_cost(flow);
             println!(

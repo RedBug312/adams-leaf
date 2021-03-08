@@ -31,7 +31,7 @@ fn compute_visibility(algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
     // 目前：路徑長的倒數
     let len = algo.aco.get_state_len();
     let mut vis = vec![[0.0; MAX_K]; len];
-    for (flow, _) in algo.wrapper.get_flow_table().iter_avb() {
+    for flow in algo.wrapper.get_flow_table().iter_avb() {
         let id = flow.id;
         for i in 0..algo.get_candidate_count(flow) {
             vis[id.0][i] = 1.0 / algo.wrapper.compute_avb_wcd(flow, Some(&i)) as f64;
@@ -41,7 +41,7 @@ fn compute_visibility(algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
             vis[id.0][route_k] *= config.avb_memory;
         }
     }
-    for (flow, _) in algo.wrapper.get_flow_table().iter_tsn() {
+    for flow in algo.wrapper.get_flow_table().iter_tsn() {
         let id = flow.id;
         for i in 0..algo.get_candidate_count(flow) {
             let yens = algo.yens_algo.borrow();

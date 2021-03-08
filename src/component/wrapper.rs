@@ -91,7 +91,8 @@ impl<T: Clone + Eq> NetworkWrapper<T> {
     }
     /// 更新 AVB 資料流表與圖上資訊
     pub fn update_avb(&mut self, diff: &DiffFlowTable<T>) {
-        for (flow, info) in diff.iter_avb() {
+        for flow in diff.iter_avb() {
+            let info = diff.get_info(flow.id).unwrap();
             self.update_single_avb(flow, info.clone());
         }
     }
@@ -99,7 +100,7 @@ impl<T: Clone + Eq> NetworkWrapper<T> {
     pub fn update_tsn(&mut self, diff: &DiffFlowTable<T>) {
         // NOTE: 在 schedule_online 函式中就會更新資料流表（這當然是個不太好的實作……）
         //       因此在這裡就不用執行 self.flow_table.update_info()
-        for (flow, _) in diff.iter_tsn() {
+        for flow in diff.iter_tsn() {
             // NOTE: 拔除 GCL
             let route = self.get_route(flow.id);
             let links = self

@@ -64,6 +64,27 @@ pub enum FlowEnum {
     AVB(AVBFlow),
 }
 
+impl FlowEnum {
+    pub fn id(&self) -> FlowID {
+        match self {
+            FlowEnum::TSN(tsn) => tsn.id,
+            FlowEnum::AVB(avb) => avb.id,
+        }
+    }
+    pub fn tsn(&self) -> &TSNFlow {
+        match self {
+            FlowEnum::TSN(tsn) => tsn,
+            FlowEnum::AVB(_) => panic!("Failed to get TSN spec from AVB"),
+        }
+    }
+    pub fn avb(&self) -> &AVBFlow {
+        match self {
+            FlowEnum::AVB(avb) => avb,
+            FlowEnum::TSN(_) => panic!("Failed to get AVB spec from TSN"),
+        }
+    }
+}
+
 impl Into<FlowEnum> for Flow<data::TSNData> {
     fn into(self) -> FlowEnum {
         FlowEnum::TSN(self)

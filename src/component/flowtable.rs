@@ -1,6 +1,12 @@
-use iter::{Iter, IterMut};
 use crate::utils::stream::{AVBFlow, FlowEnum, FlowID, TSNFlow};
 use std::rc::Rc;
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum OldNew<T: Clone + Eq> {
+    New(T),
+    Old(T),
+}
+
 pub struct FlowArena {
     avbs: Vec<Option<FlowID>>,
     tsns: Vec<Option<FlowID>>,
@@ -96,19 +102,7 @@ pub trait IFlowTable {
     fn get_max_id(&self) -> FlowID {
         self.get_inner_arena().max_id
     }
-    fn iter_avb<'a>(&'a self) -> Iter<'a, &'a AVBFlow, Self::INFO>;
-    fn iter_tsn<'a>(&'a self) -> Iter<'a, &'a TSNFlow, Self::INFO>;
-    fn iter<'a>(&'a self) -> Iter<'a, &'a FlowEnum, Self::INFO>;
-    fn iter_avb_mut<'a>(&'a mut self) -> IterMut<'a, &'a AVBFlow, Self::INFO> {
-        IterMut {
-            iter: self.iter_avb(),
-        }
-    }
-    fn iter_tsn_mut<'a>(&'a mut self) -> IterMut<'a, &'a TSNFlow, Self::INFO> {
-        IterMut {
-            iter: self.iter_tsn(),
-        }
-    }
+    fn iter_tsn<'a>(&'a self) -> Box<dyn Iterator<Item=&TSNFlow> + 'a>;
 }
 
 /// 儲存的資料分為兩部份：資料流本身，以及隨附的資訊（T）。
@@ -156,11 +150,13 @@ impl<T: Clone + Eq> FlowTable<T> {
             panic!("試圖合併不相干的資料流表");
         }
         if is_tsn {
-            for (flow, info) in other.iter_tsn() {
+            for flow in other.iter_tsn() {
+                let info = other.get_info(flow.id).unwrap();
                 self.update_info(flow.id, info.clone());
             }
         } else {
-            for (flow, info) in other.iter_avb() {
+            for flow in other.iter_avb() {
+                let info = other.get_info(flow.id).unwrap();
                 self.update_info(flow.id, info.clone());
             }
         }
@@ -186,6 +182,18 @@ impl<T: Clone + Eq> FlowTable<T> {
             self.avb_cnt += 1;
         }
         id_list
+    }
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item=&FlowEnum> + 'a {
+        self.arena.flow_list.iter()
+            .filter_map(|opt| opt.as_ref())
+    }
+    pub fn iter_avb<'a>(&'a self) -> impl Iterator<Item=&AVBFlow> + 'a {
+        let iterator = self.arena.avbs.iter()
+            .filter_map(|opt| opt.as_ref())
+            .filter_map(move |id| self.arena.flow_list.get(id.0))
+            .filter_map(|opt| opt.as_ref())
+            .map(|flow| flow.avb());
+        iterator
     }
 }
 impl<T: Clone + Eq> IFlowTable for FlowTable<T> {
@@ -217,35 +225,13 @@ impl<T: Clone + Eq> IFlowTable for FlowTable<T> {
     fn clone_as_diff(&self) -> DiffFlowTable<T> {
         DiffFlowTable::new(self)
     }
-    fn iter_avb<'a>(&'a self) -> Iter<'a, &'a AVBFlow, T> {
-        Iter::FlowTable {
-            ptr: 0,
-            cur_list: 0,
-            id_lists: vec![&self.arena.avbs],
-            flow_list: &self.arena.flow_list,
-            infos: &self.infos,
-            _marker: std::marker::PhantomData,
-        }
-    }
-    fn iter_tsn<'a>(&'a self) -> Iter<'a, &'a TSNFlow, T> {
-        Iter::FlowTable {
-            ptr: 0,
-            cur_list: 0,
-            id_lists: vec![&self.arena.tsns],
-            flow_list: &self.arena.flow_list,
-            infos: &self.infos,
-            _marker: std::marker::PhantomData,
-        }
-    }
-    fn iter<'a>(&'a self) -> Iter<'a, &'a FlowEnum, T> {
-        Iter::FlowTable {
-            ptr: 0,
-            cur_list: 0,
-            id_lists: vec![&self.arena.tsns, &self.arena.avbs],
-            flow_list: &self.arena.flow_list,
-            infos: &self.infos,
-            _marker: std::marker::PhantomData,
-        }
+    fn iter_tsn<'a>(&'a self) -> Box<dyn Iterator<Item=&TSNFlow> + 'a> {
+        let iterator = self.arena.tsns.iter()
+            .filter_map(|opt| opt.as_ref())
+            .filter_map(move |id| self.arena.flow_list.get(id.0))
+            .filter_map(|opt| opt.as_ref())
+            .map(|flow| flow.tsn());
+        Box::new(iterator)
     }
 }
 
@@ -281,6 +267,13 @@ impl<T: Clone + Eq> DiffFlowTable<T> {
             }
         }
         self.table.update_info(id, OldNew::New(info));
+    }
+    pub fn iter_avb<'a>(&'a self) -> Box<dyn Iterator<Item=&AVBFlow> + 'a> {
+        let iterator = self.avb_diff.iter()
+            .filter_map(move |id| self.get_inner_arena().flow_list.get(id.0))
+            .filter_map(|opt| opt.as_ref())
+            .map(|flow| flow.avb());
+        Box::new(iterator)
     }
 }
 impl<T: Clone + Eq> IFlowTable for DiffFlowTable<T> {
@@ -318,36 +311,12 @@ impl<T: Clone + Eq> IFlowTable for DiffFlowTable<T> {
     fn clone_as_diff(&self) -> DiffFlowTable<T> {
         self.clone()
     }
-
-    fn iter_avb<'a>(&'a self) -> Iter<'a, &'a AVBFlow, T> {
-        Iter::DiffTable {
-            ptr: 0,
-            cur_list: 0,
-            id_lists: vec![&self.avb_diff],
-            flow_list: &self.get_inner_arena().flow_list,
-            infos: &self.table.infos,
-            _marker: std::marker::PhantomData,
-        }
-    }
-    fn iter_tsn<'a>(&'a self) -> Iter<'a, &'a TSNFlow, T> {
-        Iter::DiffTable {
-            ptr: 0,
-            cur_list: 0,
-            id_lists: vec![&self.tsn_diff],
-            flow_list: &self.get_inner_arena().flow_list,
-            infos: &self.table.infos,
-            _marker: std::marker::PhantomData,
-        }
-    }
-    fn iter<'a>(&'a self) -> Iter<'a, &'a FlowEnum, T> {
-        Iter::DiffTable {
-            ptr: 0,
-            cur_list: 0,
-            id_lists: vec![&self.tsn_diff, &self.avb_diff],
-            flow_list: &self.get_inner_arena().flow_list,
-            infos: &self.table.infos,
-            _marker: std::marker::PhantomData,
-        }
+    fn iter_tsn<'a>(&'a self) -> Box<dyn Iterator<Item=&TSNFlow> + 'a> {
+        let iterator = self.tsn_diff.iter()
+            .filter_map(move |id| self.get_inner_arena().flow_list.get(id.0))
+            .filter_map(|opt| opt.as_ref())
+            .map(|flow| flow.tsn());
+        Box::new(iterator)
     }
 }
 
@@ -555,102 +524,5 @@ mod test {
         }
         assert_eq!(cnt, cnt2);
         cnt
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum OldNew<T: Clone + Eq> {
-    New(T),
-    Old(T),
-}
-
-pub mod iter {
-    use super::OldNew;
-    use crate::utils::stream::{FlowEnum, FlowID};
-    pub enum Iter<'a, F: From<&'a FlowEnum>, T: Clone + Eq> {
-        FlowTable {
-            ptr: usize,
-            cur_list: usize,
-            id_lists: Vec<&'a Vec<Option<FlowID>>>,
-            flow_list: &'a Vec<Option<FlowEnum>>,
-            infos: &'a Vec<Option<T>>,
-            _marker: std::marker::PhantomData<&'a F>,
-        },
-        DiffTable {
-            ptr: usize,
-            cur_list: usize,
-            id_lists: Vec<&'a Vec<FlowID>>,
-            flow_list: &'a Vec<Option<FlowEnum>>,
-            infos: &'a Vec<Option<OldNew<T>>>,
-            _marker: std::marker::PhantomData<&'a F>,
-        },
-    }
-
-    impl<'a, F: From<&'a FlowEnum>, T: Clone + Eq> Iterator for Iter<'a, F, T> {
-        type Item = (F, &'a T);
-        fn next(&mut self) -> Option<(F, &'a T)> {
-            match self {
-                Iter::FlowTable {
-                    ref mut ptr,
-                    ref mut cur_list,
-                    flow_list,
-                    id_lists,
-                    infos,
-                    ..
-                } => {
-                    while *cur_list < id_lists.len() {
-                        let id_list = id_lists[*cur_list];
-                        while *ptr < id_list.len() {
-                            let cur_ptr = *ptr;
-                            *ptr += 1;
-                            if let Some(id) = id_list[cur_ptr] {
-                                let flow = flow_list[id.0].as_ref().unwrap();
-                                return Some((flow.into(), infos[id.0].as_ref().unwrap()));
-                            }
-                        }
-                        *ptr = 0;
-                        *cur_list += 1;
-                    }
-                }
-                Iter::DiffTable {
-                    ref mut ptr,
-                    ref mut cur_list,
-                    flow_list,
-                    id_lists,
-                    infos,
-                    ..
-                } => {
-                    while *cur_list < id_lists.len() {
-                        let id_list = id_lists[*cur_list];
-                        if *ptr < id_list.len() {
-                            let id = id_list[*ptr];
-                            *ptr += 1;
-                            let flow = flow_list[id.0].as_ref().unwrap();
-                            if let Some(OldNew::New(info)) = infos[id.0].as_ref() {
-                                return Some((flow.into(), info));
-                            } else {
-                                panic!("不知為何遍歷到沒東西的地方");
-                            }
-                        }
-                        *ptr = 0;
-                        *cur_list += 1;
-                    }
-                }
-            }
-            None
-        }
-    }
-
-    pub struct IterMut<'a, F: From<&'a FlowEnum>, T: Clone + Eq> {
-        pub iter: Iter<'a, F, T>,
-    }
-
-    impl<'a, F: From<&'a FlowEnum>, T: Clone + Eq> Iterator for IterMut<'a, F, T> {
-        type Item = (F, &'a mut T);
-        fn next(&mut self) -> Option<(F, &'a mut T)> {
-            self.iter
-                .next()
-                .map(|(flow, t)| unsafe { (flow, &mut *(t as *const T as *mut T)) })
-        }
     }
 }

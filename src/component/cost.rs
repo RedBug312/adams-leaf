@@ -111,7 +111,7 @@ impl<T: Clone + Eq> Calculator<T> for NetworkWrapper<T> {
         let mut all_avb_fail_cnt = 0;
         let mut all_avb_wcd = 0.0;
         let mut all_reroute_cnt = 0;
-        for (flow, t) in self.flow_table.iter() {
+        for flow in self.flow_table.iter() {
             if let FlowEnum::AVB(flow) = flow {
                 let wcd = self._compute_avb_wcd(flow, None);
                 all_avb_wcd += wcd as f64 / flow.max_delay as f64;
@@ -120,6 +120,8 @@ impl<T: Clone + Eq> Calculator<T> for NetworkWrapper<T> {
                     all_avb_fail_cnt += 1;
                 }
             }
+            let t = self.flow_table.get_info(flow.id())
+                .expect("Failed get info from flowtable");
             if is_rerouted(flow, t, self.old_new_table.as_ref().unwrap()) {
                 all_reroute_cnt += 1;
             }

@@ -63,7 +63,7 @@ impl RO {
             // PHASE 1
             let mut cur_wrapper = self.wrapper.clone();
             let mut diff = cur_wrapper.get_flow_table().clone_as_diff();
-            for (flow, _) in cur_wrapper.get_flow_table().iter_avb() {
+            for flow in cur_wrapper.get_flow_table().iter_avb() {
                 let candidate_cnt = self.get_candidate_count(flow);
                 let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
                 let set = gen_n_distinct_outof_k(alpha, candidate_cnt, &mut rng);
@@ -199,12 +199,12 @@ impl RoutingAlgo for RO {
     }
     fn show_results(&self) {
         println!("TT Flows:");
-        for (flow, _) in self.wrapper.get_flow_table().iter_tsn() {
+        for flow in self.wrapper.get_flow_table().iter_tsn() {
             let route = self.get_route(flow.id);
             println!("flow id = {:?}, route = {:?}", flow.id, route);
         }
         println!("AVB Flows:");
-        for (flow, _) in self.wrapper.get_flow_table().iter_avb() {
+        for flow in self.wrapper.get_flow_table().iter_avb() {
             let route = self.get_route(flow.id);
             let cost = self.wrapper.compute_single_avb_cost(flow);
             println!(
