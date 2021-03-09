@@ -35,7 +35,7 @@ fn gen_n_distinct_outof_k(n: usize, k: usize, rng: &mut ChaChaRng) -> Vec<usize>
 pub struct RO {
     yens_algo: Rc<RefCell<YensAlgo>>,
     compute_time: u128,
-    wrapper: NetworkWrapper<usize>,
+    wrapper: NetworkWrapper,
 }
 
 impl RO {
@@ -43,7 +43,7 @@ impl RO {
         let yens_algo = Rc::new(RefCell::new(YensAlgo::default()));
         let tmp_yens = yens_algo.clone();
         tmp_yens.borrow_mut().compute(&g, MAX_K);
-        let wrapper = NetworkWrapper::new(g, move |flow_enum, &k| {
+        let wrapper = NetworkWrapper::new(g, move |flow_enum, k| {
             let (src, dst) = get_src_dst(flow_enum);
             tmp_yens.borrow().kth_shortest_path(src, dst, k).unwrap() as *const Vec<usize>
         });
@@ -94,7 +94,7 @@ impl RO {
     fn find_min_cost_route(&self, flow: &AVBFlow, set: Option<Vec<usize>>) -> usize {
         let (mut min_cost, mut best_k) = (std::f64::MAX, 0);
         let mut closure = |k: usize| {
-            let cost = self.wrapper.compute_avb_wcd(flow, Some(&k)) as f64;
+            let cost = self.wrapper.compute_avb_wcd(flow, Some(k)) as f64;
             if cost < min_cost {
                 min_cost = cost;
                 best_k = k;
@@ -116,7 +116,7 @@ impl RO {
         rng: &mut ChaChaRng,
         time: &std::time::Instant,
         min_cost: &mut RoutingCost,
-        mut cur_wrapper: NetworkWrapper<usize>,
+        mut cur_wrapper: NetworkWrapper,
     ) {
         let mut iter_times = 0;
         while time.elapsed().as_micros() < Config::get().t_limit {
@@ -137,7 +137,7 @@ impl RO {
             };
 
             let new_route = self.find_min_cost_route(target_flow, None);
-            let old_route = *self
+            let old_route = self
                 .wrapper
                 .get_flow_table()
                 .get_info(target_flow.id)

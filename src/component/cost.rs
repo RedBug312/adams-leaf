@@ -68,14 +68,14 @@ impl RoutingCost {
     }
 }
 
-pub trait Calculator<T: Clone + Eq> {
-    fn _compute_avb_wcd(&self, flow: &AVBFlow, route: Option<&T>) -> u32;
+pub trait Calculator {
+    fn _compute_avb_wcd(&self, flow: &AVBFlow, route: Option<usize>) -> u32;
     fn _compute_single_avb_cost(&self, flow: &AVBFlow) -> RoutingCost;
     fn _compute_all_cost(&self) -> RoutingCost;
 }
 
-impl<T: Clone + Eq> Calculator<T> for NetworkWrapper<T> {
-    fn _compute_avb_wcd(&self, flow: &AVBFlow, route: Option<&T>) -> u32 {
+impl Calculator for NetworkWrapper {
+    fn _compute_avb_wcd(&self, flow: &AVBFlow, route: Option<usize>) -> u32 {
         let route_t = route.unwrap_or(self.flow_table.get_info(flow.id).unwrap());
         let route = unsafe {
             let r = (self.get_route_func)(self.flow_table.get(flow.id).unwrap(), route_t);
@@ -137,7 +137,7 @@ impl<T: Clone + Eq> Calculator<T> for NetworkWrapper<T> {
     }
 }
 
-fn is_rerouted<T: Clone + Eq>(flow: &FlowEnum, route: &T, old_new_table: &FlowTable<T>) -> bool {
+fn is_rerouted(flow: &FlowEnum, route: usize, old_new_table: &FlowTable) -> bool {
     let id = match flow {
         FlowEnum::AVB(flow) => flow.id,
         FlowEnum::TSN(flow) => flow.id,

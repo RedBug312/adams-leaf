@@ -14,11 +14,11 @@ const MAX_BE_SIZE: f64 = 1500.0;
 /// * `flow_table` - 資料流表。需注意的是，這裡僅用了資料流本身的資料，而未使用其隨附資訊
 /// TODO: 改用 FlowArena?
 /// * `gcl` - 所有 TT 資料流的 Gate Control List
-pub fn compute_avb_latency<T: Clone + Eq>(
+pub fn compute_avb_latency(
     g: &MemorizingGraph,
     flow: &AVBFlow,
     route: &Vec<usize>,
-    flow_table: &FlowTable<T>,
+    flow_table: &FlowTable,
     gcl: &GCL,
 ) -> u32 {
     let overlap_flow_id = g.get_overlap_flows(route);
@@ -29,10 +29,10 @@ pub fn compute_avb_latency<T: Clone + Eq>(
     }
     end_to_end_lanency as u32
 }
-fn wcd_on_single_link<T: Clone + Eq>(
+fn wcd_on_single_link(
     flow: &AVBFlow,
     bandwidth: f64,
-    flow_table: &FlowTable<T>,
+    flow_table: &FlowTable,
     overlap_flow_id: &Vec<FlowID>,
 ) -> f64 {
     let mut wcd = 0.0;

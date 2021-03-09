@@ -2,8 +2,8 @@ use crate::utils::stream::{FlowID, TSNFlow};
 use crate::component::{flowtable::*, GCL};
 use crate::MAX_QUEUE;
 
-type FT<T> = FlowTable<T>;
-type DT<T> = DiffFlowTable<T>;
+type FT = FlowTable;
+type DT = DiffFlowTable;
 type Links = Vec<((usize, usize), f64)>;
 
 const MTU: usize = 1500;
@@ -23,7 +23,7 @@ use std::cmp::Ordering;
 /// * `deadline` - 時間較緊的要排前面
 /// * `period` - 週期短的要排前面
 /// * `route length` - 路徑長的要排前面
-fn cmp_flow<T: Eq + Clone, TABLE: IFlowTable<INFO = T>, F: Fn(&TSNFlow, &T) -> Links>(
+fn cmp_flow<TABLE: IFlowTable, F: Fn(&TSNFlow, usize) -> Links>(
     id1: FlowID,
     id2: FlowID,
     table: &TABLE,
@@ -59,9 +59,9 @@ fn cmp_flow<T: Eq + Clone, TABLE: IFlowTable<INFO = T>, F: Fn(&TSNFlow, &T) -> L
 /// * `changed_table` - 被改動到的那部份資料流，包含新增與換路徑
 /// * `gcl` - 本來的 Gate Control List
 /// * 回傳 - Ok(false) 代表沒事發生，Ok(true) 代表發生大洗牌
-pub fn schedule_online<T: Eq + Clone, F: Fn(&TSNFlow, &T) -> Links>(
-    og_table: &mut FT<T>,
-    changed_table: &DT<T>,
+pub fn schedule_online<F: Fn(&TSNFlow, usize) -> Links>(
+    og_table: &mut FT,
+    changed_table: &DT,
     gcl: &mut GCL,
     get_links: F,
 ) -> Result<bool, ()> {
@@ -77,7 +77,7 @@ pub fn schedule_online<T: Eq + Clone, F: Fn(&TSNFlow, &T) -> Links>(
 }
 
 /// 也可以當作離線排程算法來使用
-fn schedule_fixed_og<T: Eq + Clone, TABLE: IFlowTable<INFO = T>, F: Fn(&TSNFlow, &T) -> Links>(
+fn schedule_fixed_og<TABLE: IFlowTable, F: Fn(&TSNFlow, usize) -> Links>(
     table: &TABLE,
     gcl: &mut GCL,
     get_links: F,
@@ -253,6 +253,3 @@ fn miss_deadline(cur_offset: u32, trans_time: u32, flow: &TSNFlow) -> bool {
         false
     }
 }
-
-#[cfg(test)]
-mod test;

@@ -34,9 +34,9 @@ fn compute_visibility(algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
     for flow in algo.wrapper.get_flow_table().iter_avb() {
         let id = flow.id;
         for i in 0..algo.get_candidate_count(flow) {
-            vis[id.0][i] = 1.0 / algo.wrapper.compute_avb_wcd(flow, Some(&i)) as f64;
+            vis[id.0][i] = 1.0 / algo.wrapper.compute_avb_wcd(flow, Some(i)) as f64;
         }
-        if let Some(&route_k) = algo.wrapper.get_old_route(id) {
+        if let Some(route_k) = algo.wrapper.get_old_route(id) {
             // 是舊資料流，調高本來路徑的能見度
             vis[id.0][route_k] *= config.avb_memory;
         }
@@ -49,7 +49,7 @@ fn compute_visibility(algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
             vis[id.0][i] = 1.0 / route.len() as f64;
         }
 
-        if let Some(&route_k) = algo.wrapper.get_old_route(id) {
+        if let Some(route_k) = algo.wrapper.get_old_route(id) {
             // 是舊資料流，調高本來路徑的能見度
             vis[id.0][route_k] *= config.tsn_memory;
         }
@@ -59,7 +59,7 @@ fn compute_visibility(algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
 
 /// 本函式不只會計算距離，如果看見最佳解，還會把該解的網路包裝器記錄回 wrapper 參數
 fn compute_aco_dist(
-    wrapper: &mut NetworkWrapper<usize>,
+    wrapper: &mut NetworkWrapper,
     state: &Vec<usize>,
     best_dist: &mut f64,
 ) -> (RoutingCost, f64) {

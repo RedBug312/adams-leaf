@@ -15,7 +15,7 @@ fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
 
 pub struct SPF {
     compute_time: u128,
-    wrapper: NetworkWrapper<usize>,
+    wrapper: NetworkWrapper,
 }
 
 impl SPF {
