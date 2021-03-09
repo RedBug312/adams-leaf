@@ -128,7 +128,7 @@ impl<T: Clone + Eq> FlowTable<T> {
             tsn_cnt: 0,
         }
     }
-    pub fn clone_as_type<U: Clone + Eq, F: Fn(FlowID, &T) -> U>(
+    pub fn clone_as_type<U: Clone + Eq, F: Fn(FlowID, &T) -> Option<U>>(
         &self,
         transform: F,
     ) -> FlowTable<U> {
@@ -136,7 +136,7 @@ impl<T: Clone + Eq> FlowTable<T> {
             .infos
             .iter()
             .enumerate()
-            .map(|(i, t)| t.as_ref().map(|t| transform(FlowID(i), t)))
+            .map(|(i, t)| t.as_ref().map(|t| transform(FlowID(i), t)).flatten())
             .collect();
         FlowTable {
             arena: self.arena.clone(),

@@ -1,11 +1,9 @@
+use std::rc::Rc;
 use crate::{network::MemorizingGraph, utils::stream::{AVBFlow, FlowEnum, FlowID, TSNFlow}};
 use crate::network::Network;
 use crate::component::flowtable::{IFlowTable, FlowTable, DiffFlowTable};
 use crate::component::GCL;
-use std::rc::Rc;
-
 use super::cost::{RoutingCost, Calculator};
-use super::oldnewtable::{OldNew, OldNewTable};
 use crate::scheduler::schedule_online;
 
 type Route = Vec<usize>;
@@ -14,7 +12,7 @@ type Route = Vec<usize>;
 #[derive(Clone)]
 pub struct NetworkWrapper<T: Clone + Eq> {
     pub flow_table: FlowTable<T>,
-    pub old_new_table: Option<Rc<OldNewTable<T>>>, // 在每次運算中類似常數，故用 RC 來包
+    pub old_new_table: Option<Rc<FlowTable<T>>>, // 在每次運算中類似常數，故用 RC 來包
     pub get_route_func: Rc<dyn Fn(&FlowEnum, &T) -> *const Route>,
     pub gcl: GCL,
     pub graph: MemorizingGraph,
@@ -52,9 +50,9 @@ impl<T: Clone + Eq> NetworkWrapper<T> {
 
         let old_new_table = self.flow_table.clone_as_type(|id, t| {
             if reconf.check_exist(id) {
-                OldNew::New
+                None
             } else {
-                OldNew::Old(t.clone())
+                Some(t.clone())
             }
         });
         self.old_new_table = Some(Rc::new(old_new_table));
@@ -66,12 +64,11 @@ impl<T: Clone + Eq> NetworkWrapper<T> {
         unsafe { &*route }
     }
     pub fn get_old_route(&self, flow_id: FlowID) -> Option<&T> {
-        if let OldNew::Old(t) = self
+        if let Some(t) = self
             .old_new_table
             .as_ref()
             .unwrap()
             .get_info(flow_id)
-            .unwrap()
         {
             Some(t)
         } else {

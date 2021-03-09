@@ -1,4 +1,4 @@
-use super::{compute_avb_latency, NetworkWrapper, OldNew, OldNewTable};
+use super::{compute_avb_latency, NetworkWrapper, FlowTable};
 use crate::utils::config::Config;
 use crate::utils::stream::{AVBFlow, FlowEnum};
 use crate::component::IFlowTable;
@@ -137,12 +137,12 @@ impl<T: Clone + Eq> Calculator<T> for NetworkWrapper<T> {
     }
 }
 
-fn is_rerouted<T: Clone + Eq>(flow: &FlowEnum, route: &T, old_new_table: &OldNewTable<T>) -> bool {
+fn is_rerouted<T: Clone + Eq>(flow: &FlowEnum, route: &T, old_new_table: &FlowTable<T>) -> bool {
     let id = match flow {
         FlowEnum::AVB(flow) => flow.id,
         FlowEnum::TSN(flow) => flow.id,
     };
-    if let OldNew::Old(old_route) = old_new_table.get_info(id).unwrap() {
+    if let Some(old_route) = old_new_table.get_info(id) {
         route != old_route
     } else {
         false
