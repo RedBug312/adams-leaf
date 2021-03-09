@@ -127,23 +127,6 @@ impl FlowTable {
             tsn_cnt: 0,
         }
     }
-    pub fn clone_as_type<F: Fn(FlowID, usize) -> Option<usize>>(
-        &self,
-        transform: F,
-    ) -> FlowTable {
-        let infos = self
-            .infos
-            .iter()
-            .enumerate()
-            .map(|(i, t)| t.map(|t| transform(FlowID(i), t)).flatten())
-            .collect();
-        FlowTable {
-            arena: self.arena.clone(),
-            avb_cnt: self.avb_cnt,
-            tsn_cnt: self.tsn_cnt,
-            infos,
-        }
-    }
     pub fn apply_diff(&mut self, is_tsn: bool, other: &DiffFlowTable) {
         if !self.is_same_flow_list(other) {
             panic!("試圖合併不相干的資料流表");
@@ -158,6 +141,12 @@ impl FlowTable {
                 let info = other.get_info(flow.id).unwrap();
                 self.update_info(flow.id, info.clone());
             }
+        }
+    }
+    pub fn insert_xxx(&mut self, flows: Vec<FlowID>) {
+        for id in flows {
+            let id: usize = id.into();
+            self.infos[id] = None;
         }
     }
     pub fn insert(

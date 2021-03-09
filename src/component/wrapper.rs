@@ -48,13 +48,8 @@ impl NetworkWrapper {
         self.update_avb(&reconf);
         self.update_tsn(&reconf);
 
-        let old_new_table = self.flow_table.clone_as_type(|id, t| {
-            if reconf.check_exist(id) {
-                None
-            } else {
-                Some(t)
-            }
-        });
+        let mut old_new_table = self.flow_table.clone();
+        old_new_table.insert_xxx(new_ids);
         self.old_new_table = Some(Rc::new(old_new_table));
     }
     pub fn get_route(&self, flow_id: FlowID) -> &Route {
