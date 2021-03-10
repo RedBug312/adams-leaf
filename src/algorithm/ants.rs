@@ -6,7 +6,6 @@ use crate::component::{NetworkWrapper, RoutingCost};
 use super::aco::ACO;
 use super::base::yens::YensAlgo;
 use crate::MAX_K;
-use crate::component::IFlowTable;
 
 use std::cell::RefCell;
 use std::rc::Rc;

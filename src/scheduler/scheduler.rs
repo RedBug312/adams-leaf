@@ -1,9 +1,10 @@
 use crate::utils::stream::{FlowID, TSNFlow};
-use crate::component::{flowtable::*, GCL};
+use crate::component::GCL;
+use crate::component::flowtable::FlowTable;
 use crate::MAX_QUEUE;
 
 type FT = FlowTable;
-type DT = DiffFlowTable;
+type DT = FlowTable;
 type Links = Vec<((usize, usize), f64)>;
 
 const MTU: usize = 1500;
@@ -23,10 +24,10 @@ use std::cmp::Ordering;
 /// * `deadline` - 時間較緊的要排前面
 /// * `period` - 週期短的要排前面
 /// * `route length` - 路徑長的要排前面
-fn cmp_flow<TABLE: IFlowTable, F: Fn(&TSNFlow, usize) -> Links>(
+fn cmp_flow<F: Fn(&TSNFlow, usize) -> Links>(
     id1: FlowID,
     id2: FlowID,
-    table: &TABLE,
+    table: &FlowTable,
     get_links: F,
 ) -> Ordering {
     let flow1 = table.get_tsn(id1).unwrap();
@@ -65,11 +66,11 @@ pub fn schedule_online<F: Fn(&TSNFlow, usize) -> Links>(
     gcl: &mut GCL,
     get_links: F,
 ) -> Result<bool, ()> {
-    let result = schedule_fixed_og(changed_table, gcl, |f, t| get_links(f, t));
+    let result = schedule_fixed_og(changed_table, gcl, |f, t| get_links(f, t), &changed_table.tsn_diff);
     og_table.apply_diff(true, changed_table);
     if !result.is_ok() {
         gcl.clear();
-        schedule_fixed_og(og_table, gcl, |f, t| get_links(f, t))?;
+        schedule_fixed_og(og_table, gcl, |f, t| get_links(f, t), &og_table.arena.tsns)?;
         Ok(true)
     } else {
         Ok(false)
@@ -77,15 +78,13 @@ pub fn schedule_online<F: Fn(&TSNFlow, usize) -> Links>(
 }
 
 /// 也可以當作離線排程算法來使用
-fn schedule_fixed_og<TABLE: IFlowTable, F: Fn(&TSNFlow, usize) -> Links>(
-    table: &TABLE,
+fn schedule_fixed_og<F: Fn(&TSNFlow, usize) -> Links>(
+    table: &FlowTable,
     gcl: &mut GCL,
     get_links: F,
+    tsns: &Vec<FlowID>,
 ) -> Result<(), ()> {
-    let mut tsn_ids = Vec::<FlowID>::new();
-    for flow in table.iter_tsn() {
-        tsn_ids.push(flow.id);
-    }
+    let mut tsn_ids = tsns.clone();
     tsn_ids.sort_by(|&id1, &id2| cmp_flow(id1, id2, table, |f, t| get_links(f, t)));
     for flow_id in tsn_ids.into_iter() {
         let flow = table.get_tsn(flow_id).unwrap();
@@ -146,6 +145,8 @@ fn schedule_fixed_og<TABLE: IFlowTable, F: Fn(&TSNFlow, usize) -> Links>(
     }
     Ok(())
 }
+
+
 
 /// 回傳值為為一個陣列，若其長度小於路徑長，代表排一排爆開
 fn calculate_offsets(

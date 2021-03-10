@@ -1,7 +1,7 @@
 use std::rc::Rc;
 use crate::{network::MemorizingGraph, utils::stream::{AVBFlow, FlowEnum, FlowID, TSNFlow}};
 use crate::network::Network;
-use crate::component::flowtable::{IFlowTable, FlowTable, DiffFlowTable};
+use crate::component::flowtable::FlowTable;
 use crate::component::GCL;
 use super::cost::{RoutingCost, Calculator};
 use crate::scheduler::schedule_online;
@@ -42,7 +42,7 @@ impl NetworkWrapper {
         let mut reconf = self.flow_table.clone_as_diff();
 
         for &flow_id in new_ids.iter() {
-            reconf.update_info_force(flow_id, default_info.clone());
+            reconf.update_info_force_diff(flow_id, default_info.clone());
         }
 
         self.update_avb(&reconf);
@@ -82,17 +82,17 @@ impl NetworkWrapper {
         graph.update_flowid_on_route(true, flow.id, new_route);
     }
     /// 更新 AVB 資料流表與圖上資訊
-    pub fn update_avb(&mut self, diff: &DiffFlowTable) {
-        for flow in diff.iter_avb() {
+    pub fn update_avb(&mut self, diff: &FlowTable) {
+        for flow in diff.iter_avb_diff() {
             let info = diff.get_info(flow.id).unwrap();
             self.update_single_avb(flow, info.clone());
         }
     }
     /// 更新 TSN 資料流表與 GCL
-    pub fn update_tsn(&mut self, diff: &DiffFlowTable) {
+    pub fn update_tsn(&mut self, diff: &FlowTable) {
         // NOTE: 在 schedule_online 函式中就會更新資料流表（這當然是個不太好的實作……）
         //       因此在這裡就不用執行 self.flow_table.update_info()
-        for flow in diff.iter_tsn() {
+        for flow in diff.iter_tsn_diff() {
             // NOTE: 拔除 GCL
             let route = self.get_route(flow.id);
             let links = self

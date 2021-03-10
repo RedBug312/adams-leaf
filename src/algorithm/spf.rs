@@ -4,7 +4,6 @@ use crate::network::Network;
 use crate::component::{NetworkWrapper, RoutingCost};
 use super::base::yens::YensAlgo;
 use std::{cell::RefCell, rc::Rc, time::Instant};
-use crate::component::IFlowTable;
 
 fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
     match flow {

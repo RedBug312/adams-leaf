@@ -3,7 +3,6 @@ use crate::utils::config::Config;
 use crate::utils::stream::{AVBFlow, Flow, FlowEnum, FlowID, TSNFlow};
 use crate::network::Network;
 use crate::component::{NetworkWrapper, RoutingCost};
-use crate::component::IFlowTable;
 use super::base::yens::YensAlgo;
 use crate::MAX_K;
 use rand::{Rng, SeedableRng};
@@ -68,7 +67,7 @@ impl RO {
                 let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
                 let set = gen_n_distinct_outof_k(alpha, candidate_cnt, &mut rng);
                 let new_route = self.find_min_cost_route(flow, Some(set));
-                diff.update_info(flow.id, new_route);
+                diff.update_info_diff(flow.id, new_route);
             }
             cur_wrapper.update_avb(&diff);
             // PHASE 2

@@ -1,7 +1,6 @@
 use super::{compute_avb_latency, NetworkWrapper, FlowTable};
 use crate::utils::config::Config;
 use crate::utils::stream::{AVBFlow, FlowEnum};
-use crate::component::IFlowTable;
 
 #[derive(Clone, Copy, Debug)]
 pub struct RoutingCost {

@@ -4,7 +4,6 @@ use crate::component::{NetworkWrapper, RoutingCost};
 use crate::algorithm::aco::ACOJudgeResult;
 use crate::MAX_K;
 use std::time::Instant;
-use crate::component::IFlowTable;
 
 pub fn do_aco(algo: &mut AdamsAnt, time_limit: u128) {
     let time = Instant::now();
@@ -68,7 +67,7 @@ fn compute_aco_dist(
 
     for (id, &route_k) in state.iter().enumerate() {
         // NOTE: 若發現和舊的資料一樣，這個 update_info 函式會自動把它忽略掉
-        diff.update_info(id.into(), route_k);
+        diff.update_info_diff(id.into(), route_k);
     }
 
     cur_wrapper.update_tsn(&diff);
