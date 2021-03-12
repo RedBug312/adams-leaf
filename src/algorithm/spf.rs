@@ -1,6 +1,6 @@
 use super::RoutingAlgo;
 use crate::MAX_K;
-use crate::utils::stream::{AVBFlow, TSNFlow};
+use crate::utils::stream::{TSN, AVB};
 use crate::network::Network;
 use crate::component::{NetworkWrapper, RoutingCost};
 use super::base::yens::YensAlgo;
@@ -31,7 +31,7 @@ impl RoutingAlgo for SPF {
     fn get_last_compute_time(&self) -> u128 {
         self.compute_time
     }
-    fn add_flows(&mut self, tsns: Vec<TSNFlow>, avbs: Vec<AVBFlow>) {
+    fn add_flows(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
         let init_time = Instant::now();
         for flow in tsns.into_iter() {
             self.wrapper.insert(vec![flow], vec![], 0);
@@ -49,17 +49,17 @@ impl RoutingAlgo for SPF {
     }
     fn show_results(&self) {
         println!("TT Flows:");
-        for flow in self.wrapper.get_flow_table().iter_tsn() {
-            let route = self.get_route(flow.id);
-            println!("flow id = FlowID({:?}), route = {:?}", flow.id, route);
+        for &id in self.wrapper.get_flow_table().iter_tsn() {
+            let route = self.get_route(id);
+            println!("flow id = FlowID({:?}), route = {:?}", id, route);
         }
         println!("AVB Flows:");
-        for flow in self.wrapper.get_flow_table().iter_avb() {
-            let route = self.get_route(flow.id);
-            let cost = self.wrapper.compute_single_avb_cost(flow);
+        for &id in self.wrapper.get_flow_table().iter_avb() {
+            let route = self.get_route(id);
+            let cost = self.wrapper.compute_single_avb_cost(id);
             println!(
                 "flow id = FlowID({:?}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",
-                flow.id, route, cost.avb_wcd, cost.reroute_overhead
+                id, route, cost.avb_wcd, cost.reroute_overhead
             );
         }
         let all_cost = self.wrapper.compute_all_cost();

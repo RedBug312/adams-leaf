@@ -1,4 +1,4 @@
-use crate::utils::stream::{AVBFlow, TSNFlow};
+use crate::utils::stream::{AVB, TSN};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -10,8 +10,8 @@ enum Action {
 }
 
 enum Either {
-    TSN(usize, TSNFlow),
-    AVB(usize, AVBFlow),
+    TSN(usize, TSN),
+    AVB(usize, AVB),
 }
 
 pub struct FlowArena {
@@ -29,17 +29,15 @@ impl FlowArena {
             max_id: 0,
         }
     }
-    fn insert_tsn(&mut self, mut flow: TSNFlow) -> usize {
+    fn insert_tsn(&mut self, flow: TSN) -> usize {
         let id = self.streams.len();
-        flow.id = id;
         self.tsns.push(id);
         self.streams.push(Either::TSN(id, flow));
         self.max_id = std::cmp::max(self.max_id, id);
         id
     }
-    fn insert_avb(&mut self, mut flow: AVBFlow) -> usize {
+    fn insert_avb(&mut self, flow: AVB) -> usize {
         let id = self.streams.len();
-        flow.id = id;
         self.avbs.push(id);
         self.streams.push(Either::AVB(id, flow));
         self.max_id = std::cmp::max(self.max_id, id);
@@ -51,7 +49,7 @@ impl FlowArena {
         }
         return None;
     }
-    pub fn tsn(&self, id: usize) -> Option<&TSNFlow> {
+    pub fn tsn(&self, id: usize) -> Option<&TSN> {
         let either = self.streams.get(id)
             .expect("Failed to obtain TSN spec from an invalid id");
         match either {
@@ -59,7 +57,7 @@ impl FlowArena {
             Either::AVB(_, _) => None,
         }
     }
-    pub fn avb(&self, id: usize) -> Option<&AVBFlow> {
+    pub fn avb(&self, id: usize) -> Option<&AVB> {
         let either = self.streams.get(id)
             .expect("Failed to obtain AVB spec from an invalid id");
         match either {
@@ -101,14 +99,14 @@ impl FlowTable {
             panic!("試圖合併不相干的資料流表");
         }
         if is_tsn {
-            for flow in other.iter_tsn_diff() {
-                let info = other.get_info(flow.id).unwrap();
-                self.update_info(flow.id, info.clone());
+            for &id in other.iter_tsn_diff() {
+                let info = other.get_info(id).unwrap();
+                self.update_info(id, info.clone());
             }
         } else {
-            for flow in other.iter_avb_diff() {
-                let info = other.get_info(flow.id).unwrap();
-                self.update_info(flow.id, info.clone());
+            for &id in other.iter_avb_diff() {
+                let info = other.get_info(id).unwrap();
+                self.update_info(id, info.clone());
             }
         }
     }
@@ -118,12 +116,7 @@ impl FlowTable {
             self.infos[id] = Action::Pending;
         }
     }
-    pub fn insert(
-        &mut self,
-        tsns: Vec<TSNFlow>,
-        avbs: Vec<AVBFlow>,
-        default_info: usize,
-    ) -> Vec<usize> {
+    pub fn insert(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>, default_info: usize) -> Vec<usize> {
         let arena = Rc::get_mut(&mut self.arena).expect("插入資料流時發生數據爭用");
         let mut id_list = vec![];
         for flow in tsns.into_iter() {
@@ -140,10 +133,8 @@ impl FlowTable {
         }
         id_list
     }
-    pub fn iter_avb<'a>(&'a self) -> impl Iterator<Item=&AVBFlow> + 'a {
-        let iterator = self.arena.avbs.iter()
-            .filter_map(move |&id| self.arena.avb(id));
-        iterator
+    pub fn iter_avb<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
+        self.arena.avbs.iter()
     }
     pub fn get_avb_cnt(&self) -> usize {
         self.avb_cnt
@@ -168,10 +159,8 @@ impl FlowTable {
     pub fn clone_as_diff(&self) -> FlowTable {
         FlowTable::new_diff(self)
     }
-    pub fn iter_tsn<'a>(&'a self) -> Box<dyn Iterator<Item=&TSNFlow> + 'a> {
-        let iterator = self.arena.tsns.iter()
-            .filter_map(move |&id| self.arena.tsn(id));
-        Box::new(iterator)
+    pub fn iter_tsn<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
+        self.arena.tsns.iter()
     }
     pub fn check_exist(&self, id: usize) -> bool {
         self.get_info(id).is_some()
@@ -187,10 +176,10 @@ impl FlowTable {
             Either::AVB(_, avb) => (avb.src, avb.dst),
         }
     }
-    pub fn get_avb(&self, id: usize) -> Option<&AVBFlow> {
+    pub fn get_avb(&self, id: usize) -> Option<&AVB> {
         self.arena.avb(id)
     }
-    pub fn get_tsn(&self, id: usize) -> Option<&TSNFlow> {
+    pub fn get_tsn(&self, id: usize) -> Option<&TSN> {
         self.arena.tsn(id)
     }
     pub fn get_flow_cnt(&self) -> usize {
@@ -231,10 +220,8 @@ impl FlowTable {
         }
         self.infos[id] = Action::Move(info);
     }
-    pub fn iter_avb_diff<'a>(&'a self) -> Box<dyn Iterator<Item=&AVBFlow> + 'a> {
-        let iterator = self.avb_diff.iter()
-            .filter_map(move |&id| self.arena.avb(id));
-        Box::new(iterator)
+    pub fn iter_avb_diff<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
+        self.avb_diff.iter()
     }
     pub fn update_info_diff(&mut self, id: usize, info: usize) {
         if let Some(Action::Keep(og_value)) = self.infos.get(id) {
@@ -250,10 +237,8 @@ impl FlowTable {
         // NOTE: 如果本來就是 New，就不推進 diff 表（因為之前推過了）
         self.infos[id] = Action::Move(info);
     }
-    pub fn iter_tsn_diff<'a>(&'a self) -> Box<dyn Iterator<Item=&TSNFlow> + 'a> {
-        let iterator = self.tsn_diff.iter()
-            .filter_map(move |&id| self.arena.tsn(id));
-        Box::new(iterator)
+    pub fn iter_tsn_diff<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
+        self.tsn_diff.iter()
     }
     pub fn is_same_flow_list_diff(&self, other: &FlowTable) -> bool {
         let a = &*self.arena as *const FlowArena;

@@ -1,4 +1,4 @@
-use crate::utils::stream::TSNFlow;
+use crate::utils::stream::TSN;
 use crate::component::GCL;
 use crate::component::flowtable::FlowTable;
 use crate::MAX_QUEUE;
@@ -24,7 +24,7 @@ use std::cmp::Ordering;
 /// * `deadline` - 時間較緊的要排前面
 /// * `period` - 週期短的要排前面
 /// * `route length` - 路徑長的要排前面
-fn cmp_flow<F: Fn(&TSNFlow, usize) -> Links>(
+fn cmp_flow<F: Fn(usize, usize) -> Links>(
     id1: usize,
     id2: usize,
     table: &FlowTable,
@@ -42,10 +42,10 @@ fn cmp_flow<F: Fn(&TSNFlow, usize) -> Links>(
         } else if flow1.period > flow2.period {
             Ordering::Greater
         } else {
-            let k = table.get_info(flow1.id).unwrap();
-            let rlen_1 = get_links(&flow1, k).len();
-            let k = table.get_info(flow2.id).unwrap();
-            let rlen_2 = get_links(&flow2, k).len();
+            let k = table.get_info(id1).unwrap();
+            let rlen_1 = get_links(id1, k).len();
+            let k = table.get_info(id2).unwrap();
+            let rlen_2 = get_links(id2, k).len();
             if rlen_1 > rlen_2 {
                 Ordering::Less
             } else {
@@ -60,7 +60,7 @@ fn cmp_flow<F: Fn(&TSNFlow, usize) -> Links>(
 /// * `changed_table` - 被改動到的那部份資料流，包含新增與換路徑
 /// * `gcl` - 本來的 Gate Control List
 /// * 回傳 - Ok(false) 代表沒事發生，Ok(true) 代表發生大洗牌
-pub fn schedule_online<F: Fn(&TSNFlow, usize) -> Links>(
+pub fn schedule_online<F: Fn(usize, usize) -> Links>(
     og_table: &mut FT,
     changed_table: &DT,
     gcl: &mut GCL,
@@ -78,7 +78,7 @@ pub fn schedule_online<F: Fn(&TSNFlow, usize) -> Links>(
 }
 
 /// 也可以當作離線排程算法來使用
-fn schedule_fixed_og<F: Fn(&TSNFlow, usize) -> Links>(
+fn schedule_fixed_og<F: Fn(usize, usize) -> Links>(
     table: &FlowTable,
     gcl: &mut GCL,
     get_links: F,
@@ -88,14 +88,14 @@ fn schedule_fixed_og<F: Fn(&TSNFlow, usize) -> Links>(
     tsn_ids.sort_by(|&id1, &id2| cmp_flow(id1, id2, table, |f, t| get_links(f, t)));
     for flow_id in tsn_ids.into_iter() {
         let flow = table.get_tsn(flow_id).unwrap();
-        let links = get_links(flow, table.get_info(flow_id).unwrap());
+        let links = get_links(flow_id, table.get_info(flow_id).unwrap());
         let mut all_offsets: Vec<Vec<u32>> = vec![];
         // NOTE 一個資料流的每個封包，在單一埠口上必需採用同一個佇列
         let mut ro: Vec<u8> = vec![0; links.len()];
         let k = get_frame_cnt(flow.size);
         let mut m = 0;
         while m < k {
-            let offsets = calculate_offsets(flow, &all_offsets, &links, &ro, gcl);
+            let offsets = calculate_offsets(flow_id, table, &all_offsets, &links, &ro, gcl);
             if offsets.len() == links.len() {
                 m += 1;
                 all_offsets.push(offsets);
@@ -125,7 +125,7 @@ fn schedule_fixed_og<F: Fn(&TSNFlow, usize) -> Links>(
                     );
                     // insert queue evt
                     let queue_evt_start = if i == 0 {
-                        flow.spec_data.offset
+                        flow.offset
                     } else {
                         all_offsets[m][i - 1] // 前一個埠口一開始傳即視為開始佔用
                     };
@@ -150,12 +150,15 @@ fn schedule_fixed_og<F: Fn(&TSNFlow, usize) -> Links>(
 
 /// 回傳值為為一個陣列，若其長度小於路徑長，代表排一排爆開
 fn calculate_offsets(
-    flow: &TSNFlow,
+    id: usize,
+    flowtable: &FlowTable,
     all_offsets: &Vec<Vec<u32>>,
     links: &Vec<((usize, usize), f64)>,
     ro: &Vec<u8>,
     gcl: &GCL,
 ) -> Vec<u32> {
+    let flow = flowtable.get_tsn(id)
+        .expect("Failed to obtain TSN spec with an invalid id");
     let mut offsets = Vec::<u32>::with_capacity(links.len());
     let hyper_p = gcl.get_hyper_p();
     for i in 0..links.len() {
@@ -164,7 +167,7 @@ fn calculate_offsets(
             // 路徑起始
             if all_offsets.len() == 0 {
                 // 資料流的第一個封包
-                flow.spec_data.offset
+                flow.offset
             } else {
                 // #m-1 封包完整送出，且經過處理時間
                 all_offsets[all_offsets.len() - 1][i] + trans_time
@@ -246,8 +249,8 @@ fn assign_new_queues(ro: &mut Vec<u8>) -> Result<(), ()> {
 }
 
 #[inline(always)]
-fn miss_deadline(cur_offset: u32, trans_time: u32, flow: &TSNFlow) -> bool {
-    if cur_offset + trans_time >= flow.spec_data.offset + flow.max_delay {
+fn miss_deadline(cur_offset: u32, trans_time: u32, flow: &TSN) -> bool {
+    if cur_offset + trans_time >= flow.offset + flow.max_delay {
         // 死線爆炸！
         true
     } else {

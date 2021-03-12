@@ -30,19 +30,21 @@ fn compute_visibility(algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
     // 目前：路徑長的倒數
     let len = algo.aco.get_state_len();
     let mut vis = vec![[0.0; MAX_K]; len];
-    for flow in algo.wrapper.get_flow_table().iter_avb() {
-        let id = flow.id;
-        for i in 0..algo.get_candidate_count(flow) {
-            vis[id][i] = 1.0 / algo.wrapper.compute_avb_wcd(flow, Some(i)) as f64;
+    for &id in algo.wrapper.get_flow_table().iter_avb() {
+        let flow = algo.wrapper.get_flow_table().get_avb(id)
+            .expect("Failed to obtain AVB spec with an invalid id");
+        for i in 0..algo.get_candidate_count(flow.src, flow.dst) {
+            vis[id][i] = 1.0 / algo.wrapper.compute_avb_wcd(id, Some(i)) as f64;
         }
         if let Some(route_k) = algo.wrapper.get_old_route(id) {
             // 是舊資料流，調高本來路徑的能見度
             vis[id][route_k] *= config.avb_memory;
         }
     }
-    for flow in algo.wrapper.get_flow_table().iter_tsn() {
-        let id = flow.id;
-        for i in 0..algo.get_candidate_count(flow) {
+    for &id in algo.wrapper.get_flow_table().iter_tsn() {
+        let flow = algo.wrapper.get_flow_table().get_tsn(id)
+            .expect("Failed to obtain TSN spec with an invalid id");
+        for i in 0..algo.get_candidate_count(flow.src, flow.dst) {
             let yens = algo.yens_algo.borrow();
             let route = yens.kth_shortest_path(flow.src, flow.dst, i).unwrap();
             vis[id][i] = 1.0 / route.len() as f64;

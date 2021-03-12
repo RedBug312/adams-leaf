@@ -1,4 +1,4 @@
-use adams_leaf::utils::json::{read_flows_from_file, read_topo_from_file};
+use adams_leaf::utils::json;
 use adams_leaf::utils::config::Config;
 use adams_leaf::cnc::CNC;
 use regex::Regex;
@@ -34,9 +34,9 @@ fn main() {
         Config::load_file(&config_name).unwrap();
     }
 
-    let (tsns1, avbs1) = read_flows_from_file(&flow_file_name, 1);
-    let (tsns2, avbs2) = read_flows_from_file(&flow_file_name2, times);
-    let network = read_topo_from_file(&topo_file_name);
+    let (tsns1, avbs1) = json::load_streams(&flow_file_name, 1);
+    let (tsns2, avbs2) = json::load_streams(&flow_file_name2, times as u32);
+    let network = json::load_network(&topo_file_name);
     // FIXME 對這個圖作 Yens algo，0->2這條路有時找得到6條，有時只找得到5條
 
     let mut cnc = CNC::new(&algo_type, network);

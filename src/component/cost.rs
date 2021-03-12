@@ -1,6 +1,6 @@
 use super::{compute_avb_latency, NetworkWrapper, FlowTable};
 use crate::utils::config::Config;
-use crate::utils::stream::AVBFlow;
+
 
 #[derive(Clone, Copy, Debug)]
 pub struct RoutingCost {
@@ -11,6 +11,7 @@ pub struct RoutingCost {
     pub avb_cnt: usize,
     pub tsn_cnt: usize,
 }
+
 
 impl RoutingCost {
     pub fn compute(&self) -> f64 {
@@ -68,23 +69,25 @@ impl RoutingCost {
 }
 
 pub trait Calculator {
-    fn _compute_avb_wcd(&self, flow: &AVBFlow, route: Option<usize>) -> u32;
-    fn _compute_single_avb_cost(&self, flow: &AVBFlow) -> RoutingCost;
+    fn _compute_avb_wcd(&self, flow: usize, route: Option<usize>) -> u32;
+    fn _compute_single_avb_cost(&self, flow: usize) -> RoutingCost;
     fn _compute_all_cost(&self) -> RoutingCost;
 }
 
 impl Calculator for NetworkWrapper {
-    fn _compute_avb_wcd(&self, flow: &AVBFlow, route: Option<usize>) -> u32 {
-        let (src, dst) = self.flow_table.ends(flow.id);
-        let route_t = route.unwrap_or(self.flow_table.get_info(flow.id).unwrap());
+    fn _compute_avb_wcd(&self, id: usize, route: Option<usize>) -> u32 {
+        let (src, dst) = self.flow_table.ends(id);
+        let route_t = route.unwrap_or(self.flow_table.get_info(id).unwrap());
         let route = unsafe {
             let r = (self.get_route_func)(src, dst, route_t);
             &*r
         };
-        compute_avb_latency(&self.graph, flow, route, &self.flow_table, &self.gcl)
+        compute_avb_latency(&self.graph, id, route, &self.flow_table, &self.gcl)
     }
-    fn _compute_single_avb_cost(&self, flow: &AVBFlow) -> RoutingCost {
-        let avb_wcd = self._compute_avb_wcd(flow, None) as f64 / flow.max_delay as f64;
+    fn _compute_single_avb_cost(&self, id: usize) -> RoutingCost {
+        let flow = self.flow_table.get_avb(id)
+            .expect("Failed to obtain AVB spec from an invalid id");
+        let avb_wcd = self._compute_avb_wcd(id, None) as f64 / flow.max_delay as f64;
         let mut avb_fail_cnt = 0;
         let mut reroute_cnt = 0;
         if avb_wcd >= 1.0 {
@@ -92,8 +95,8 @@ impl Calculator for NetworkWrapper {
             avb_fail_cnt += 1;
         }
         if is_rerouted(
-            flow.id,
-            self.flow_table.get_info(flow.id).unwrap(),
+            id,
+            self.flow_table.get_info(id).unwrap(),
             self.old_new_table.as_ref().unwrap(),
         ) {
             reroute_cnt += 1;
@@ -111,23 +114,25 @@ impl Calculator for NetworkWrapper {
         let mut all_avb_fail_cnt = 0;
         let mut all_avb_wcd = 0.0;
         let mut all_reroute_cnt = 0;
-        for flow in self.flow_table.iter_tsn() {
-            let t = self.flow_table.get_info(flow.id)
+        for &id in self.flow_table.iter_tsn() {
+            let t = self.flow_table.get_info(id)
                 .expect("Failed get info from flowtable");
-            if is_rerouted(flow.id, t, self.old_new_table.as_ref().unwrap()) {
+            if is_rerouted(id, t, self.old_new_table.as_ref().unwrap()) {
                 all_reroute_cnt += 1;
             }
         }
-        for flow in self.flow_table.iter_avb() {
-            let wcd = self._compute_avb_wcd(flow, None);
+        for &id in self.flow_table.iter_avb() {
+            let flow = self.flow_table.get_avb(id)
+                .expect("Failed to obtain AVB spec with an invalid id");
+            let wcd = self._compute_avb_wcd(id, None);
             all_avb_wcd += wcd as f64 / flow.max_delay as f64;
             if wcd > flow.max_delay {
                 // 逾時了！
                 all_avb_fail_cnt += 1;
             }
-            let t = self.flow_table.get_info(flow.id)
+            let t = self.flow_table.get_info(id)
                 .expect("Failed get info from flowtable");
-            if is_rerouted(flow.id, t, self.old_new_table.as_ref().unwrap()) {
+            if is_rerouted(id, t, self.old_new_table.as_ref().unwrap()) {
                 all_reroute_cnt += 1;
             }
         }

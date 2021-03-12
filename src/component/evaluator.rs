@@ -1,4 +1,3 @@
-use crate::utils::stream::AVBFlow;
 use crate::network::MemorizingGraph;
 use crate::component::{flowtable::*, GCL};
 
@@ -16,7 +15,7 @@ const MAX_BE_SIZE: f64 = 1500.0;
 /// * `gcl` - 所有 TT 資料流的 Gate Control List
 pub fn compute_avb_latency(
     g: &MemorizingGraph,
-    flow: &AVBFlow,
+    id: usize,
     route: &Vec<usize>,
     flow_table: &FlowTable,
     gcl: &GCL,
@@ -24,17 +23,19 @@ pub fn compute_avb_latency(
     let overlap_flow_id = g.get_overlap_flows(route);
     let mut end_to_end_lanency = 0.0;
     for (i, (ends, bandwidth)) in g.get_links_id_bandwidth(route).into_iter().enumerate() {
-        let wcd = wcd_on_single_link(flow, bandwidth, flow_table, &overlap_flow_id[i]);
+        let wcd = wcd_on_single_link(id, bandwidth, flow_table, &overlap_flow_id[i]);
         end_to_end_lanency += wcd + tt_interfere_avb_single_link(ends, wcd as f64, gcl) as f64;
     }
     end_to_end_lanency as u32
 }
 fn wcd_on_single_link(
-    flow: &AVBFlow,
+    id: usize,
     bandwidth: f64,
     flow_table: &FlowTable,
     overlap_flow_id: &Vec<usize>,
 ) -> f64 {
+    let flow = flow_table.get_avb(id)
+        .expect("Failed to obtain AVB spec with an invalid id");
     let mut wcd = 0.0;
     // MAX None AVB
     wcd += MAX_BE_SIZE / bandwidth;
@@ -44,12 +45,12 @@ fn wcd_on_single_link(
     wcd += flow.size as f64 / bandwidth;
     // Ohter AVB
     for &other_flow_id in overlap_flow_id.iter() {
-        if other_flow_id != flow.id {
+        if other_flow_id != id {
             let other_flow = flow_table.get_avb(other_flow_id).unwrap();
             // 自己是 B 類或別人是 A 類，就有機會要等……換句話說，只有自己是 A 而別人是 B 不用等
-            let self_type = flow.spec_data.avb_class;
-            let other_type = other_flow.spec_data.avb_class;
-            if self_type.is_class_b() || other_type.is_class_a() {
+            let self_type = flow.avb_type;
+            let other_type = other_flow.avb_type;
+            if self_type == 'B' || other_type == 'A' {
                 wcd += other_flow.size as f64 / bandwidth;
             }
         }

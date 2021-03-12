@@ -1,6 +1,6 @@
 use super::RoutingAlgo;
 use crate::utils::config::Config;
-use crate::utils::stream::{AVBFlow, Flow, TSNFlow};
+use crate::utils::stream::{TSN, AVB};
 use crate::network::Network;
 use crate::component::{NetworkWrapper, RoutingCost};
 use super::aco::ACO;
@@ -35,13 +35,13 @@ impl AdamsAnt {
             wrapper,
         }
     }
-    pub fn get_candidate_count<T: Clone>(&self, flow: &Flow<T>) -> usize {
-        self.yens_algo.borrow().count_shortest_paths(flow.src, flow.dst)
+    pub fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
+        self.yens_algo.borrow().count_shortest_paths(src, dst)
     }
 }
 
 impl RoutingAlgo for AdamsAnt {
-    fn add_flows(&mut self, tsns: Vec<TSNFlow>, avbs: Vec<AVBFlow>) {
+    fn add_flows(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
         // for flow in tsns.iter() {
         //     self.yens_algo
         //         .borrow_mut()
@@ -72,17 +72,17 @@ impl RoutingAlgo for AdamsAnt {
     }
     fn show_results(&self) {
         println!("TT Flows:");
-        for flow in self.wrapper.get_flow_table().iter_tsn() {
-            let route = self.get_route(flow.id);
-            println!("flow id = FlowID({:?}), route = {:?}", flow.id, route);
+        for &id in self.wrapper.get_flow_table().iter_tsn() {
+            let route = self.get_route(id);
+            println!("flow id = FlowID({:?}), route = {:?}", id, route);
         }
         println!("AVB Flows:");
-        for flow in self.wrapper.get_flow_table().iter_avb() {
-            let route = self.get_route(flow.id);
-            let cost = self.wrapper.compute_single_avb_cost(flow);
+        for &id in self.wrapper.get_flow_table().iter_avb() {
+            let route = self.get_route(id);
+            let cost = self.wrapper.compute_single_avb_cost(id);
             println!(
                 "flow id = FlowID({:?}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",
-                flow.id, route, cost.avb_wcd, cost.reroute_overhead
+                id, route, cost.avb_wcd, cost.reroute_overhead
             );
         }
         let all_cost = self.wrapper.compute_all_cost();
