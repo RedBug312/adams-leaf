@@ -94,18 +94,18 @@ impl FlowTable {
             tsn_diff: vec![],
         }
     }
-    pub fn apply_diff(&mut self, is_tsn: bool, other: &FlowTable) {
-        if !self.is_same_flow_list(other) {
+    pub fn apply_diff(&mut self, is_tsn: bool, diff: &FlowTable) {
+        if !self.is_same_flow_list(diff) {
             panic!("試圖合併不相干的資料流表");
         }
         if is_tsn {
-            for &id in other.iter_tsn_diff() {
-                let info = other.get_info(id).unwrap();
+            for &id in diff.iter_tsn_diff() {
+                let info = diff.get_info(id).unwrap();
                 self.update_info(id, info.clone());
             }
         } else {
-            for &id in other.iter_avb_diff() {
-                let info = other.get_info(id).unwrap();
+            for &id in diff.iter_avb_diff() {
+                let info = diff.get_info(id).unwrap();
                 self.update_info(id, info.clone());
             }
         }
@@ -146,7 +146,7 @@ impl FlowTable {
         match self.infos.get(id) {
             Some(Action::Pending) => None,
             Some(Action::Init(info)) => Some(*info),
-            Some(Action::Keep(_)) => None,
+            Some(Action::Keep(info)) => Some(*info),
             Some(Action::Move(info)) => Some(*info),
             None => panic!("Failed to get info from an invalid id"),
         }
@@ -161,9 +161,6 @@ impl FlowTable {
     }
     pub fn iter_tsn<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
         self.arena.tsns.iter()
-    }
-    pub fn check_exist(&self, id: usize) -> bool {
-        self.get_info(id).is_some()
     }
     pub fn is_same_flow_list(&self, other: &FlowTable) -> bool {
         let a = &*self.arena as *const FlowArena;
@@ -212,11 +209,9 @@ impl FlowTable {
     }
     /// 不管是否和本來相同，硬是更新
     pub fn update_info_force_diff(&mut self, id: usize, info: usize) {
-        if !self.check_exist(id) {
-            match self.arena.get(id).unwrap() {
-                Either::TSN(_, _) => self.tsn_diff.push(id),
-                Either::AVB(_, _) => self.avb_diff.push(id),
-            }
+        match self.arena.get(id).unwrap() {
+            Either::TSN(_, _) => self.tsn_diff.push(id),
+            Either::AVB(_, _) => self.avb_diff.push(id),
         }
         self.infos[id] = Action::Move(info);
     }
