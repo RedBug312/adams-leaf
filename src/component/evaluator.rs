@@ -1,4 +1,4 @@
-use crate::utils::stream::{AVBFlow, FlowID};
+use crate::utils::stream::AVBFlow;
 use crate::network::MemorizingGraph;
 use crate::component::{flowtable::*, GCL};
 
@@ -33,7 +33,7 @@ fn wcd_on_single_link(
     flow: &AVBFlow,
     bandwidth: f64,
     flow_table: &FlowTable,
-    overlap_flow_id: &Vec<FlowID>,
+    overlap_flow_id: &Vec<usize>,
 ) -> f64 {
     let mut wcd = 0.0;
     // MAX None AVB
@@ -127,7 +127,7 @@ mod test {
         let gcl = GCL::new(10, g.get_edge_cnt());
         (MemorizingGraph::new(g), flows, flow_table, gcl)
     }
-    fn build_flowid_vec(v: Vec<usize>) -> Vec<FlowID> {
+    fn build_flowid_vec(v: Vec<usize>) -> Vec<usize> {
         v.into_iter().map(|i| i.into()).collect()
     }
     #[test]

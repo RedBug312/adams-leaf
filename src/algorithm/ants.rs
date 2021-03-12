@@ -1,6 +1,6 @@
 use super::RoutingAlgo;
 use crate::utils::config::Config;
-use crate::utils::stream::{AVBFlow, Flow, FlowID, TSNFlow};
+use crate::utils::stream::{AVBFlow, Flow, TSNFlow};
 use crate::network::Network;
 use crate::component::{NetworkWrapper, RoutingCost};
 use super::aco::ACO;
@@ -56,7 +56,7 @@ impl RoutingAlgo for AdamsAnt {
         self.wrapper.insert(tsns, avbs, 0);
 
         self.aco
-            .extend_state_len(self.wrapper.get_flow_table().get_max_id().0 + 1);
+            .extend_state_len(self.wrapper.get_flow_table().get_max_id() + 1);
 
         do_aco(
             self,
@@ -64,24 +64,24 @@ impl RoutingAlgo for AdamsAnt {
         );
         self.compute_time = init_time.elapsed().as_micros();
     }
-    fn get_rerouted_flows(&self) -> &Vec<FlowID> {
+    fn get_rerouted_flows(&self) -> &Vec<usize> {
         unimplemented!();
     }
-    fn get_route(&self, id: FlowID) -> &Vec<usize> {
+    fn get_route(&self, id: usize) -> &Vec<usize> {
         self.wrapper.get_route(id)
     }
     fn show_results(&self) {
         println!("TT Flows:");
         for flow in self.wrapper.get_flow_table().iter_tsn() {
             let route = self.get_route(flow.id);
-            println!("flow id = {:?}, route = {:?}", flow.id, route);
+            println!("flow id = FlowID({:?}), route = {:?}", flow.id, route);
         }
         println!("AVB Flows:");
         for flow in self.wrapper.get_flow_table().iter_avb() {
             let route = self.get_route(flow.id);
             let cost = self.wrapper.compute_single_avb_cost(flow);
             println!(
-                "flow id = {:?}, route = {:?} avb wcd / max latency = {:?}, reroute = {}",
+                "flow id = FlowID({:?}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",
                 flow.id, route, cost.avb_wcd, cost.reroute_overhead
             );
         }

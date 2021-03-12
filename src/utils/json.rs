@@ -18,7 +18,7 @@ fn read_flows_from_file_once(tsns: &mut Vec<TSNFlow>, avbs: &mut Vec<AVBFlow>, f
         serde_json::from_str(&txt).expect(&format!("無法解析檔案: {}", file_name));
     for cur_flow in all_flows.tt_flows.iter() {
         tsns.push(Flow {
-            id: 0.into(),
+            id: 0,
             size: cur_flow.size,
             src: cur_flow.src,
             dst: cur_flow.dst,
@@ -31,7 +31,7 @@ fn read_flows_from_file_once(tsns: &mut Vec<TSNFlow>, avbs: &mut Vec<AVBFlow>, f
     }
     for cur_flow in all_flows.avb_flows.iter() {
         avbs.push(Flow {
-            id: 0.into(),
+            id: 0,
             size: cur_flow.size,
             src: cur_flow.src,
             dst: cur_flow.dst,

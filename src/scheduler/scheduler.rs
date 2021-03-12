@@ -1,4 +1,4 @@
-use crate::utils::stream::{FlowID, TSNFlow};
+use crate::utils::stream::TSNFlow;
 use crate::component::GCL;
 use crate::component::flowtable::FlowTable;
 use crate::MAX_QUEUE;
@@ -25,8 +25,8 @@ use std::cmp::Ordering;
 /// * `period` - 週期短的要排前面
 /// * `route length` - 路徑長的要排前面
 fn cmp_flow<F: Fn(&TSNFlow, usize) -> Links>(
-    id1: FlowID,
-    id2: FlowID,
+    id1: usize,
+    id2: usize,
     table: &FlowTable,
     get_links: F,
 ) -> Ordering {
@@ -82,7 +82,7 @@ fn schedule_fixed_og<F: Fn(&TSNFlow, usize) -> Links>(
     table: &FlowTable,
     gcl: &mut GCL,
     get_links: F,
-    tsns: &Vec<FlowID>,
+    tsns: &Vec<usize>,
 ) -> Result<(), ()> {
     let mut tsn_ids = tsns.clone();
     tsn_ids.sort_by(|&id1, &id2| cmp_flow(id1, id2, table, |f, t| get_links(f, t)));

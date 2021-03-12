@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use crate::{network::MemorizingGraph, utils::stream::{AVBFlow, FlowID, TSNFlow}};
+use crate::{network::MemorizingGraph, utils::stream::{AVBFlow, TSNFlow}};
 use crate::network::Network;
 use crate::component::flowtable::FlowTable;
 use crate::component::GCL;
@@ -52,13 +52,13 @@ impl NetworkWrapper {
         old_new_table.insert_xxx(new_ids);
         self.old_new_table = Some(Rc::new(old_new_table));
     }
-    pub fn get_route(&self, flow_id: FlowID) -> &Route {
+    pub fn get_route(&self, flow_id: usize) -> &Route {
         let (src, dst) = self.flow_table.ends(flow_id);
         let info = self.flow_table.get_info(flow_id).unwrap();
         let route = (self.get_route_func)(src, dst, info);
         unsafe { &*route }
     }
-    pub fn get_old_route(&self, flow_id: FlowID) -> Option<usize> {
+    pub fn get_old_route(&self, flow_id: usize) -> Option<usize> {
         if let Some(t) = self
             .old_new_table
             .as_ref()

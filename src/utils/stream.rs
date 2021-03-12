@@ -1,16 +1,3 @@
-#[derive(Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd, Debug)]
-pub struct FlowID(pub(crate) usize);
-impl From<usize> for FlowID {
-    fn from(i: usize) -> Self {
-        FlowID(i)
-    }
-}
-impl Into<usize> for FlowID {
-    fn into(self) -> usize {
-        self.0
-    }
-}
-
 pub mod data {
     #[derive(Clone, Copy, Debug)]
     pub enum AVBClass {
@@ -46,7 +33,7 @@ pub mod data {
 
 #[derive(Clone, Debug)]
 pub struct Flow<T: Clone> {
-    pub id: FlowID,
+    pub id: usize,
     pub size: usize,
     pub src: usize,
     pub dst: usize,

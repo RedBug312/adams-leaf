@@ -1,5 +1,4 @@
 use super::Network;
-use crate::utils::stream::FlowID;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -7,7 +6,7 @@ use std::rc::Rc;
 #[derive(Clone)]
 pub struct MemorizingGraph {
     inner: Rc<Network>,
-    edge_info: HashMap<(usize, usize), HashSet<FlowID>>,
+    edge_info: HashMap<(usize, usize), HashSet<usize>>,
 }
 
 impl std::ops::Deref for MemorizingGraph {
@@ -19,7 +18,7 @@ impl std::ops::Deref for MemorizingGraph {
 
 impl MemorizingGraph {
     pub fn new(graph: Network) -> Self {
-        let mut edge_info = HashMap::<(usize, usize), HashSet<FlowID>>::new();
+        let mut edge_info = HashMap::<(usize, usize), HashSet<usize>>::new();
         for (key, _) in graph.edges.iter() {
             edge_info.insert(key.clone(), HashSet::new());
         }
@@ -34,7 +33,7 @@ impl MemorizingGraph {
     /// * `remember` - 布林值，記憶或是遺忘路徑
     /// * `flow_id` - 要記憶或遺忘的資料流ID
     /// * `route` - 該路徑(以節點組成)
-    pub fn update_flowid_on_route(&mut self, remember: bool, flow_id: FlowID, route: &Vec<usize>) {
+    pub fn update_flowid_on_route(&mut self, remember: bool, flow_id: usize, route: &Vec<usize>) {
         for i in 0..route.len() - 1 {
             let set = self.edge_info.get_mut(&(route[i], route[i + 1])).unwrap();
             if remember {
@@ -53,7 +52,7 @@ impl MemorizingGraph {
     /// 詢問一條路徑上所有共用過邊的資料流。針對路上每個邊都會回傳一個陣列，內含走了這個邊的資料流（空陣列代表無人走過）
     ///
     /// __注意：方向不同者不視為共用！__
-    pub fn get_overlap_flows(&self, route: &Vec<usize>) -> Vec<Vec<FlowID>> {
+    pub fn get_overlap_flows(&self, route: &Vec<usize>) -> Vec<Vec<usize>> {
         // TODO 回傳的 Vec<Vec> 有優化空間
         let mut ret = Vec::with_capacity(route.len() - 1);
         for i in 0..route.len() - 1 {
@@ -71,7 +70,7 @@ impl MemorizingGraph {
 mod test {
     use super::super::*;
     use super::*;
-    fn build_id_vec(v: Vec<usize>) -> Vec<FlowID> {
+    fn build_id_vec(v: Vec<usize>) -> Vec<usize> {
         v.into_iter().map(|i| i.into()).collect()
     }
     #[test]
@@ -87,7 +86,7 @@ mod test {
 
         let mut g = MemorizingGraph::new(g);
 
-        let mut ans: Vec<Vec<FlowID>> = vec![vec![], vec![], vec![]];
+        let mut ans: Vec<Vec<usize>> = vec![vec![], vec![], vec![]];
         assert_eq!(ans, g.get_overlap_flows(&vec![0, 3, 2, 1]));
 
         g.update_flowid_on_route(true, 0.into(), &vec![2, 3, 4]);

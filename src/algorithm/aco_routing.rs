@@ -33,11 +33,11 @@ fn compute_visibility(algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
     for flow in algo.wrapper.get_flow_table().iter_avb() {
         let id = flow.id;
         for i in 0..algo.get_candidate_count(flow) {
-            vis[id.0][i] = 1.0 / algo.wrapper.compute_avb_wcd(flow, Some(i)) as f64;
+            vis[id][i] = 1.0 / algo.wrapper.compute_avb_wcd(flow, Some(i)) as f64;
         }
         if let Some(route_k) = algo.wrapper.get_old_route(id) {
             // 是舊資料流，調高本來路徑的能見度
-            vis[id.0][route_k] *= config.avb_memory;
+            vis[id][route_k] *= config.avb_memory;
         }
     }
     for flow in algo.wrapper.get_flow_table().iter_tsn() {
@@ -45,12 +45,12 @@ fn compute_visibility(algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
         for i in 0..algo.get_candidate_count(flow) {
             let yens = algo.yens_algo.borrow();
             let route = yens.kth_shortest_path(flow.src, flow.dst, i).unwrap();
-            vis[id.0][i] = 1.0 / route.len() as f64;
+            vis[id][i] = 1.0 / route.len() as f64;
         }
 
         if let Some(route_k) = algo.wrapper.get_old_route(id) {
             // 是舊資料流，調高本來路徑的能見度
-            vis[id.0][route_k] *= config.tsn_memory;
+            vis[id][route_k] *= config.tsn_memory;
         }
     }
     vis

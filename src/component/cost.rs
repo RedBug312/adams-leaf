@@ -1,5 +1,5 @@
 use super::{compute_avb_latency, NetworkWrapper, FlowTable};
-use crate::utils::{config::Config, stream::FlowID};
+use crate::utils::config::Config;
 use crate::utils::stream::AVBFlow;
 
 #[derive(Clone, Copy, Debug)]
@@ -142,7 +142,7 @@ impl Calculator for NetworkWrapper {
     }
 }
 
-fn is_rerouted(id: FlowID, route: usize, old_new_table: &FlowTable) -> bool {
+fn is_rerouted(id: usize, route: usize, old_new_table: &FlowTable) -> bool {
     if let Some(old_route) = old_new_table.get_info(id) {
         route != old_route
     } else {
