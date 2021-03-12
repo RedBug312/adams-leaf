@@ -4,7 +4,6 @@ use crate::network::Network;
 use crate::component::{NetworkWrapper, RoutingCost};
 use super::base::yens::YensAlgo;
 use std::{cell::RefCell, rc::Rc, time::Instant};
-use crate::component::IFlowTable;
 
 fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
     match flow {
@@ -15,7 +14,7 @@ fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
 
 pub struct SPF {
     compute_time: u128,
-    wrapper: NetworkWrapper<usize>,
+    wrapper: NetworkWrapper,
 }
 
 impl SPF {
@@ -57,12 +56,12 @@ impl RoutingAlgo for SPF {
     }
     fn show_results(&self) {
         println!("TT Flows:");
-        for (flow, _) in self.wrapper.get_flow_table().iter_tsn() {
+        for flow in self.wrapper.get_flow_table().iter_tsn() {
             let route = self.get_route(flow.id);
             println!("flow id = {:?}, route = {:?}", flow.id, route);
         }
         println!("AVB Flows:");
-        for (flow, _) in self.wrapper.get_flow_table().iter_avb() {
+        for flow in self.wrapper.get_flow_table().iter_avb() {
             let route = self.get_route(flow.id);
             let cost = self.wrapper.compute_single_avb_cost(flow);
             println!(

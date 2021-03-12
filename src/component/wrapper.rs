@@ -1,30 +1,28 @@
+use std::rc::Rc;
 use crate::{network::MemorizingGraph, utils::stream::{AVBFlow, FlowEnum, FlowID, TSNFlow}};
 use crate::network::Network;
-use crate::component::flowtable::{IFlowTable, FlowTable, DiffFlowTable};
+use crate::component::flowtable::FlowTable;
 use crate::component::GCL;
-use std::rc::Rc;
-
 use super::cost::{RoutingCost, Calculator};
-use super::oldnewtable::{OldNew, OldNewTable};
 use crate::scheduler::schedule_online;
 
 type Route = Vec<usize>;
 
 /// 這個結構預期會被複製很多次，因此其中的每個元件都應儘可能想辦法降低複製成本
 #[derive(Clone)]
-pub struct NetworkWrapper<T: Clone + Eq> {
-    pub flow_table: FlowTable<T>,
-    pub old_new_table: Option<Rc<OldNewTable<T>>>, // 在每次運算中類似常數，故用 RC 來包
-    pub get_route_func: Rc<dyn Fn(&FlowEnum, &T) -> *const Route>,
+pub struct NetworkWrapper {
+    pub flow_table: FlowTable,
+    pub old_new_table: Option<Rc<FlowTable>>, // 在每次運算中類似常數，故用 RC 來包
+    pub get_route_func: Rc<dyn Fn(&FlowEnum, usize) -> *const Route>,
     pub gcl: GCL,
     pub graph: MemorizingGraph,
     pub tsn_fail: bool,
 }
 
-impl<T: Clone + Eq> NetworkWrapper<T> {
+impl NetworkWrapper {
     pub fn new<F>(graph: Network, get_route_func: F) -> Self
     where
-        F: 'static + Fn(&FlowEnum, &T) -> *const Route,
+        F: 'static + Fn(&FlowEnum, usize) -> *const Route,
     {
         NetworkWrapper {
             flow_table: FlowTable::new(),
@@ -36,7 +34,7 @@ impl<T: Clone + Eq> NetworkWrapper<T> {
         }
     }
     /// 插入新的資料流，同時會捨棄先前的新舊表，並創建另一份新舊表
-    pub fn insert(&mut self, tsns: Vec<TSNFlow>, avbs: Vec<AVBFlow>, default_info: T) {
+    pub fn insert(&mut self, tsns: Vec<TSNFlow>, avbs: Vec<AVBFlow>, default_info: usize) {
         // 釋放舊的表備份表
         self.old_new_table = None;
         // 插入
@@ -44,19 +42,14 @@ impl<T: Clone + Eq> NetworkWrapper<T> {
         let mut reconf = self.flow_table.clone_as_diff();
 
         for &flow_id in new_ids.iter() {
-            reconf.update_info_force(flow_id, default_info.clone());
+            reconf.update_info_force_diff(flow_id, default_info.clone());
         }
 
         self.update_avb(&reconf);
         self.update_tsn(&reconf);
 
-        let old_new_table = self.flow_table.clone_as_type(|id, t| {
-            if reconf.check_exist(id) {
-                OldNew::New
-            } else {
-                OldNew::Old(t.clone())
-            }
-        });
+        let mut old_new_table = self.flow_table.clone();
+        old_new_table.insert_xxx(new_ids);
         self.old_new_table = Some(Rc::new(old_new_table));
     }
     pub fn get_route(&self, flow_id: FlowID) -> &Route {
@@ -65,20 +58,19 @@ impl<T: Clone + Eq> NetworkWrapper<T> {
         let route = (self.get_route_func)(flow_enum, info);
         unsafe { &*route }
     }
-    pub fn get_old_route(&self, flow_id: FlowID) -> Option<&T> {
-        if let OldNew::Old(t) = self
+    pub fn get_old_route(&self, flow_id: FlowID) -> Option<usize> {
+        if let Some(t) = self
             .old_new_table
             .as_ref()
             .unwrap()
             .get_info(flow_id)
-            .unwrap()
         {
             Some(t)
         } else {
             None
         }
     }
-    pub fn update_single_avb(&mut self, flow: &AVBFlow, info: T) {
+    pub fn update_single_avb(&mut self, flow: &AVBFlow, info: usize) {
         // NOTE: 因為 self.graph 與 self.get_route 是平行所有權
         let graph = unsafe { &mut (*(self as *mut Self)).graph };
         let og_route = self.get_route(flow.id);
@@ -90,16 +82,17 @@ impl<T: Clone + Eq> NetworkWrapper<T> {
         graph.update_flowid_on_route(true, flow.id, new_route);
     }
     /// 更新 AVB 資料流表與圖上資訊
-    pub fn update_avb(&mut self, diff: &DiffFlowTable<T>) {
-        for (flow, info) in diff.iter_avb() {
+    pub fn update_avb(&mut self, diff: &FlowTable) {
+        for flow in diff.iter_avb_diff() {
+            let info = diff.get_info(flow.id).unwrap();
             self.update_single_avb(flow, info.clone());
         }
     }
     /// 更新 TSN 資料流表與 GCL
-    pub fn update_tsn(&mut self, diff: &DiffFlowTable<T>) {
+    pub fn update_tsn(&mut self, diff: &FlowTable) {
         // NOTE: 在 schedule_online 函式中就會更新資料流表（這當然是個不太好的實作……）
         //       因此在這裡就不用執行 self.flow_table.update_info()
-        for (flow, _) in diff.iter_tsn() {
+        for flow in diff.iter_tsn_diff() {
             // NOTE: 拔除 GCL
             let route = self.get_route(flow.id);
             let links = self
@@ -126,11 +119,11 @@ impl<T: Clone + Eq> NetworkWrapper<T> {
             self.tsn_fail = false;
         }
     }
-    pub fn get_flow_table(&self) -> &FlowTable<T> {
+    pub fn get_flow_table(&self) -> &FlowTable {
         &self.flow_table
     }
     /// 路徑為可選參數，若不給代表照資料流表來走
-    pub fn compute_avb_wcd(&self, flow: &AVBFlow, route: Option<&T>) -> u32 {
+    pub fn compute_avb_wcd(&self, flow: &AVBFlow, route: Option<usize>) -> u32 {
         self._compute_avb_wcd(flow, route)
     }
     pub fn compute_all_cost(&self) -> RoutingCost {

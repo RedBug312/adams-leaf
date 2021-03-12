@@ -6,7 +6,6 @@ use crate::component::{NetworkWrapper, RoutingCost};
 use super::aco::ACO;
 use super::base::yens::YensAlgo;
 use crate::MAX_K;
-use crate::component::IFlowTable;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -24,7 +23,7 @@ fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
 pub struct AdamsAnt {
     pub aco: ACO,
     pub yens_algo: Rc<RefCell<YensAlgo>>,
-    pub wrapper: NetworkWrapper<usize>,
+    pub wrapper: NetworkWrapper,
     pub compute_time: u128,
 }
 impl AdamsAnt {
@@ -32,7 +31,7 @@ impl AdamsAnt {
         let yens_algo = Rc::new(RefCell::new(YensAlgo::default()));
         let tmp_yens = yens_algo.clone();
         tmp_yens.borrow_mut().compute(&g, MAX_K);
-        let wrapper = NetworkWrapper::new(g, move |flow_enum, &k| {
+        let wrapper = NetworkWrapper::new(g, move |flow_enum, k| {
             let (src, dst) = get_src_dst(flow_enum);
             tmp_yens.borrow().kth_shortest_path(src, dst, k).unwrap() as *const Vec<usize>
         });
@@ -81,12 +80,12 @@ impl RoutingAlgo for AdamsAnt {
     }
     fn show_results(&self) {
         println!("TT Flows:");
-        for (flow, _) in self.wrapper.get_flow_table().iter_tsn() {
+        for flow in self.wrapper.get_flow_table().iter_tsn() {
             let route = self.get_route(flow.id);
             println!("flow id = {:?}, route = {:?}", flow.id, route);
         }
         println!("AVB Flows:");
-        for (flow, _) in self.wrapper.get_flow_table().iter_avb() {
+        for flow in self.wrapper.get_flow_table().iter_avb() {
             let route = self.get_route(flow.id);
             let cost = self.wrapper.compute_single_avb_cost(flow);
             println!(

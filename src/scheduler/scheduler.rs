@@ -1,9 +1,10 @@
 use crate::utils::stream::{FlowID, TSNFlow};
-use crate::component::{flowtable::*, GCL};
+use crate::component::GCL;
+use crate::component::flowtable::FlowTable;
 use crate::MAX_QUEUE;
 
-type FT<T> = FlowTable<T>;
-type DT<T> = DiffFlowTable<T>;
+type FT = FlowTable;
+type DT = FlowTable;
 type Links = Vec<((usize, usize), f64)>;
 
 const MTU: usize = 1500;
@@ -23,10 +24,10 @@ use std::cmp::Ordering;
 /// * `deadline` - 時間較緊的要排前面
 /// * `period` - 週期短的要排前面
 /// * `route length` - 路徑長的要排前面
-fn cmp_flow<T: Eq + Clone, TABLE: IFlowTable<INFO = T>, F: Fn(&TSNFlow, &T) -> Links>(
+fn cmp_flow<F: Fn(&TSNFlow, usize) -> Links>(
     id1: FlowID,
     id2: FlowID,
-    table: &TABLE,
+    table: &FlowTable,
     get_links: F,
 ) -> Ordering {
     let flow1 = table.get_tsn(id1).unwrap();
@@ -59,17 +60,17 @@ fn cmp_flow<T: Eq + Clone, TABLE: IFlowTable<INFO = T>, F: Fn(&TSNFlow, &T) -> L
 /// * `changed_table` - 被改動到的那部份資料流，包含新增與換路徑
 /// * `gcl` - 本來的 Gate Control List
 /// * 回傳 - Ok(false) 代表沒事發生，Ok(true) 代表發生大洗牌
-pub fn schedule_online<T: Eq + Clone, F: Fn(&TSNFlow, &T) -> Links>(
-    og_table: &mut FT<T>,
-    changed_table: &DT<T>,
+pub fn schedule_online<F: Fn(&TSNFlow, usize) -> Links>(
+    og_table: &mut FT,
+    changed_table: &DT,
     gcl: &mut GCL,
     get_links: F,
 ) -> Result<bool, ()> {
-    let result = schedule_fixed_og(changed_table, gcl, |f, t| get_links(f, t));
+    let result = schedule_fixed_og(changed_table, gcl, |f, t| get_links(f, t), &changed_table.tsn_diff);
     og_table.apply_diff(true, changed_table);
     if !result.is_ok() {
         gcl.clear();
-        schedule_fixed_og(og_table, gcl, |f, t| get_links(f, t))?;
+        schedule_fixed_og(og_table, gcl, |f, t| get_links(f, t), &og_table.arena.tsns)?;
         Ok(true)
     } else {
         Ok(false)
@@ -77,15 +78,13 @@ pub fn schedule_online<T: Eq + Clone, F: Fn(&TSNFlow, &T) -> Links>(
 }
 
 /// 也可以當作離線排程算法來使用
-fn schedule_fixed_og<T: Eq + Clone, TABLE: IFlowTable<INFO = T>, F: Fn(&TSNFlow, &T) -> Links>(
-    table: &TABLE,
+fn schedule_fixed_og<F: Fn(&TSNFlow, usize) -> Links>(
+    table: &FlowTable,
     gcl: &mut GCL,
     get_links: F,
+    tsns: &Vec<FlowID>,
 ) -> Result<(), ()> {
-    let mut tsn_ids = Vec::<FlowID>::new();
-    for (flow, _) in table.iter_tsn() {
-        tsn_ids.push(flow.id);
-    }
+    let mut tsn_ids = tsns.clone();
     tsn_ids.sort_by(|&id1, &id2| cmp_flow(id1, id2, table, |f, t| get_links(f, t)));
     for flow_id in tsn_ids.into_iter() {
         let flow = table.get_tsn(flow_id).unwrap();
@@ -146,6 +145,8 @@ fn schedule_fixed_og<T: Eq + Clone, TABLE: IFlowTable<INFO = T>, F: Fn(&TSNFlow,
     }
     Ok(())
 }
+
+
 
 /// 回傳值為為一個陣列，若其長度小於路徑長，代表排一排爆開
 fn calculate_offsets(
@@ -253,6 +254,3 @@ fn miss_deadline(cur_offset: u32, trans_time: u32, flow: &TSNFlow) -> bool {
         false
     }
 }
-
-#[cfg(test)]
-mod test;

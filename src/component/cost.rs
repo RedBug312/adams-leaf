@@ -1,7 +1,6 @@
-use super::{compute_avb_latency, NetworkWrapper, OldNew, OldNewTable};
+use super::{compute_avb_latency, NetworkWrapper, FlowTable};
 use crate::utils::config::Config;
 use crate::utils::stream::{AVBFlow, FlowEnum};
-use crate::component::IFlowTable;
 
 #[derive(Clone, Copy, Debug)]
 pub struct RoutingCost {
@@ -68,14 +67,14 @@ impl RoutingCost {
     }
 }
 
-pub trait Calculator<T: Clone + Eq> {
-    fn _compute_avb_wcd(&self, flow: &AVBFlow, route: Option<&T>) -> u32;
+pub trait Calculator {
+    fn _compute_avb_wcd(&self, flow: &AVBFlow, route: Option<usize>) -> u32;
     fn _compute_single_avb_cost(&self, flow: &AVBFlow) -> RoutingCost;
     fn _compute_all_cost(&self) -> RoutingCost;
 }
 
-impl<T: Clone + Eq> Calculator<T> for NetworkWrapper<T> {
-    fn _compute_avb_wcd(&self, flow: &AVBFlow, route: Option<&T>) -> u32 {
+impl Calculator for NetworkWrapper {
+    fn _compute_avb_wcd(&self, flow: &AVBFlow, route: Option<usize>) -> u32 {
         let route_t = route.unwrap_or(self.flow_table.get_info(flow.id).unwrap());
         let route = unsafe {
             let r = (self.get_route_func)(self.flow_table.get(flow.id).unwrap(), route_t);
@@ -111,7 +110,7 @@ impl<T: Clone + Eq> Calculator<T> for NetworkWrapper<T> {
         let mut all_avb_fail_cnt = 0;
         let mut all_avb_wcd = 0.0;
         let mut all_reroute_cnt = 0;
-        for (flow, t) in self.flow_table.iter() {
+        for flow in self.flow_table.iter() {
             if let FlowEnum::AVB(flow) = flow {
                 let wcd = self._compute_avb_wcd(flow, None);
                 all_avb_wcd += wcd as f64 / flow.max_delay as f64;
@@ -120,6 +119,8 @@ impl<T: Clone + Eq> Calculator<T> for NetworkWrapper<T> {
                     all_avb_fail_cnt += 1;
                 }
             }
+            let t = self.flow_table.get_info(flow.id())
+                .expect("Failed get info from flowtable");
             if is_rerouted(flow, t, self.old_new_table.as_ref().unwrap()) {
                 all_reroute_cnt += 1;
             }
@@ -135,12 +136,12 @@ impl<T: Clone + Eq> Calculator<T> for NetworkWrapper<T> {
     }
 }
 
-fn is_rerouted<T: Clone + Eq>(flow: &FlowEnum, route: &T, old_new_table: &OldNewTable<T>) -> bool {
+fn is_rerouted(flow: &FlowEnum, route: usize, old_new_table: &FlowTable) -> bool {
     let id = match flow {
         FlowEnum::AVB(flow) => flow.id,
         FlowEnum::TSN(flow) => flow.id,
     };
-    if let OldNew::Old(old_route) = old_new_table.get_info(id).unwrap() {
+    if let Some(old_route) = old_new_table.get_info(id) {
         route != old_route
     } else {
         false

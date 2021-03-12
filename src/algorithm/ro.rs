@@ -3,7 +3,6 @@ use crate::utils::config::Config;
 use crate::utils::stream::{AVBFlow, Flow, FlowEnum, FlowID, TSNFlow};
 use crate::network::Network;
 use crate::component::{NetworkWrapper, RoutingCost};
-use crate::component::IFlowTable;
 use super::base::yens::YensAlgo;
 use crate::MAX_K;
 use rand::{Rng, SeedableRng};
@@ -35,7 +34,7 @@ fn gen_n_distinct_outof_k(n: usize, k: usize, rng: &mut ChaChaRng) -> Vec<usize>
 pub struct RO {
     yens_algo: Rc<RefCell<YensAlgo>>,
     compute_time: u128,
-    wrapper: NetworkWrapper<usize>,
+    wrapper: NetworkWrapper,
 }
 
 impl RO {
@@ -43,7 +42,7 @@ impl RO {
         let yens_algo = Rc::new(RefCell::new(YensAlgo::default()));
         let tmp_yens = yens_algo.clone();
         tmp_yens.borrow_mut().compute(&g, MAX_K);
-        let wrapper = NetworkWrapper::new(g, move |flow_enum, &k| {
+        let wrapper = NetworkWrapper::new(g, move |flow_enum, k| {
             let (src, dst) = get_src_dst(flow_enum);
             tmp_yens.borrow().kth_shortest_path(src, dst, k).unwrap() as *const Vec<usize>
         });
@@ -63,12 +62,12 @@ impl RO {
             // PHASE 1
             let mut cur_wrapper = self.wrapper.clone();
             let mut diff = cur_wrapper.get_flow_table().clone_as_diff();
-            for (flow, _) in cur_wrapper.get_flow_table().iter_avb() {
+            for flow in cur_wrapper.get_flow_table().iter_avb() {
                 let candidate_cnt = self.get_candidate_count(flow);
                 let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
                 let set = gen_n_distinct_outof_k(alpha, candidate_cnt, &mut rng);
                 let new_route = self.find_min_cost_route(flow, Some(set));
-                diff.update_info(flow.id, new_route);
+                diff.update_info_diff(flow.id, new_route);
             }
             cur_wrapper.update_avb(&diff);
             // PHASE 2
@@ -94,7 +93,7 @@ impl RO {
     fn find_min_cost_route(&self, flow: &AVBFlow, set: Option<Vec<usize>>) -> usize {
         let (mut min_cost, mut best_k) = (std::f64::MAX, 0);
         let mut closure = |k: usize| {
-            let cost = self.wrapper.compute_avb_wcd(flow, Some(&k)) as f64;
+            let cost = self.wrapper.compute_avb_wcd(flow, Some(k)) as f64;
             if cost < min_cost {
                 min_cost = cost;
                 best_k = k;
@@ -116,7 +115,7 @@ impl RO {
         rng: &mut ChaChaRng,
         time: &std::time::Instant,
         min_cost: &mut RoutingCost,
-        mut cur_wrapper: NetworkWrapper<usize>,
+        mut cur_wrapper: NetworkWrapper,
     ) {
         let mut iter_times = 0;
         while time.elapsed().as_micros() < Config::get().t_limit {
@@ -137,7 +136,7 @@ impl RO {
             };
 
             let new_route = self.find_min_cost_route(target_flow, None);
-            let old_route = *self
+            let old_route = self
                 .wrapper
                 .get_flow_table()
                 .get_info(target_flow.id)
@@ -199,12 +198,12 @@ impl RoutingAlgo for RO {
     }
     fn show_results(&self) {
         println!("TT Flows:");
-        for (flow, _) in self.wrapper.get_flow_table().iter_tsn() {
+        for flow in self.wrapper.get_flow_table().iter_tsn() {
             let route = self.get_route(flow.id);
             println!("flow id = {:?}, route = {:?}", flow.id, route);
         }
         println!("AVB Flows:");
-        for (flow, _) in self.wrapper.get_flow_table().iter_avb() {
+        for flow in self.wrapper.get_flow_table().iter_avb() {
             let route = self.get_route(flow.id);
             let cost = self.wrapper.compute_single_avb_cost(flow);
             println!(
