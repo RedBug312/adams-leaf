@@ -1,6 +1,6 @@
 use super::RoutingAlgo;
 use crate::utils::config::Config;
-use crate::utils::stream::{AVBFlow, Flow, FlowEnum, FlowID, TSNFlow};
+use crate::utils::stream::{AVBFlow, Flow, FlowID, TSNFlow};
 use crate::network::Network;
 use crate::component::{NetworkWrapper, RoutingCost};
 use super::aco::ACO;
@@ -13,13 +13,6 @@ use std::time::Instant;
 
 use super::aco_routing::do_aco;
 
-fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
-    match flow {
-        FlowEnum::AVB(flow) => (flow.src, flow.dst),
-        FlowEnum::TSN(flow) => (flow.src, flow.dst),
-    }
-}
-
 pub struct AdamsAnt {
     pub aco: ACO,
     pub yens_algo: Rc<RefCell<YensAlgo>>,
@@ -31,8 +24,7 @@ impl AdamsAnt {
         let yens_algo = Rc::new(RefCell::new(YensAlgo::default()));
         let tmp_yens = yens_algo.clone();
         tmp_yens.borrow_mut().compute(&g, MAX_K);
-        let wrapper = NetworkWrapper::new(g, move |flow_enum, k| {
-            let (src, dst) = get_src_dst(flow_enum);
+        let wrapper = NetworkWrapper::new(g, move |src, dst, k| {
             tmp_yens.borrow().kth_shortest_path(src, dst, k).unwrap() as *const Vec<usize>
         });
 

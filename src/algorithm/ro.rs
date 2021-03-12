@@ -1,6 +1,6 @@
 use super::RoutingAlgo;
 use crate::utils::config::Config;
-use crate::utils::stream::{AVBFlow, Flow, FlowEnum, FlowID, TSNFlow};
+use crate::utils::stream::{AVBFlow, Flow, FlowID, TSNFlow};
 use crate::network::Network;
 use crate::component::{NetworkWrapper, RoutingCost};
 use super::base::yens::YensAlgo;
@@ -12,13 +12,6 @@ use std::rc::Rc;
 use std::time::Instant;
 
 const ALPHA_PORTION: f64 = 0.5;
-
-fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
-    match flow {
-        FlowEnum::AVB(flow) => (flow.src, flow.dst),
-        FlowEnum::TSN(flow) => (flow.src, flow.dst),
-    }
-}
 
 fn gen_n_distinct_outof_k(n: usize, k: usize, rng: &mut ChaChaRng) -> Vec<usize> {
     let mut vec = Vec::with_capacity(n);
@@ -42,8 +35,7 @@ impl RO {
         let yens_algo = Rc::new(RefCell::new(YensAlgo::default()));
         let tmp_yens = yens_algo.clone();
         tmp_yens.borrow_mut().compute(&g, MAX_K);
-        let wrapper = NetworkWrapper::new(g, move |flow_enum, k| {
-            let (src, dst) = get_src_dst(flow_enum);
+        let wrapper = NetworkWrapper::new(g, move |src, dst, k| {
             tmp_yens.borrow().kth_shortest_path(src, dst, k).unwrap() as *const Vec<usize>
         });
         RO {

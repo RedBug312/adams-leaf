@@ -1,6 +1,6 @@
 use super::{compute_avb_latency, NetworkWrapper, FlowTable};
-use crate::utils::config::Config;
-use crate::utils::stream::{AVBFlow, FlowEnum};
+use crate::utils::{config::Config, stream::FlowID};
+use crate::utils::stream::AVBFlow;
 
 #[derive(Clone, Copy, Debug)]
 pub struct RoutingCost {
@@ -75,9 +75,10 @@ pub trait Calculator {
 
 impl Calculator for NetworkWrapper {
     fn _compute_avb_wcd(&self, flow: &AVBFlow, route: Option<usize>) -> u32 {
+        let (src, dst) = self.flow_table.ends(flow.id);
         let route_t = route.unwrap_or(self.flow_table.get_info(flow.id).unwrap());
         let route = unsafe {
-            let r = (self.get_route_func)(self.flow_table.get(flow.id).unwrap(), route_t);
+            let r = (self.get_route_func)(src, dst, route_t);
             &*r
         };
         compute_avb_latency(&self.graph, flow, route, &self.flow_table, &self.gcl)
@@ -91,7 +92,7 @@ impl Calculator for NetworkWrapper {
             avb_fail_cnt += 1;
         }
         if is_rerouted(
-            self.flow_table.get(flow.id).unwrap(),
+            flow.id,
             self.flow_table.get_info(flow.id).unwrap(),
             self.old_new_table.as_ref().unwrap(),
         ) {
@@ -110,18 +111,23 @@ impl Calculator for NetworkWrapper {
         let mut all_avb_fail_cnt = 0;
         let mut all_avb_wcd = 0.0;
         let mut all_reroute_cnt = 0;
-        for flow in self.flow_table.iter() {
-            if let FlowEnum::AVB(flow) = flow {
-                let wcd = self._compute_avb_wcd(flow, None);
-                all_avb_wcd += wcd as f64 / flow.max_delay as f64;
-                if wcd > flow.max_delay {
-                    // 逾時了！
-                    all_avb_fail_cnt += 1;
-                }
-            }
-            let t = self.flow_table.get_info(flow.id())
+        for flow in self.flow_table.iter_tsn() {
+            let t = self.flow_table.get_info(flow.id)
                 .expect("Failed get info from flowtable");
-            if is_rerouted(flow, t, self.old_new_table.as_ref().unwrap()) {
+            if is_rerouted(flow.id, t, self.old_new_table.as_ref().unwrap()) {
+                all_reroute_cnt += 1;
+            }
+        }
+        for flow in self.flow_table.iter_avb() {
+            let wcd = self._compute_avb_wcd(flow, None);
+            all_avb_wcd += wcd as f64 / flow.max_delay as f64;
+            if wcd > flow.max_delay {
+                // 逾時了！
+                all_avb_fail_cnt += 1;
+            }
+            let t = self.flow_table.get_info(flow.id)
+                .expect("Failed get info from flowtable");
+            if is_rerouted(flow.id, t, self.old_new_table.as_ref().unwrap()) {
                 all_reroute_cnt += 1;
             }
         }
@@ -136,11 +142,7 @@ impl Calculator for NetworkWrapper {
     }
 }
 
-fn is_rerouted(flow: &FlowEnum, route: usize, old_new_table: &FlowTable) -> bool {
-    let id = match flow {
-        FlowEnum::AVB(flow) => flow.id,
-        FlowEnum::TSN(flow) => flow.id,
-    };
+fn is_rerouted(id: FlowID, route: usize, old_new_table: &FlowTable) -> bool {
     if let Some(old_route) = old_new_table.get_info(id) {
         route != old_route
     } else {

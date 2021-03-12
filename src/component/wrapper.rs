@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use crate::{network::MemorizingGraph, utils::stream::{AVBFlow, FlowEnum, FlowID, TSNFlow}};
+use crate::{network::MemorizingGraph, utils::stream::{AVBFlow, FlowID, TSNFlow}};
 use crate::network::Network;
 use crate::component::flowtable::FlowTable;
 use crate::component::GCL;
@@ -13,7 +13,7 @@ type Route = Vec<usize>;
 pub struct NetworkWrapper {
     pub flow_table: FlowTable,
     pub old_new_table: Option<Rc<FlowTable>>, // 在每次運算中類似常數，故用 RC 來包
-    pub get_route_func: Rc<dyn Fn(&FlowEnum, usize) -> *const Route>,
+    pub get_route_func: Rc<dyn Fn(usize, usize, usize) -> *const Route>,
     pub gcl: GCL,
     pub graph: MemorizingGraph,
     pub tsn_fail: bool,
@@ -22,7 +22,7 @@ pub struct NetworkWrapper {
 impl NetworkWrapper {
     pub fn new<F>(graph: Network, get_route_func: F) -> Self
     where
-        F: 'static + Fn(&FlowEnum, usize) -> *const Route,
+        F: 'static + Fn(usize, usize, usize) -> *const Route,
     {
         NetworkWrapper {
             flow_table: FlowTable::new(),
@@ -53,9 +53,9 @@ impl NetworkWrapper {
         self.old_new_table = Some(Rc::new(old_new_table));
     }
     pub fn get_route(&self, flow_id: FlowID) -> &Route {
-        let flow_enum = self.flow_table.get(flow_id).unwrap();
+        let (src, dst) = self.flow_table.ends(flow_id);
         let info = self.flow_table.get_info(flow_id).unwrap();
-        let route = (self.get_route_func)(flow_enum, info);
+        let route = (self.get_route_func)(src, dst, info);
         unsafe { &*route }
     }
     pub fn get_old_route(&self, flow_id: FlowID) -> Option<usize> {
@@ -107,8 +107,8 @@ impl NetworkWrapper {
         let result = schedule_online(&mut self.flow_table, diff, &mut self.gcl, |cur_flow, k| {
             // NOTE: 因為 self.flow_table.get 和 self.get_route_func 和 self.graph 與其它部份是平行所有權
             unsafe {
-                let flow = (*_self).flow_table.get(cur_flow.id).unwrap();
-                let route = &*(((*_self).get_route_func)(&flow, k));
+                let (src, dst) = (*_self).flow_table.ends(cur_flow.id);
+                let route = &*(((*_self).get_route_func)(src, dst, k));
                 (*_self).graph.get_links_id_bandwidth(route)
             }
         });

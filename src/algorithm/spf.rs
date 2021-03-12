@@ -1,16 +1,9 @@
 use super::RoutingAlgo;
-use crate::{MAX_K, utils::stream::{AVBFlow, FlowEnum, FlowID, TSNFlow}};
+use crate::{MAX_K, utils::stream::{AVBFlow, FlowID, TSNFlow}};
 use crate::network::Network;
 use crate::component::{NetworkWrapper, RoutingCost};
 use super::base::yens::YensAlgo;
 use std::{cell::RefCell, rc::Rc, time::Instant};
-
-fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
-    match flow {
-        FlowEnum::AVB(flow) => (flow.src, flow.dst),
-        FlowEnum::TSN(flow) => (flow.src, flow.dst),
-    }
-}
 
 pub struct SPF {
     compute_time: u128,
@@ -22,8 +15,7 @@ impl SPF {
         let yens_algo = Rc::new(RefCell::new(YensAlgo::default()));
         let tmp_yens = yens_algo.clone();
         tmp_yens.borrow_mut().compute(&g, MAX_K);
-        let wrapper = NetworkWrapper::new(g, move |flow_enum, _| {
-            let (src, dst) = get_src_dst(flow_enum);
+        let wrapper = NetworkWrapper::new(g, move |src, dst, _| {
             tmp_yens.borrow().kth_shortest_path(src, dst, 0).unwrap()
                 as *const Vec<usize>
         });
