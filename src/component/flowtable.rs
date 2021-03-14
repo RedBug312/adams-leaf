@@ -14,33 +14,28 @@ enum Either {
     AVB(usize, AVB),
 }
 
+#[derive(Default)]
 pub struct FlowArena {
     pub avbs: Vec<usize>,
     pub tsns: Vec<usize>,
     streams: Vec<Either>,
-    max_id: usize,
 }
+
+
 impl FlowArena {
     fn new() -> Self {
-        FlowArena {
-            avbs: vec![],
-            tsns: vec![],
-            streams: vec![],
-            max_id: 0,
-        }
+        FlowArena { ..Default::default() }
     }
     fn insert_tsn(&mut self, flow: TSN) -> usize {
         let id = self.streams.len();
         self.tsns.push(id);
         self.streams.push(Either::TSN(id, flow));
-        self.max_id = std::cmp::max(self.max_id, id);
         id
     }
     fn insert_avb(&mut self, flow: AVB) -> usize {
         let id = self.streams.len();
         self.avbs.push(id);
         self.streams.push(Either::AVB(id, flow));
-        self.max_id = std::cmp::max(self.max_id, id);
         id
     }
     fn get(&self, id: usize) -> Option<&Either> {
@@ -78,8 +73,6 @@ impl FlowArena {
 pub struct FlowTable {
     pub arena: Rc<FlowArena>,
     infos: Vec<Action>,
-    avb_cnt: usize,
-    tsn_cnt: usize,
     pub avb_diff: Vec<usize>,
     pub tsn_diff: Vec<usize>,
 }
@@ -88,8 +81,6 @@ impl FlowTable {
         FlowTable {
             infos: vec![],
             arena: Rc::new(FlowArena::new()),
-            avb_cnt: 0,
-            tsn_cnt: 0,
             avb_diff: vec![],
             tsn_diff: vec![],
         }
@@ -123,24 +114,19 @@ impl FlowTable {
             let id = arena.insert_tsn(flow);
             self.infos.push(Action::Init(default_info.clone()));
             id_list.push(id);
-            self.tsn_cnt += 1;
         }
         for flow in avbs.into_iter() {
             let id = arena.insert_avb(flow);
             self.infos.push(Action::Init(default_info.clone()));
             id_list.push(id);
-            self.avb_cnt += 1;
         }
         id_list
     }
-    pub fn iter_avb<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
-        self.arena.avbs.iter()
-    }
     pub fn get_avb_cnt(&self) -> usize {
-        self.avb_cnt
+        self.arena.avbs.len()
     }
     pub fn get_tsn_cnt(&self) -> usize {
-        self.tsn_cnt
+        self.arena.tsns.len()
     }
     pub fn get_info(&self, id: usize) -> Option<usize> {
         match self.infos.get(id) {
@@ -161,6 +147,9 @@ impl FlowTable {
     }
     pub fn iter_tsn<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
         self.arena.tsns.iter()
+    }
+    pub fn iter_avb<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
+        self.arena.avbs.iter()
     }
     pub fn is_same_flow_list(&self, other: &FlowTable) -> bool {
         let a = &*self.arena as *const FlowArena;
@@ -183,7 +172,7 @@ impl FlowTable {
         self.get_tsn_cnt() + self.get_avb_cnt()
     }
     pub fn get_max_id(&self) -> usize {
-        self.arena.max_id
+        self.arena.streams.len() - 1
     }
 }
 
@@ -203,8 +192,6 @@ impl FlowTable {
                     Action::Move(t) => Action::Keep(*t),
                 })
                 .collect(),
-            avb_cnt: 0,
-            tsn_cnt: 0,
         }
     }
     /// 不管是否和本來相同，硬是更新
@@ -214,9 +201,6 @@ impl FlowTable {
             Either::AVB(_, _) => self.avb_diff.push(id),
         }
         self.infos[id] = Action::Move(info);
-    }
-    pub fn iter_avb_diff<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
-        self.avb_diff.iter()
     }
     pub fn update_info_diff(&mut self, id: usize, info: usize) {
         if let Some(Action::Keep(og_value)) = self.infos.get(id) {
@@ -235,13 +219,8 @@ impl FlowTable {
     pub fn iter_tsn_diff<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
         self.tsn_diff.iter()
     }
-    pub fn is_same_flow_list_diff(&self, other: &FlowTable) -> bool {
-        let a = &*self.arena as *const FlowArena;
-        let b = &*other.arena as *const FlowArena;
-        a == b
-    }
-    pub fn get_flow_cnt_diff(&self) -> usize {
-        self.avb_diff.len() + self.tsn_diff.len()
+    pub fn iter_avb_diff<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
+        self.avb_diff.iter()
     }
 }
 
