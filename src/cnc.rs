@@ -1,7 +1,7 @@
 use crate::algorithm::{AlgorithmEnum, RoutingAlgo, AdamsAnt, RO, SPF};
 use crate::component::RoutingCost;
 use crate::network::Network;
-use crate::utils::stream::{AVBFlow, TSNFlow};
+use crate::utils::stream::{TSN, AVB};
 
 pub struct CNC {
     algorithm: AlgorithmEnum,
@@ -17,7 +17,7 @@ impl CNC {
         };
         Self { algorithm }
     }
-    pub fn add_streams(&mut self, tsns: Vec<TSNFlow>, avbs: Vec<AVBFlow>) {
+    pub fn add_streams(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
         self.algorithm.add_flows(tsns, avbs);
     }
     pub fn configure(&mut self) -> u128 {

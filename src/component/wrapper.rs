@@ -1,5 +1,6 @@
 use std::rc::Rc;
-use crate::{network::MemorizingGraph, utils::stream::{AVBFlow, FlowEnum, FlowID, TSNFlow}};
+use crate::utils::stream::{TSN, AVB};
+use crate::network::MemorizingGraph;
 use crate::network::Network;
 use crate::component::flowtable::FlowTable;
 use crate::component::GCL;
@@ -13,7 +14,7 @@ type Route = Vec<usize>;
 pub struct NetworkWrapper {
     pub flow_table: FlowTable,
     pub old_new_table: Option<Rc<FlowTable>>, // 在每次運算中類似常數，故用 RC 來包
-    pub get_route_func: Rc<dyn Fn(&FlowEnum, usize) -> *const Route>,
+    pub get_route_func: Rc<dyn Fn(usize, usize, usize) -> *const Route>,
     pub gcl: GCL,
     pub graph: MemorizingGraph,
     pub tsn_fail: bool,
@@ -22,7 +23,7 @@ pub struct NetworkWrapper {
 impl NetworkWrapper {
     pub fn new<F>(graph: Network, get_route_func: F) -> Self
     where
-        F: 'static + Fn(&FlowEnum, usize) -> *const Route,
+        F: 'static + Fn(usize, usize, usize) -> *const Route,
     {
         NetworkWrapper {
             flow_table: FlowTable::new(),
@@ -34,7 +35,7 @@ impl NetworkWrapper {
         }
     }
     /// 插入新的資料流，同時會捨棄先前的新舊表，並創建另一份新舊表
-    pub fn insert(&mut self, tsns: Vec<TSNFlow>, avbs: Vec<AVBFlow>, default_info: usize) {
+    pub fn insert(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>, default_info: usize) {
         // 釋放舊的表備份表
         self.old_new_table = None;
         // 插入
@@ -52,13 +53,13 @@ impl NetworkWrapper {
         old_new_table.insert_xxx(new_ids);
         self.old_new_table = Some(Rc::new(old_new_table));
     }
-    pub fn get_route(&self, flow_id: FlowID) -> &Route {
-        let flow_enum = self.flow_table.get(flow_id).unwrap();
+    pub fn get_route(&self, flow_id: usize) -> &Route {
+        let (src, dst) = self.flow_table.ends(flow_id);
         let info = self.flow_table.get_info(flow_id).unwrap();
-        let route = (self.get_route_func)(flow_enum, info);
+        let route = (self.get_route_func)(src, dst, info);
         unsafe { &*route }
     }
-    pub fn get_old_route(&self, flow_id: FlowID) -> Option<usize> {
+    pub fn get_old_route(&self, flow_id: usize) -> Option<usize> {
         if let Some(t) = self
             .old_new_table
             .as_ref()
@@ -70,45 +71,45 @@ impl NetworkWrapper {
             None
         }
     }
-    pub fn update_single_avb(&mut self, flow: &AVBFlow, info: usize) {
+    pub fn update_single_avb(&mut self, id: usize, info: usize) {
         // NOTE: 因為 self.graph 與 self.get_route 是平行所有權
         let graph = unsafe { &mut (*(self as *mut Self)).graph };
-        let og_route = self.get_route(flow.id);
+        let og_route = self.get_route(id);
         // 忘掉舊的
-        graph.update_flowid_on_route(false, flow.id, og_route);
-        self.flow_table.update_info(flow.id, info);
-        let new_route = self.get_route(flow.id);
+        graph.update_flowid_on_route(false, id, og_route);
+        self.flow_table.update_info(id, info);
+        let new_route = self.get_route(id);
         // 記憶新的
-        graph.update_flowid_on_route(true, flow.id, new_route);
+        graph.update_flowid_on_route(true, id, new_route);
     }
     /// 更新 AVB 資料流表與圖上資訊
     pub fn update_avb(&mut self, diff: &FlowTable) {
-        for flow in diff.iter_avb_diff() {
-            let info = diff.get_info(flow.id).unwrap();
-            self.update_single_avb(flow, info.clone());
+        for &id in diff.iter_avb_diff() {
+            let info = diff.get_info(id).unwrap();
+            self.update_single_avb(id, info.clone());
         }
     }
     /// 更新 TSN 資料流表與 GCL
     pub fn update_tsn(&mut self, diff: &FlowTable) {
         // NOTE: 在 schedule_online 函式中就會更新資料流表（這當然是個不太好的實作……）
         //       因此在這裡就不用執行 self.flow_table.update_info()
-        for flow in diff.iter_tsn_diff() {
+        for &id in diff.iter_tsn_diff() {
             // NOTE: 拔除 GCL
-            let route = self.get_route(flow.id);
+            let route = self.get_route(id);
             let links = self
                 .graph
                 .get_links_id_bandwidth(route)
                 .iter()
                 .map(|(ends, _)| *ends)
                 .collect();
-            self.gcl.delete_flow(&links, flow.id);
+            self.gcl.delete_flow(&links, id);
         }
         let _self = self as *const Self;
-        let result = schedule_online(&mut self.flow_table, diff, &mut self.gcl, |cur_flow, k| {
+        let result = schedule_online(&mut self.flow_table, diff, &mut self.gcl, |id, k| {
             // NOTE: 因為 self.flow_table.get 和 self.get_route_func 和 self.graph 與其它部份是平行所有權
             unsafe {
-                let flow = (*_self).flow_table.get(cur_flow.id).unwrap();
-                let route = &*(((*_self).get_route_func)(&flow, k));
+                let (src, dst) = (*_self).flow_table.ends(id);
+                let route = &*(((*_self).get_route_func)(src, dst, k));
                 (*_self).graph.get_links_id_bandwidth(route)
             }
         });
@@ -123,13 +124,13 @@ impl NetworkWrapper {
         &self.flow_table
     }
     /// 路徑為可選參數，若不給代表照資料流表來走
-    pub fn compute_avb_wcd(&self, flow: &AVBFlow, route: Option<usize>) -> u32 {
+    pub fn compute_avb_wcd(&self, flow: usize, route: Option<usize>) -> u32 {
         self._compute_avb_wcd(flow, route)
     }
     pub fn compute_all_cost(&self) -> RoutingCost {
         self._compute_all_cost()
     }
-    pub fn compute_single_avb_cost(&self, flow: &AVBFlow) -> RoutingCost {
+    pub fn compute_single_avb_cost(&self, flow: usize) -> RoutingCost {
         self._compute_single_avb_cost(flow)
     }
 }

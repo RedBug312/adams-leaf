@@ -1,4 +1,3 @@
-use crate::utils::stream::FlowID;
 use hashbrown::HashMap;
 
 use crate::MAX_QUEUE;
@@ -34,7 +33,7 @@ enum Entry {
     Queue(usize, usize, u8),
 }
 
-type Events = Vec<(u32, u32, FlowID)>;
+type Events = Vec<(u32, u32, usize)>;
 
 #[derive(Clone, Debug, Default)]
 pub struct GCL {
@@ -95,7 +94,7 @@ impl GCL {
     pub fn insert_gate_evt(
         &mut self,
         ends: (usize, usize),
-        flow_id: FlowID,
+        flow_id: usize,
         _queue_id: u8,
         start_time: u32,
         duration: u32,
@@ -125,7 +124,7 @@ impl GCL {
     pub fn insert_queue_evt(
         &mut self,
         ends: (usize, usize),
-        flow_id: FlowID,
+        flow_id: usize,
         queue_id: u8,
         start_time: u32,
         duration: u32,
@@ -210,7 +209,7 @@ impl GCL {
         }
         None
     }
-    pub fn delete_flow(&mut self, links: &Vec<(usize, usize)>, flow_id: FlowID) {
+    pub fn delete_flow(&mut self, links: &Vec<(usize, usize)>, flow_id: usize) {
         for &ends in links {
             self.events_cache.remove(&ends);
             let port = Entry::Port(ends.0, ends.1);

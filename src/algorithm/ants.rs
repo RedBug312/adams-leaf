@@ -1,6 +1,6 @@
 use super::RoutingAlgo;
 use crate::utils::config::Config;
-use crate::utils::stream::{AVBFlow, Flow, FlowEnum, FlowID, TSNFlow};
+use crate::utils::stream::{TSN, AVB};
 use crate::network::Network;
 use crate::component::{NetworkWrapper, RoutingCost};
 use super::aco::ACO;
@@ -13,13 +13,6 @@ use std::time::Instant;
 
 use super::aco_routing::do_aco;
 
-fn get_src_dst(flow: &FlowEnum) -> (usize, usize) {
-    match flow {
-        FlowEnum::AVB(flow) => (flow.src, flow.dst),
-        FlowEnum::TSN(flow) => (flow.src, flow.dst),
-    }
-}
-
 pub struct AdamsAnt {
     pub aco: ACO,
     pub yens_algo: Rc<RefCell<YensAlgo>>,
@@ -31,8 +24,7 @@ impl AdamsAnt {
         let yens_algo = Rc::new(RefCell::new(YensAlgo::default()));
         let tmp_yens = yens_algo.clone();
         tmp_yens.borrow_mut().compute(&g, MAX_K);
-        let wrapper = NetworkWrapper::new(g, move |flow_enum, k| {
-            let (src, dst) = get_src_dst(flow_enum);
+        let wrapper = NetworkWrapper::new(g, move |src, dst, k| {
             tmp_yens.borrow().kth_shortest_path(src, dst, k).unwrap() as *const Vec<usize>
         });
 
@@ -43,13 +35,13 @@ impl AdamsAnt {
             wrapper,
         }
     }
-    pub fn get_candidate_count<T: Clone>(&self, flow: &Flow<T>) -> usize {
-        self.yens_algo.borrow().count_shortest_paths(flow.src, flow.dst)
+    pub fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
+        self.yens_algo.borrow().count_shortest_paths(src, dst)
     }
 }
 
 impl RoutingAlgo for AdamsAnt {
-    fn add_flows(&mut self, tsns: Vec<TSNFlow>, avbs: Vec<AVBFlow>) {
+    fn add_flows(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
         // for flow in tsns.iter() {
         //     self.yens_algo
         //         .borrow_mut()
@@ -64,7 +56,7 @@ impl RoutingAlgo for AdamsAnt {
         self.wrapper.insert(tsns, avbs, 0);
 
         self.aco
-            .extend_state_len(self.wrapper.get_flow_table().get_max_id().0 + 1);
+            .extend_state_len(self.wrapper.get_flow_table().get_max_id() + 1);
 
         do_aco(
             self,
@@ -72,25 +64,25 @@ impl RoutingAlgo for AdamsAnt {
         );
         self.compute_time = init_time.elapsed().as_micros();
     }
-    fn get_rerouted_flows(&self) -> &Vec<FlowID> {
+    fn get_rerouted_flows(&self) -> &Vec<usize> {
         unimplemented!();
     }
-    fn get_route(&self, id: FlowID) -> &Vec<usize> {
+    fn get_route(&self, id: usize) -> &Vec<usize> {
         self.wrapper.get_route(id)
     }
     fn show_results(&self) {
         println!("TT Flows:");
-        for flow in self.wrapper.get_flow_table().iter_tsn() {
-            let route = self.get_route(flow.id);
-            println!("flow id = {:?}, route = {:?}", flow.id, route);
+        for &id in self.wrapper.get_flow_table().iter_tsn() {
+            let route = self.get_route(id);
+            println!("flow id = FlowID({:?}), route = {:?}", id, route);
         }
         println!("AVB Flows:");
-        for flow in self.wrapper.get_flow_table().iter_avb() {
-            let route = self.get_route(flow.id);
-            let cost = self.wrapper.compute_single_avb_cost(flow);
+        for &id in self.wrapper.get_flow_table().iter_avb() {
+            let route = self.get_route(id);
+            let cost = self.wrapper.compute_single_avb_cost(id);
             println!(
-                "flow id = {:?}, route = {:?} avb wcd / max latency = {:?}, reroute = {}",
-                flow.id, route, cost.avb_wcd, cost.reroute_overhead
+                "flow id = FlowID({:?}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",
+                id, route, cost.avb_wcd, cost.reroute_overhead
             );
         }
         let all_cost = self.wrapper.compute_all_cost();
