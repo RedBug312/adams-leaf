@@ -1,9 +1,9 @@
 use enum_dispatch::enum_dispatch;
+use crate::network::Network;
 use super::ants::AdamsAnt;
 use super::ro::RO;
 use super::spf::SPF;
-use crate::utils::stream::{TSN, AVB};
-use crate::component::RoutingCost;
+use crate::{component::NetworkWrapper, utils::stream::{TSN, AVB}};
 
 #[enum_dispatch]
 pub enum AlgorithmEnum {
@@ -14,10 +14,7 @@ pub enum AlgorithmEnum {
 
 #[enum_dispatch(AlgorithmEnum)]
 pub trait RoutingAlgo {
-    fn add_flows(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>);
-    fn get_rerouted_flows(&self) -> &Vec<usize>;
-    fn get_route(&self, id: usize) -> &Vec<usize>;
-    fn show_results(&self);
+    fn add_flows(&mut self, wrapper: &mut NetworkWrapper, tsns: Vec<TSN>, avbs: Vec<AVB>);
     fn get_last_compute_time(&self) -> u128;
-    fn get_cost(&self) -> RoutingCost;
+    fn build_wrapper(&self, network: Network) -> NetworkWrapper;
 }

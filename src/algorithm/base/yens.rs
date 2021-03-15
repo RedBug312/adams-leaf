@@ -15,6 +15,11 @@ pub struct YensAlgo {
 }
 
 impl YensAlgo {
+    pub fn new(graph: &Network, kmax: usize) -> Self {
+        let mut yens = Self::default();
+        yens.compute(graph, kmax);
+        yens
+    }
     pub fn compute(&mut self, graph: &Network, k: usize) {
         self.k = k;
         self.dijkstra.compute(graph);

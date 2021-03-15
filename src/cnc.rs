@@ -1,30 +1,52 @@
-use crate::algorithm::{AlgorithmEnum, RoutingAlgo, AdamsAnt, RO, SPF};
+use crate::{algorithm::{AlgorithmEnum, RoutingAlgo, AdamsAnt, RO, SPF}, component::NetworkWrapper};
 use crate::component::RoutingCost;
 use crate::network::Network;
 use crate::utils::stream::{TSN, AVB};
 
 pub struct CNC {
     algorithm: AlgorithmEnum,
+    wrapper: NetworkWrapper,
 }
 
 impl CNC {
     pub fn new(name: &str, graph: Network) -> Self {
-        let algorithm = match name {
-            "aco" => AdamsAnt::new(graph).into(),
-            "ro"  => RO::new(graph).into(),
-            "spf" => SPF::new(graph).into(),
+        let algorithm: AlgorithmEnum = match name {
+            "aco" => AdamsAnt::new(&graph).into(),
+            "ro"  => RO::new(&graph).into(),
+            "spf" => SPF::new(&graph).into(),
             _     => panic!("Failed specify an unknown routing algorithm"),
         };
-        Self { algorithm }
+        let wrapper = algorithm.build_wrapper(graph);
+        Self { algorithm, wrapper }
     }
     pub fn add_streams(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
-        self.algorithm.add_flows(tsns, avbs);
+        let wrapper = &mut self.wrapper;
+        self.algorithm.add_flows(wrapper, tsns, avbs);
     }
     pub fn configure(&mut self) -> u128 {
-        self.algorithm.show_results();
-        let cost = self.algorithm.get_cost();
+        self.show_results();
+        let cost = self.wrapper.compute_all_cost();
         RoutingCost::show_brief(vec![cost]);
 
         self.algorithm.get_last_compute_time()
+    }
+    fn show_results(&self) {
+        println!("TT Flows:");
+        for &id in self.wrapper.get_flow_table().iter_tsn() {
+            let route = self.wrapper.get_route(id);
+            println!("flow id = FlowID({:?}), route = {:?}", id, route);
+        }
+        println!("AVB Flows:");
+        for &id in self.wrapper.get_flow_table().iter_avb() {
+            let route = self.wrapper.get_route(id);
+            let cost = self.wrapper.compute_single_avb_cost(id);
+            println!(
+                "flow id = FlowID({:?}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",
+                id, route, cost.avb_wcd, cost.reroute_overhead
+            );
+        }
+        let all_cost = self.wrapper.compute_all_cost();
+        println!("the cost structure = {:?}", all_cost,);
+        println!("{}", all_cost.compute());
     }
 }

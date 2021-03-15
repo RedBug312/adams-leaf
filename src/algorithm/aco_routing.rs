@@ -5,16 +5,15 @@ use crate::algorithm::aco::ACOJudgeResult;
 use crate::MAX_K;
 use std::time::Instant;
 
-pub fn do_aco(algo: &mut AdamsAnt, time_limit: u128) {
+pub fn do_aco(wrapper: &mut NetworkWrapper, algo: &mut AdamsAnt, time_limit: u128) {
     let time = Instant::now();
 
-    let vis = compute_visibility(algo);
+    let vis = compute_visibility(wrapper, algo);
 
-    let mut best_dist = dist_computing(&algo.wrapper.compute_all_cost());
-    let mut_wrapper = &mut algo.wrapper;
+    let mut best_dist = dist_computing(&wrapper.compute_all_cost());
     algo.aco
         .do_aco(time_limit - time.elapsed().as_micros(), &vis, |state| {
-            let (cost, dist) = compute_aco_dist(mut_wrapper, state, &mut best_dist);
+            let (cost, dist) = compute_aco_dist(wrapper, state, &mut best_dist);
             if cost.avb_fail_cnt == 0 && Config::get().fast_stop {
                 // 找到可行解，且為快速終止模式
                 ACOJudgeResult::Stop(dist)
@@ -24,33 +23,32 @@ pub fn do_aco(algo: &mut AdamsAnt, time_limit: u128) {
         });
 }
 
-fn compute_visibility(algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
+fn compute_visibility(wrapper: &NetworkWrapper, algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
     let config = Config::get();
     // TODO 好好設計能見度函式！
     // 目前：路徑長的倒數
     let len = algo.aco.get_state_len();
     let mut vis = vec![[0.0; MAX_K]; len];
-    for &id in algo.wrapper.get_flow_table().iter_avb() {
-        let flow = algo.wrapper.get_flow_table().get_avb(id)
+    for &id in wrapper.get_flow_table().iter_avb() {
+        let flow = wrapper.get_flow_table().get_avb(id)
             .expect("Failed to obtain AVB spec with an invalid id");
         for i in 0..algo.get_candidate_count(flow.src, flow.dst) {
-            vis[id][i] = 1.0 / algo.wrapper.compute_avb_wcd(id, Some(i)) as f64;
+            vis[id][i] = 1.0 / wrapper.compute_avb_wcd(id, Some(i)) as f64;
         }
-        if let Some(route_k) = algo.wrapper.get_old_route(id) {
+        if let Some(route_k) = wrapper.get_old_route(id) {
             // 是舊資料流，調高本來路徑的能見度
             vis[id][route_k] *= config.avb_memory;
         }
     }
-    for &id in algo.wrapper.get_flow_table().iter_tsn() {
-        let flow = algo.wrapper.get_flow_table().get_tsn(id)
+    for &id in wrapper.get_flow_table().iter_tsn() {
+        let flow = wrapper.get_flow_table().get_tsn(id)
             .expect("Failed to obtain TSN spec with an invalid id");
         for i in 0..algo.get_candidate_count(flow.src, flow.dst) {
-            let yens = algo.yens_algo.borrow();
-            let route = yens.kth_shortest_path(flow.src, flow.dst, i).unwrap();
+            let route = algo.yens.kth_shortest_path(flow.src, flow.dst, i).unwrap();
             vis[id][i] = 1.0 / route.len() as f64;
         }
 
-        if let Some(route_k) = algo.wrapper.get_old_route(id) {
+        if let Some(route_k) = wrapper.get_old_route(id) {
             // 是舊資料流，調高本來路徑的能見度
             vis[id][route_k] *= config.tsn_memory;
         }
