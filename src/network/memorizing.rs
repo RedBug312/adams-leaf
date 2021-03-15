@@ -1,29 +1,19 @@
 use super::Network;
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
 
 /// 每條邊上記憶了其承載的資料流識別碼。使用淺層複製，圖的節點、邊、頻寬、開關等資訊都將共用，僅有記憶被複製。
 #[derive(Clone)]
 pub struct MemorizingGraph {
-    inner: Rc<Network>,
     edge_info: HashMap<(usize, usize), HashSet<usize>>,
 }
 
-impl std::ops::Deref for MemorizingGraph {
-    type Target = Network;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
 impl MemorizingGraph {
-    pub fn new(graph: Network) -> Self {
+    pub fn new(graph: &Network) -> Self {
         let mut edge_info = HashMap::<(usize, usize), HashSet<usize>>::new();
         for (key, _) in graph.edges.iter() {
             edge_info.insert(key.clone(), HashSet::new());
         }
         MemorizingGraph {
-            inner: Rc::new(graph),
             edge_info,
         }
     }

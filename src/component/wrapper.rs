@@ -17,6 +17,7 @@ pub struct NetworkWrapper {
     pub old_new_table: Option<Rc<FlowTable>>, // 在每次運算中類似常數，故用 RC 來包
     pub get_route_func: Rc<dyn Fn(usize, usize, usize) -> *const Route>,
     pub gcl: GCL,
+    pub network: Rc<Network>,
     pub graph: MemorizingGraph,
     pub tsn_fail: bool,
 }
@@ -26,13 +27,15 @@ impl NetworkWrapper {
     where
         F: 'static + Fn(usize, usize, usize) -> *const Route,
     {
+        let memorizing = MemorizingGraph::new(&graph);
         NetworkWrapper {
             arena: Rc::new(FlowArena::new()),
             flow_table: FlowTable::new(),
             old_new_table: None,
             gcl: GCL::new(1),
             tsn_fail: false,
-            graph: MemorizingGraph::new(graph),
+            network: Rc::new(graph),
+            graph: memorizing,
             get_route_func: Rc::new(get_route_func),
         }
     }
@@ -118,7 +121,7 @@ impl NetworkWrapper {
             // NOTE: 拔除 GCL
             let route = self.get_route(id);
             let links = self
-                .graph
+                .network
                 .get_links_id_bandwidth(route)
                 .iter()
                 .map(|(ends, _)| *ends)
@@ -132,7 +135,7 @@ impl NetworkWrapper {
             unsafe {
                 let (src, dst) = (*_self).arena.ends(id);
                 let route = &*(((*_self).get_route_func)(src, dst, k));
-                (*_self).graph.get_links_id_bandwidth(route)
+                (*_self).network.get_links_id_bandwidth(route)
             }
         });
         if result.is_err() {

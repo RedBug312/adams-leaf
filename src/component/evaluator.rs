@@ -1,4 +1,4 @@
-use crate::network::MemorizingGraph;
+use crate::network::{Network, MemorizingGraph};
 use crate::component::{flowtable::*, GCL};
 
 /// AVB 資料流最多可以佔用的資源百分比（模擬 Credit Base Shaper 的效果）
@@ -14,6 +14,7 @@ const MAX_BE_SIZE: f64 = 1500.0;
 /// TODO: 改用 FlowArena?
 /// * `gcl` - 所有 TT 資料流的 Gate Control List
 pub fn compute_avb_latency(
+    network: &Network,
     g: &MemorizingGraph,
     id: usize,
     route: &Vec<usize>,
@@ -22,7 +23,7 @@ pub fn compute_avb_latency(
 ) -> u32 {
     let overlap_flow_id = g.get_overlap_flows(route);
     let mut end_to_end_lanency = 0.0;
-    for (i, (ends, bandwidth)) in g.get_links_id_bandwidth(route).into_iter().enumerate() {
+    for (i, (ends, bandwidth)) in network.get_links_id_bandwidth(route).into_iter().enumerate() {
         let wcd = wcd_on_single_link(id, bandwidth, arena, &overlap_flow_id[i]);
         end_to_end_lanency += wcd + tt_interfere_avb_single_link(ends, wcd as f64, gcl) as f64;
     }
