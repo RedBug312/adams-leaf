@@ -4,7 +4,7 @@ use crate::network::MemorizingGraph;
 use crate::network::Network;
 use crate::component::flowtable::FlowTable;
 use crate::component::GCL;
-use super::cost::{RoutingCost, Calculator};
+use super::{cost::{RoutingCost, Calculator}, flowtable::FlowArena};
 use crate::scheduler::schedule_online;
 
 type Route = Vec<usize>;
@@ -12,6 +12,7 @@ type Route = Vec<usize>;
 /// 這個結構預期會被複製很多次，因此其中的每個元件都應儘可能想辦法降低複製成本
 #[derive(Clone)]
 pub struct NetworkWrapper {
+    pub arena: Rc<FlowArena>,
     pub flow_table: FlowTable,
     pub old_new_table: Option<Rc<FlowTable>>, // 在每次運算中類似常數，故用 RC 來包
     pub get_route_func: Rc<dyn Fn(usize, usize, usize) -> *const Route>,
@@ -26,6 +27,7 @@ impl NetworkWrapper {
         F: 'static + Fn(usize, usize, usize) -> *const Route,
     {
         NetworkWrapper {
+            arena: Rc::new(FlowArena::new()),
             flow_table: FlowTable::new(),
             old_new_table: None,
             gcl: GCL::new(1),
@@ -39,22 +41,41 @@ impl NetworkWrapper {
         // 釋放舊的表備份表
         self.old_new_table = None;
         // 插入
-        let new_ids = self.flow_table.insert(tsns, avbs, default_info.clone());
+        // let new_ids = self.flow_table.insert(tsns, avbs, default_info.clone());
+        let arena = Rc::get_mut(&mut self.arena)
+            .expect("插入資料流時發生數據爭用");
+        let mut new_tsns = vec![];
+        let mut new_avbs = vec![];
+        for tsn in tsns {
+            let id = arena.insert_tsn(tsn);
+            self.flow_table.push_init(default_info);
+            new_tsns.push(id);
+        }
+        for avb in avbs {
+            let id = arena.insert_avb(avb);
+            self.flow_table.push_init(default_info);
+            new_avbs.push(id);
+        }
+
         let mut reconf = self.flow_table.clone_as_diff();
 
-        for &flow_id in new_ids.iter() {
-            reconf.update_info_force_diff(flow_id, default_info.clone());
+        for &flow_id in new_tsns.iter() {
+            reconf.update_tsn_info_force_diff(flow_id, default_info.clone());
+        }
+        for &flow_id in new_avbs.iter() {
+            reconf.update_avb_info_force_diff(flow_id, default_info.clone());
         }
 
         self.update_avb(&reconf);
         self.update_tsn(&reconf);
 
         let mut old_new_table = self.flow_table.clone();
-        old_new_table.insert_xxx(new_ids);
+        old_new_table.insert_xxx(new_tsns);
+        old_new_table.insert_xxx(new_avbs);
         self.old_new_table = Some(Rc::new(old_new_table));
     }
     pub fn get_route(&self, flow_id: usize) -> &Route {
-        let (src, dst) = self.flow_table.ends(flow_id);
+        let (src, dst) = self.arena.ends(flow_id);
         let info = self.flow_table.get_info(flow_id).unwrap();
         let route = (self.get_route_func)(src, dst, info);
         unsafe { &*route }
@@ -105,10 +126,11 @@ impl NetworkWrapper {
             self.gcl.delete_flow(&links, id);
         }
         let _self = self as *const Self;
-        let result = schedule_online(&mut self.flow_table, diff, &mut self.gcl, |id, k| {
+        let arena = Rc::clone(&self.arena);
+        let result = schedule_online(&arena, &mut self.flow_table, diff, &mut self.gcl, |id, k| {
             // NOTE: 因為 self.flow_table.get 和 self.get_route_func 和 self.graph 與其它部份是平行所有權
             unsafe {
-                let (src, dst) = (*_self).flow_table.ends(id);
+                let (src, dst) = (*_self).arena.ends(id);
                 let route = &*(((*_self).get_route_func)(src, dst, k));
                 (*_self).graph.get_links_id_bandwidth(route)
             }

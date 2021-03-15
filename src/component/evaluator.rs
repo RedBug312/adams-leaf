@@ -17,13 +17,13 @@ pub fn compute_avb_latency(
     g: &MemorizingGraph,
     id: usize,
     route: &Vec<usize>,
-    flow_table: &FlowTable,
+    arena: &FlowArena,
     gcl: &GCL,
 ) -> u32 {
     let overlap_flow_id = g.get_overlap_flows(route);
     let mut end_to_end_lanency = 0.0;
     for (i, (ends, bandwidth)) in g.get_links_id_bandwidth(route).into_iter().enumerate() {
-        let wcd = wcd_on_single_link(id, bandwidth, flow_table, &overlap_flow_id[i]);
+        let wcd = wcd_on_single_link(id, bandwidth, arena, &overlap_flow_id[i]);
         end_to_end_lanency += wcd + tt_interfere_avb_single_link(ends, wcd as f64, gcl) as f64;
     }
     end_to_end_lanency as u32
@@ -31,11 +31,11 @@ pub fn compute_avb_latency(
 fn wcd_on_single_link(
     id: usize,
     bandwidth: f64,
-    flow_table: &FlowTable,
+    arena: &FlowArena,
     overlap_flow_id: &Vec<usize>,
 ) -> f64 {
-    let flow = flow_table.get_avb(id)
-        .expect("Failed to obtain AVB spec with an invalid id");
+    let flow = arena.avb(id)
+        .expect("Failed to obtain AVB spec from TSN stream");
     let mut wcd = 0.0;
     // MAX None AVB
     wcd += MAX_BE_SIZE / bandwidth;
@@ -46,7 +46,8 @@ fn wcd_on_single_link(
     // Ohter AVB
     for &other_flow_id in overlap_flow_id.iter() {
         if other_flow_id != id {
-            let other_flow = flow_table.get_avb(other_flow_id).unwrap();
+            let other_flow = arena.avb(other_flow_id)
+                .expect("Failed to obtain AVB spec from TSN stream");
             // 自己是 B 類或別人是 A 類，就有機會要等……換句話說，只有自己是 A 而別人是 B 不用等
             let self_type = flow.avb_type;
             let other_type = other_flow.avb_type;

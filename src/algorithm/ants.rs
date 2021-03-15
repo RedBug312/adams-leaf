@@ -44,8 +44,9 @@ impl RoutingAlgo for AdamsAnt {
         let init_time = Instant::now();
         wrapper.insert(tsns, avbs, 0);
 
+        let arena = Rc::clone(&wrapper.arena);
         self.aco
-            .extend_state_len(wrapper.get_flow_table().get_max_id() + 1);
+            .extend_state_len(arena.len());
 
         do_aco(
             wrapper,

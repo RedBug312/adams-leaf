@@ -1,4 +1,4 @@
-use crate::utils::stream::TSN;
+use crate::{component::flowtable::FlowArena, utils::stream::TSN};
 use crate::component::GCL;
 use crate::component::flowtable::FlowTable;
 use crate::MAX_QUEUE;
@@ -27,11 +27,12 @@ use std::cmp::Ordering;
 fn cmp_flow<F: Fn(usize, usize) -> Links>(
     id1: usize,
     id2: usize,
+    arena: &FlowArena,
     table: &FlowTable,
     get_links: F,
 ) -> Ordering {
-    let flow1 = table.get_tsn(id1).unwrap();
-    let flow2 = table.get_tsn(id2).unwrap();
+    let flow1 = arena.tsn(id1).unwrap();
+    let flow2 = arena.tsn(id2).unwrap();
     if flow1.max_delay < flow2.max_delay {
         Ordering::Less
     } else if flow1.max_delay > flow2.max_delay {
@@ -61,16 +62,17 @@ fn cmp_flow<F: Fn(usize, usize) -> Links>(
 /// * `gcl` - 本來的 Gate Control List
 /// * 回傳 - Ok(false) 代表沒事發生，Ok(true) 代表發生大洗牌
 pub fn schedule_online<F: Fn(usize, usize) -> Links>(
+    arena: &FlowArena,
     og_table: &mut FT,
     changed_table: &DT,
     gcl: &mut GCL,
     get_links: F,
 ) -> Result<bool, ()> {
-    let result = schedule_fixed_og(changed_table, gcl, |f, t| get_links(f, t), &changed_table.tsn_diff);
+    let result = schedule_fixed_og(arena, changed_table, gcl, |f, t| get_links(f, t), &changed_table.tsn_diff);
     og_table.apply_diff(true, changed_table);
     if !result.is_ok() {
         gcl.clear();
-        schedule_fixed_og(og_table, gcl, |f, t| get_links(f, t), &og_table.arena.tsns)?;
+        schedule_fixed_og(arena, og_table, gcl, |f, t| get_links(f, t), &arena.tsns)?;
         Ok(true)
     } else {
         Ok(false)
@@ -79,15 +81,16 @@ pub fn schedule_online<F: Fn(usize, usize) -> Links>(
 
 /// 也可以當作離線排程算法來使用
 fn schedule_fixed_og<F: Fn(usize, usize) -> Links>(
+    arena: &FlowArena,
     table: &FlowTable,
     gcl: &mut GCL,
     get_links: F,
     tsns: &Vec<usize>,
 ) -> Result<(), ()> {
     let mut tsn_ids = tsns.clone();
-    tsn_ids.sort_by(|&id1, &id2| cmp_flow(id1, id2, table, |f, t| get_links(f, t)));
+    tsn_ids.sort_by(|&id1, &id2| cmp_flow(id1, id2, arena, table, |f, t| get_links(f, t)));
     for flow_id in tsn_ids.into_iter() {
-        let flow = table.get_tsn(flow_id).unwrap();
+        let flow = arena.tsn(flow_id).unwrap();
         let links = get_links(flow_id, table.get_info(flow_id).unwrap());
         let mut all_offsets: Vec<Vec<u32>> = vec![];
         // NOTE 一個資料流的每個封包，在單一埠口上必需採用同一個佇列
@@ -95,7 +98,7 @@ fn schedule_fixed_og<F: Fn(usize, usize) -> Links>(
         let k = get_frame_cnt(flow.size);
         let mut m = 0;
         while m < k {
-            let offsets = calculate_offsets(flow_id, table, &all_offsets, &links, &ro, gcl);
+            let offsets = calculate_offsets(flow_id, arena, &all_offsets, &links, &ro, gcl);
             if offsets.len() == links.len() {
                 m += 1;
                 all_offsets.push(offsets);
@@ -151,14 +154,14 @@ fn schedule_fixed_og<F: Fn(usize, usize) -> Links>(
 /// 回傳值為為一個陣列，若其長度小於路徑長，代表排一排爆開
 fn calculate_offsets(
     id: usize,
-    flowtable: &FlowTable,
+    arena: &FlowArena,
     all_offsets: &Vec<Vec<u32>>,
     links: &Vec<((usize, usize), f64)>,
     ro: &Vec<u8>,
     gcl: &GCL,
 ) -> Vec<u32> {
-    let flow = flowtable.get_tsn(id)
-        .expect("Failed to obtain TSN spec with an invalid id");
+    let flow = arena.tsn(id)
+        .expect("Failed to obtain TSN spec from AVB stream");
     let mut offsets = Vec::<u32>::with_capacity(links.len());
     let hyper_p = gcl.get_hyper_p();
     for i in 0..links.len() {

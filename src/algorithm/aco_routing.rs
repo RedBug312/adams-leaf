@@ -3,7 +3,7 @@ use crate::utils::config::Config;
 use crate::component::{NetworkWrapper, RoutingCost};
 use crate::algorithm::aco::ACOJudgeResult;
 use crate::MAX_K;
-use std::time::Instant;
+use std::{rc::Rc, time::Instant};
 
 pub fn do_aco(wrapper: &mut NetworkWrapper, algo: &mut AdamsAnt, time_limit: u128) {
     let time = Instant::now();
@@ -24,14 +24,15 @@ pub fn do_aco(wrapper: &mut NetworkWrapper, algo: &mut AdamsAnt, time_limit: u12
 }
 
 fn compute_visibility(wrapper: &NetworkWrapper, algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
+    let arena = Rc::clone(&wrapper.arena);
     let config = Config::get();
     // TODO 好好設計能見度函式！
     // 目前：路徑長的倒數
     let len = algo.aco.get_state_len();
     let mut vis = vec![[0.0; MAX_K]; len];
-    for &id in wrapper.get_flow_table().iter_avb() {
-        let flow = wrapper.get_flow_table().get_avb(id)
-            .expect("Failed to obtain AVB spec with an invalid id");
+    for &id in arena.avbs.iter() {
+        let flow = arena.avb(id)
+            .expect("Failed to obtain AVB spec from TSN stream");
         for i in 0..algo.get_candidate_count(flow.src, flow.dst) {
             vis[id][i] = 1.0 / wrapper.compute_avb_wcd(id, Some(i)) as f64;
         }
@@ -40,9 +41,9 @@ fn compute_visibility(wrapper: &NetworkWrapper, algo: &AdamsAnt) -> Vec<[f64; MA
             vis[id][route_k] *= config.avb_memory;
         }
     }
-    for &id in wrapper.get_flow_table().iter_tsn() {
-        let flow = wrapper.get_flow_table().get_tsn(id)
-            .expect("Failed to obtain TSN spec with an invalid id");
+    for &id in arena.tsns.iter() {
+        let flow = arena.tsn(id)
+            .expect("Failed to obtain TSN spec from AVB stream");
         for i in 0..algo.get_candidate_count(flow.src, flow.dst) {
             let route = algo.yens.kth_shortest_path(flow.src, flow.dst, i).unwrap();
             vis[id][i] = 1.0 / route.len() as f64;
@@ -62,12 +63,16 @@ fn compute_aco_dist(
     state: &Vec<usize>,
     best_dist: &mut f64,
 ) -> (RoutingCost, f64) {
+    let arena = Rc::clone(&wrapper.arena);
     let mut cur_wrapper = wrapper.clone();
     let mut diff = cur_wrapper.get_flow_table().clone_as_diff();
 
     for (id, &route_k) in state.iter().enumerate() {
         // NOTE: 若發現和舊的資料一樣，這個 update_info 函式會自動把它忽略掉
-        diff.update_info_diff(id.into(), route_k);
+        match arena.is_tsn(id) {
+            true  => diff.update_tsn_info_diff(id, route_k),
+            false => diff.update_avb_info_diff(id, route_k),
+        }
     }
 
     cur_wrapper.update_tsn(&diff);

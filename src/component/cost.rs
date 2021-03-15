@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use super::{compute_avb_latency, NetworkWrapper, FlowTable};
 use crate::utils::config::Config;
 
@@ -76,17 +78,18 @@ pub trait Calculator {
 
 impl Calculator for NetworkWrapper {
     fn _compute_avb_wcd(&self, id: usize, route: Option<usize>) -> u32 {
-        let (src, dst) = self.flow_table.ends(id);
+        let arena = Rc::clone(&self.arena);
+        let (src, dst) = self.arena.ends(id);
         let route_t = route.unwrap_or(self.flow_table.get_info(id).unwrap());
         let route = unsafe {
             let r = (self.get_route_func)(src, dst, route_t);
             &*r
         };
-        compute_avb_latency(&self.graph, id, route, &self.flow_table, &self.gcl)
+        compute_avb_latency(&self.graph, id, route, &arena, &self.gcl)
     }
     fn _compute_single_avb_cost(&self, id: usize) -> RoutingCost {
-        let flow = self.flow_table.get_avb(id)
-            .expect("Failed to obtain AVB spec from an invalid id");
+        let flow = self.arena.avb(id)
+            .expect("Failed to obtain AVB spec from TSN stream");
         let avb_wcd = self._compute_avb_wcd(id, None) as f64 / flow.max_delay as f64;
         let mut avb_fail_cnt = 0;
         let mut reroute_cnt = 0;
@@ -111,19 +114,20 @@ impl Calculator for NetworkWrapper {
         }
     }
     fn _compute_all_cost(&self) -> RoutingCost {
+        let arena = Rc::clone(&self.arena);
         let mut all_avb_fail_cnt = 0;
         let mut all_avb_wcd = 0.0;
         let mut all_reroute_cnt = 0;
-        for &id in self.flow_table.iter_tsn() {
+        for &id in arena.tsns.iter() {
             let t = self.flow_table.get_info(id)
                 .expect("Failed get info from flowtable");
             if is_rerouted(id, t, self.old_new_table.as_ref().unwrap()) {
                 all_reroute_cnt += 1;
             }
         }
-        for &id in self.flow_table.iter_avb() {
-            let flow = self.flow_table.get_avb(id)
-                .expect("Failed to obtain AVB spec with an invalid id");
+        for &id in arena.avbs.iter() {
+            let flow = self.arena.avb(id)
+                .expect("Failed to obtain AVB spec from TSN stream");
             let wcd = self._compute_avb_wcd(id, None);
             all_avb_wcd += wcd as f64 / flow.max_delay as f64;
             if wcd > flow.max_delay {
@@ -138,8 +142,8 @@ impl Calculator for NetworkWrapper {
         }
         RoutingCost {
             tsn_schedule_fail: self.tsn_fail,
-            avb_cnt: self.flow_table.get_avb_cnt(),
-            tsn_cnt: self.flow_table.get_tsn_cnt(),
+            avb_cnt: arena.avbs.len(),
+            tsn_cnt: arena.tsns.len(),
             avb_fail_cnt: all_avb_fail_cnt,
             avb_wcd: all_avb_wcd,
             reroute_overhead: all_reroute_cnt,

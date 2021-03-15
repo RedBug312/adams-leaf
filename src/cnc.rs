@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::{algorithm::{AlgorithmEnum, RoutingAlgo, AdamsAnt, RO, SPF}, component::NetworkWrapper};
 use crate::component::RoutingCost;
 use crate::network::Network;
@@ -31,13 +33,14 @@ impl CNC {
         self.algorithm.get_last_compute_time()
     }
     fn show_results(&self) {
+        let arena = Rc::clone(&self.wrapper.arena);
         println!("TT Flows:");
-        for &id in self.wrapper.get_flow_table().iter_tsn() {
+        for &id in arena.tsns.iter() {
             let route = self.wrapper.get_route(id);
             println!("flow id = FlowID({:?}), route = {:?}", id, route);
         }
         println!("AVB Flows:");
-        for &id in self.wrapper.get_flow_table().iter_avb() {
+        for &id in arena.avbs.iter() {
             let route = self.wrapper.get_route(id);
             let cost = self.wrapper.compute_single_avb_cost(id);
             println!(

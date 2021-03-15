@@ -38,6 +38,7 @@ impl RO {
     }
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
     fn grasp(&mut self, wrapper: &mut NetworkWrapper, time: Instant) {
+        let arena = Rc::clone(&wrapper.arena);
         let mut rng = ChaChaRng::seed_from_u64(420);
         let mut iter_times = 0;
         let mut min_cost = wrapper.compute_all_cost();
@@ -46,14 +47,14 @@ impl RO {
             // PHASE 1
             let mut cur_wrapper = wrapper.clone();
             let mut diff = cur_wrapper.get_flow_table().clone_as_diff();
-            for &id in cur_wrapper.get_flow_table().iter_avb() {
-                let flow = cur_wrapper.get_flow_table().get_avb(id)
-                    .expect("Failed to obtain AVB spec from an invalid id");
+            for &id in arena.avbs.iter() {
+                let flow = arena.avb(id)
+                    .expect("Failed to obtain AVB spec from TSN stream");
                 let candidate_cnt = self.get_candidate_count(flow.src, flow.dst);
                 let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
                 let set = gen_n_distinct_outof_k(alpha, candidate_cnt, &mut rng);
                 let new_route = self.find_min_cost_route(wrapper, id, flow, Some(set));
-                diff.update_info_diff(id, new_route);
+                diff.update_avb_info_diff(id, new_route);
             }
             cur_wrapper.update_avb(&diff);
             // PHASE 2
@@ -104,6 +105,7 @@ impl RO {
         min_cost: &mut RoutingCost,
         mut cur_wrapper: NetworkWrapper,
     ) {
+        let arena = Rc::clone(&wrapper.arena);
         let mut iter_times = 0;
         while time.elapsed().as_micros() < Config::get().t_limit {
             if min_cost.avb_fail_cnt == 0 && Config::get().fast_stop {
@@ -111,11 +113,11 @@ impl RO {
             }
 
             let rand = rng
-                .gen_range(0..cur_wrapper.get_flow_table().get_flow_cnt());
+                .gen_range(0..arena.len());
             let target_id = rand.into();
             let target_flow = {
                 // TODO 用更好的機制篩選 avb 資料流
-                if let Some(t) = wrapper.get_flow_table().get_avb(target_id) {
+                if let Some(t) = arena.avb(target_id) {
                     t
                 } else {
                     continue;
@@ -146,7 +148,7 @@ impl RO {
                 // 恢復上一動
                 cur_wrapper.update_single_avb(target_id, old_route);
                 iter_times += 1;
-                if iter_times == cur_wrapper.get_flow_table().get_flow_cnt() {
+                if iter_times == arena.len() {
                     //  NOTE: 迭代次數上限與資料流數量掛勾
                     break;
                 }
