@@ -42,10 +42,10 @@ fn main() {
     let mut cnc = CNC::new(&algo_type, network);
 
     cnc.add_streams(tsns1, avbs1);
-    let time = cnc.configure();
-    println!("--- #1 computing time: {} μs ---", time);
+    let elapsed = cnc.configure();
+    println!("--- #1 elapsed time: {} μs ---", elapsed);
 
     cnc.add_streams(tsns2, avbs2);
-    let time = cnc.configure();
-    println!("--- #2 computing time: {} μs ---", time);
+    let elapsed = cnc.configure();
+    println!("--- #2 elapsed time: {} μs ---", elapsed);
 }

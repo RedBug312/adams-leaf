@@ -7,7 +7,7 @@ mod aco_routing;
 mod algorithm;
 
 pub use algorithm::AlgorithmEnum;
-pub use algorithm::RoutingAlgo;
+pub use algorithm::Algorithm;
 pub use ants::AdamsAnt;
 pub use ro::RO;
 pub use spf::SPF;

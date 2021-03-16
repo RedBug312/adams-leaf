@@ -1,9 +1,11 @@
+use std::time::Instant;
 use enum_dispatch::enum_dispatch;
 use crate::network::Network;
 use super::ants::AdamsAnt;
 use super::ro::RO;
 use super::spf::SPF;
-use crate::{component::NetworkWrapper, utils::stream::{TSN, AVB}};
+use crate::component::NetworkWrapper;
+
 
 #[enum_dispatch]
 pub enum AlgorithmEnum {
@@ -13,8 +15,7 @@ pub enum AlgorithmEnum {
 }
 
 #[enum_dispatch(AlgorithmEnum)]
-pub trait RoutingAlgo {
-    fn add_flows(&mut self, wrapper: &mut NetworkWrapper, tsns: Vec<TSN>, avbs: Vec<AVB>);
-    fn get_last_compute_time(&self) -> u128;
+pub trait Algorithm {
+    fn configure(&mut self, wrapper: &mut NetworkWrapper, deadline: Instant);
     fn build_wrapper(&self, network: Network) -> NetworkWrapper;
 }

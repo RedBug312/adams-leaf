@@ -5,14 +5,12 @@ use crate::algorithm::aco::ACOJudgeResult;
 use crate::MAX_K;
 use std::{rc::Rc, time::Instant};
 
-pub fn do_aco(wrapper: &mut NetworkWrapper, algo: &mut AdamsAnt, time_limit: u128) {
-    let time = Instant::now();
-
+pub fn do_aco(wrapper: &mut NetworkWrapper, algo: &mut AdamsAnt, deadline: Instant) {
     let vis = compute_visibility(wrapper, algo);
 
     let mut best_dist = dist_computing(&wrapper.compute_all_cost());
     algo.aco
-        .do_aco(time_limit - time.elapsed().as_micros(), &vis, |state| {
+        .do_aco(deadline, &vis, |state| {
             let (cost, dist) = compute_aco_dist(wrapper, state, &mut best_dist);
             if cost.avb_fail_cnt == 0 && Config::get().fast_stop {
                 // 找到可行解，且為快速終止模式

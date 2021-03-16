@@ -1,7 +1,7 @@
 extern crate rand;
 use crate::MAX_K;
 use rand::{Rng, SeedableRng};
-use std::collections::BinaryHeap;
+use std::{collections::BinaryHeap, time::Instant};
 use rand_chacha::ChaChaRng;
 
 const R: usize = 60;
@@ -144,7 +144,7 @@ impl ACO {
     }
     pub fn do_aco<F>(
         &mut self,
-        time_limit: u128,
+        deadline: Instant,
         visibility: &Vec<[f64; MAX_K]>,
         mut judge_func: F,
     ) -> State
@@ -152,11 +152,10 @@ impl ACO {
         F: FnMut(&State) -> ACOJudgeResult,
     {
         let mut rng = ChaChaRng::seed_from_u64(42);
-        let time = std::time::Instant::now();
         let mut best_state = WeightedState::new(std::f64::MAX, None);
         #[allow(unused_variables)]
         let mut epoch = 0;
-        while time.elapsed().as_micros() < time_limit {
+        while Instant::now() < deadline {
             epoch += 1;
             let (should_stop, local_best_state) =
                 self.do_single_epoch(&visibility, &mut judge_func, &mut rng);

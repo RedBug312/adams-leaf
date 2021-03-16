@@ -1,8 +1,10 @@
-use std::rc::Rc;
+use std::{rc::Rc, time::{Duration, Instant}};
 
-use crate::{algorithm::{AlgorithmEnum, RoutingAlgo, AdamsAnt, RO, SPF}, component::NetworkWrapper};
+use crate::algorithm::{AlgorithmEnum, Algorithm, AdamsAnt, RO, SPF};
+use crate::component::NetworkWrapper;
 use crate::component::RoutingCost;
 use crate::network::Network;
+use crate::utils::config::Config;
 use crate::utils::stream::{TSN, AVB};
 
 pub struct CNC {
@@ -23,14 +25,20 @@ impl CNC {
     }
     pub fn add_streams(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
         let wrapper = &mut self.wrapper;
-        self.algorithm.add_flows(wrapper, tsns, avbs);
+        wrapper.insert(tsns, avbs, 0);
     }
     pub fn configure(&mut self) -> u128 {
+        let wrapper = &mut self.wrapper;
+        let limit = Duration::from_micros(Config::get().t_limit as u64);
+        let start = Instant::now();
+        self.algorithm.configure(wrapper, start + limit);
+        let elapsed = start.elapsed().as_micros();
+
         self.show_results();
         let cost = self.wrapper.compute_all_cost();
         RoutingCost::show_brief(vec![cost]);
 
-        self.algorithm.get_last_compute_time()
+        elapsed
     }
     fn show_results(&self) {
         let arena = Rc::clone(&self.wrapper.arena);
