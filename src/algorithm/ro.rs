@@ -43,7 +43,6 @@ impl RO {
             iter_times += 1;
             // PHASE 1
             let mut cur_wrapper = wrapper.clone();
-            let mut diff = cur_wrapper.get_flow_table().clone_as_diff();
             for &id in arena.avbs.iter() {
                 let flow = arena.avb(id)
                     .expect("Failed to obtain AVB spec from TSN stream");
@@ -51,9 +50,10 @@ impl RO {
                 let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
                 let set = gen_n_distinct_outof_k(alpha, candidate_cnt, &mut rng);
                 let new_route = self.find_min_cost_route(wrapper, id, Some(set));
-                diff.update_avb_info_diff(id, new_route);
+                cur_wrapper.flow_table.update_avb_info_force_diff(id, new_route);
+                // cur_wrapper.update_single_avb(id, new_route);
             }
-            cur_wrapper.update_avb(&diff);
+            cur_wrapper.update_avb();
             // PHASE 2
             let cost = cur_wrapper.compute_all_cost();
             if cost.compute_without_reroute_cost() < min_cost.compute_without_reroute_cost() {

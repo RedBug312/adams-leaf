@@ -24,12 +24,11 @@ use std::cmp::Ordering;
 /// * `deadline` - 時間較緊的要排前面
 /// * `period` - 週期短的要排前面
 /// * `route length` - 路徑長的要排前面
-fn cmp_flow<F: Fn(usize, usize) -> Links>(
+fn cmp_flow<F: Fn(usize) -> Links>(
     id1: usize,
     id2: usize,
     arena: &FlowArena,
-    table: &FlowTable,
-    get_links: F,
+    get_links: &F,
 ) -> Ordering {
     let flow1 = arena.tsn(id1).unwrap();
     let flow2 = arena.tsn(id2).unwrap();
@@ -43,10 +42,8 @@ fn cmp_flow<F: Fn(usize, usize) -> Links>(
         } else if flow1.period > flow2.period {
             Ordering::Greater
         } else {
-            let k = table.get_info(id1).unwrap();
-            let rlen_1 = get_links(id1, k).len();
-            let k = table.get_info(id2).unwrap();
-            let rlen_2 = get_links(id2, k).len();
+            let rlen_1 = get_links(id1).len();
+            let rlen_2 = get_links(id2).len();
             if rlen_1 > rlen_2 {
                 Ordering::Less
             } else {
@@ -61,18 +58,18 @@ fn cmp_flow<F: Fn(usize, usize) -> Links>(
 /// * `changed_table` - 被改動到的那部份資料流，包含新增與換路徑
 /// * `gcl` - 本來的 Gate Control List
 /// * 回傳 - Ok(false) 代表沒事發生，Ok(true) 代表發生大洗牌
-pub fn schedule_online<F: Fn(usize, usize) -> Links>(
+pub fn schedule_online<F: Fn(usize) -> Links>(
     arena: &FlowArena,
     og_table: &mut FT,
     changed_table: &DT,
     gcl: &mut GCL,
-    get_links: F,
+    get_links: &F,
 ) -> Result<bool, ()> {
-    let result = schedule_fixed_og(arena, changed_table, gcl, |f, t| get_links(f, t), &changed_table.tsn_diff);
+    let result = schedule_fixed_og(arena, gcl, get_links, &changed_table.tsn_diff);
     og_table.apply_diff(true, changed_table);
     if !result.is_ok() {
         gcl.clear();
-        schedule_fixed_og(arena, og_table, gcl, |f, t| get_links(f, t), &arena.tsns)?;
+        schedule_fixed_og(arena, gcl, get_links, &arena.tsns)?;
         Ok(true)
     } else {
         Ok(false)
@@ -80,18 +77,17 @@ pub fn schedule_online<F: Fn(usize, usize) -> Links>(
 }
 
 /// 也可以當作離線排程算法來使用
-fn schedule_fixed_og<F: Fn(usize, usize) -> Links>(
+pub fn schedule_fixed_og<F: Fn(usize) -> Links>(
     arena: &FlowArena,
-    table: &FlowTable,
     gcl: &mut GCL,
-    get_links: F,
+    get_links: &F,
     tsns: &Vec<usize>,
 ) -> Result<(), ()> {
     let mut tsn_ids = tsns.clone();
-    tsn_ids.sort_by(|&id1, &id2| cmp_flow(id1, id2, arena, table, |f, t| get_links(f, t)));
+    tsn_ids.sort_by(|&id1, &id2| cmp_flow(id1, id2, arena, get_links));
     for flow_id in tsn_ids.into_iter() {
         let flow = arena.tsn(flow_id).unwrap();
-        let links = get_links(flow_id, table.get_info(flow_id).unwrap());
+        let links = get_links(flow_id);
         let mut all_offsets: Vec<Vec<u32>> = vec![];
         // NOTE 一個資料流的每個封包，在單一埠口上必需採用同一個佇列
         let mut ro: Vec<u8> = vec![0; links.len()];

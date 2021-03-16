@@ -63,18 +63,17 @@ fn compute_aco_dist(
 ) -> (RoutingCost, f64) {
     let arena = Rc::clone(&wrapper.arena);
     let mut cur_wrapper = wrapper.clone();
-    let mut diff = cur_wrapper.get_flow_table().clone_as_diff();
 
     for (id, &route_k) in state.iter().enumerate() {
         // NOTE: 若發現和舊的資料一樣，這個 update_info 函式會自動把它忽略掉
         match arena.is_tsn(id) {
-            true  => diff.update_tsn_info_diff(id, route_k),
-            false => diff.update_avb_info_diff(id, route_k),
+            true  => cur_wrapper.flow_table.update_tsn_info_diff(id, route_k),
+            false => cur_wrapper.flow_table.update_avb_info_diff(id, route_k),
         }
     }
 
-    cur_wrapper.update_tsn(&diff);
-    cur_wrapper.update_avb(&diff);
+    cur_wrapper.update_tsn();
+    cur_wrapper.update_avb();
     let cost = cur_wrapper.compute_all_cost();
     let dist = dist_computing(&cost);
 

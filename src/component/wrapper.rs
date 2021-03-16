@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use crate::utils::stream::{TSN, AVB};
+use crate::{scheduler::schedule_fixed_og, utils::stream::{TSN, AVB}};
 use crate::network::MemorizingGraph;
 use crate::network::Network;
 use crate::component::flowtable::FlowTable;
@@ -60,17 +60,15 @@ impl NetworkWrapper {
             new_avbs.push(id);
         }
 
-        let mut reconf = self.flow_table.clone_as_diff();
-
         for &flow_id in new_tsns.iter() {
-            reconf.update_tsn_info_force_diff(flow_id, default_info.clone());
+            self.flow_table.update_tsn_info_force_diff(flow_id, default_info.clone());
         }
         for &flow_id in new_avbs.iter() {
-            reconf.update_avb_info_force_diff(flow_id, default_info.clone());
+            self.flow_table.update_avb_info_force_diff(flow_id, default_info.clone());
         }
 
-        self.update_avb(&reconf);
-        self.update_tsn(&reconf);
+        self.update_avb();
+        self.update_tsn();
 
         let mut old_new_table = self.flow_table.clone();
         old_new_table.insert_xxx(new_tsns);
@@ -81,6 +79,11 @@ impl NetworkWrapper {
         let (src, dst) = self.arena.ends(flow_id);
         let info = self.flow_table.get_info(flow_id).unwrap();
         let route = (self.get_route_func)(src, dst, info);
+        unsafe { &*route }
+    }
+    pub fn get_kth_route(&self, flow_id: usize, k: usize) -> &Route {
+        let (src, dst) = self.arena.ends(flow_id);
+        let route = (self.get_route_func)(src, dst, k);
         unsafe { &*route }
     }
     pub fn get_old_route(&self, flow_id: usize) -> Option<usize> {
@@ -107,19 +110,36 @@ impl NetworkWrapper {
         graph.update_flowid_on_route(true, id, new_route);
     }
     /// 更新 AVB 資料流表與圖上資訊
-    pub fn update_avb(&mut self, diff: &FlowTable) {
-        for &id in diff.iter_avb_diff() {
-            let info = diff.get_info(id).unwrap();
-            self.update_single_avb(id, info.clone());
+    pub fn update_avb(&mut self) {
+        let avb_diff = self.flow_table.avb_diff.clone();
+        for &id in avb_diff.iter() {
+            let prev = self.flow_table.kth_prev(id)
+                .expect("Failed to get prev kth with the given id");
+            let next = self.flow_table.kth_next(id)
+                .expect("Failed to get next kth with the given id");
+            // NOTE: 因為 self.graph 與 self.get_route 是平行所有權
+            let graph = unsafe { &mut (*(self as *mut Self)).graph };
+            let route = self.get_kth_route(id, prev);
+            // 忘掉舊的
+            graph.update_flowid_on_route(false, id, route);
+            let route = self.get_kth_route(id, next);
+            // 記憶新的
+            graph.update_flowid_on_route(true, id, route);
+            // self.flow_table.update_info(id, next);
         }
+        self.flow_table.apply(false);
+        self.flow_table.avb_diff = vec![];
+
     }
     /// 更新 TSN 資料流表與 GCL
-    pub fn update_tsn(&mut self, diff: &FlowTable) {
+    pub fn update_tsn(&mut self) {
         // NOTE: 在 schedule_online 函式中就會更新資料流表（這當然是個不太好的實作……）
         //       因此在這裡就不用執行 self.flow_table.update_info()
-        for &id in diff.iter_tsn_diff() {
+        for &id in self.flow_table.iter_tsn_diff() {
             // NOTE: 拔除 GCL
-            let route = self.get_route(id);
+            let prev = self.flow_table.kth_prev(id)
+                .expect("Failed to get route with the given id");
+            let route = self.get_kth_route(id, prev);
             let links = self
                 .network
                 .get_links_id_bandwidth(route)
@@ -130,20 +150,38 @@ impl NetworkWrapper {
         }
         let _self = self as *const Self;
         let arena = Rc::clone(&self.arena);
-        let result = schedule_online(&arena, &mut self.flow_table, diff, &mut self.gcl, |id, k| {
+
+        let closure = |id| {
             // NOTE: 因為 self.flow_table.get 和 self.get_route_func 和 self.graph 與其它部份是平行所有權
             unsafe {
                 let (src, dst) = (*_self).arena.ends(id);
+                let k = (*_self).flow_table.kth_next(id).unwrap();
                 let route = &*(((*_self).get_route_func)(src, dst, k));
                 (*_self).network.get_links_id_bandwidth(route)
             }
-        });
+        };
+
+        let result = schedule_fixed_og(&arena, &mut self.gcl, &closure, &self.flow_table.tsn_diff);
+        let result = match result {
+            Ok(_) => Ok(false),
+            Err(_) => {
+                self.gcl.clear();
+                schedule_fixed_og(&arena, &mut self.gcl, &closure, &arena.tsns)
+                    .and(Ok(true))
+            }
+        };
+
+        // let result = schedule_online(&arena, &mut self.flow_table, diff, &mut self.gcl, &closure);
+
         if result.is_err() {
             self.tsn_fail = true;
         } else {
             // TODO: 應該如何處理 result = Ok(bool) ？
             self.tsn_fail = false;
         }
+        // self.flow_table.apply_diff(true, diff);
+        self.flow_table.apply(true);
+        self.flow_table.tsn_diff = vec![];
     }
     pub fn get_flow_table(&self) -> &FlowTable {
         &self.flow_table

@@ -1,3 +1,5 @@
+use std::mem;
+
 use crate::utils::stream::{AVB, TSN};
 
 #[derive(Clone)]
@@ -5,7 +7,7 @@ enum Action {
     Pending,
     Init(usize),
     Keep(usize),
-    Move(usize),
+    Move(Option<usize>, usize),
 }
 
 enum Either {
@@ -93,6 +95,17 @@ impl FlowTable {
             tsn_diff: vec![],
         }
     }
+    pub fn apply(&mut self, is_tsn: bool) {
+        if is_tsn {
+            for &id in self.tsn_diff.iter() {
+                self.actions[id].keep_it();
+            }
+        } else {
+            for &id in self.avb_diff.iter() {
+                self.actions[id].keep_it();
+            }
+        }
+    }
     pub fn apply_diff(&mut self, is_tsn: bool, diff: &FlowTable) {
         // if !self.is_same_flow_list(diff) {
         //     panic!("試圖合併不相干的資料流表");
@@ -123,7 +136,7 @@ impl FlowTable {
             Some(Action::Pending) => None,
             Some(Action::Init(info)) => Some(*info),
             Some(Action::Keep(info)) => Some(*info),
-            Some(Action::Move(info)) => Some(*info),
+            Some(Action::Move(_, info)) => Some(*info),
             None => panic!("Failed to get info from an invalid id"),
         }
     }
@@ -150,7 +163,7 @@ impl FlowTable {
                     Action::Pending => Action::Pending,
                     Action::Init(t) => Action::Keep(*t),
                     Action::Keep(t) => Action::Keep(*t),
-                    Action::Move(t) => Action::Keep(*t),
+                    Action::Move(_, t) => Action::Keep(*t),
                 })
                 .collect(),
         }
@@ -158,11 +171,11 @@ impl FlowTable {
     /// 不管是否和本來相同，硬是更新
     pub fn update_tsn_info_force_diff(&mut self, id: usize, info: usize) {
         self.tsn_diff.push(id);
-        self.actions[id] = Action::Move(info);
+        self.actions[id].move_to(info);
     }
     pub fn update_avb_info_force_diff(&mut self, id: usize, info: usize) {
         self.avb_diff.push(id);
-        self.actions[id] = Action::Move(info);
+        self.actions[id].move_to(info);
     }
     pub fn update_tsn_info_diff(&mut self, id: usize, info: usize) {
         if let Some(Action::Keep(og_value)) = self.actions.get(id) {
@@ -173,7 +186,7 @@ impl FlowTable {
             self.tsn_diff.push(id);
         }
         // NOTE: 如果本來就是 New，就不推進 diff 表（因為之前推過了）
-        self.actions[id] = Action::Move(info);
+        self.actions[id].move_to(info);
     }
     pub fn update_avb_info_diff(&mut self, id: usize, info: usize) {
         if let Some(Action::Keep(og_value)) = self.actions.get(id) {
@@ -184,7 +197,7 @@ impl FlowTable {
             self.avb_diff.push(id);
         }
         // NOTE: 如果本來就是 New，就不推進 diff 表（因為之前推過了）
-        self.actions[id] = Action::Move(info);
+        self.actions[id].move_to(info);
     }
     pub fn iter_tsn_diff<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
         self.tsn_diff.iter()
@@ -198,7 +211,57 @@ impl FlowTable {
         // self.arena.avbs.iter()
         //     .filter(move |&&id| matches!(actions.get(id), Some(Action::Move(_))))
     }
+    pub fn kth_prev(&self, id: usize) -> Option<usize> {
+        self.actions[id].kth_prev()
+    }
+    pub fn kth_next(&self, id: usize) -> Option<usize> {
+        self.actions[id].kth_next()
+    }
 }
+
+impl Action {
+    fn move_to(&mut self, next: usize) {
+        *self = match self {
+            Action::Pending
+                => Action::Move(None, next),
+            Action::Init(ref mut prev)
+                => Action::Move(Some(mem::take(prev)), next),
+            Action::Keep(ref mut prev)
+                => Action::Move(Some(mem::take(prev)), next),
+            Action::Move(ref mut prev, _)
+                => Action::Move(mem::take(prev), next),
+        };
+    }
+    fn keep_it(&mut self) {
+        *self = match self {
+            Action::Pending
+                => Action::Pending,
+            Action::Init(ref mut prev)
+                => Action::Keep(mem::take(prev)),
+            Action::Keep(ref mut prev)
+                => Action::Keep(mem::take(prev)),
+            Action::Move(_, ref mut next)
+                => Action::Keep(mem::take(next)),
+        };
+    }
+    fn kth_prev(&self) -> Option<usize> {
+        match self {
+            Action::Pending => None,
+            Action::Init(prev) => Some(*prev),
+            Action::Keep(prev) => Some(*prev),
+            Action::Move(prev, _) => *prev,
+        }
+    }
+    fn kth_next(&self) -> Option<usize> {
+        match self {
+            Action::Pending => None,
+            Action::Init(prev) => Some(*prev),
+            Action::Keep(prev) => Some(*prev),
+            Action::Move(_, next) => Some(*next),
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod test {
