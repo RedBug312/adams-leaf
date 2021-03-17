@@ -68,7 +68,7 @@ fn compute_aco_dist(
         // NOTE: 若發現和舊的資料一樣，這個 update_info 函式會自動把它忽略掉
         match arena.is_tsn(id) {
             true  => cur_wrapper.flow_table.update_tsn_info_diff(id, route_k),
-            false => cur_wrapper.flow_table.update_avb_info_diff(id, route_k),
+            false => cur_wrapper.flow_table.update_avb_info_force_diff(id, route_k),
         }
     }
 

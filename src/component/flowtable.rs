@@ -3,11 +3,10 @@ use std::mem;
 use crate::utils::stream::{AVB, TSN};
 
 #[derive(Clone)]
-enum Action {
+enum Choice {
     Pending,
-    Init(usize),
-    Keep(usize),
-    Move(Option<usize>, usize),
+    Stay(usize),
+    Switch(Option<usize>, usize),
 }
 
 enum Either {
@@ -83,14 +82,14 @@ impl FlowArena {
 /// TODO 觀察在大資料量下這個改動是否有優化的效果。在小資料量下似乎沒啥差別。
 #[derive(Clone)]
 pub struct FlowTable {
-    actions: Vec<Action>,
+    choices: Vec<Choice>,
     pub avb_diff: Vec<usize>,
     pub tsn_diff: Vec<usize>,
 }
 impl FlowTable {
     pub fn new() -> Self {
         FlowTable {
-            actions: vec![],
+            choices: vec![],
             avb_diff: vec![],
             tsn_diff: vec![],
         }
@@ -98,87 +97,42 @@ impl FlowTable {
     pub fn apply(&mut self, is_tsn: bool) {
         if is_tsn {
             for &id in self.tsn_diff.iter() {
-                self.actions[id].keep_it();
+                self.choices[id].confirm();
             }
         } else {
             for &id in self.avb_diff.iter() {
-                self.actions[id].keep_it();
-            }
-        }
-    }
-    pub fn apply_diff(&mut self, is_tsn: bool, diff: &FlowTable) {
-        // if !self.is_same_flow_list(diff) {
-        //     panic!("試圖合併不相干的資料流表");
-        // }
-        if is_tsn {
-            for &id in diff.iter_tsn_diff() {
-                let info = diff.get_info(id).unwrap();
-                self.update_info(id, info.clone());
-            }
-        } else {
-            for &id in diff.iter_avb_diff() {
-                let info = diff.get_info(id).unwrap();
-                self.update_info(id, info.clone());
+                self.choices[id].confirm();
             }
         }
     }
     pub fn insert_xxx(&mut self, flows: Vec<usize>) {
         for id in flows {
             let id: usize = id.into();
-            self.actions[id] = Action::Pending;
+            self.choices[id] = Choice::Pending;
         }
     }
     pub fn push_init(&mut self, default: usize) {
-        self.actions.push(Action::Init(default));
-    }
-    pub fn get_info(&self, id: usize) -> Option<usize> {
-        match self.actions.get(id) {
-            Some(Action::Pending) => None,
-            Some(Action::Init(info)) => Some(*info),
-            Some(Action::Keep(info)) => Some(*info),
-            Some(Action::Move(_, info)) => Some(*info),
-            None => panic!("Failed to get info from an invalid id"),
-        }
+        self.choices.push(Choice::Switch(None, default));
     }
     pub fn update_info(&mut self, id: usize, info: usize) {
-        debug_assert!(id < self.actions.len());
-        self.actions[id] = Action::Init(info);
-    }
-
-    pub fn clone_as_diff(&self) -> FlowTable {
-        FlowTable::new_diff(self)
+        debug_assert!(id < self.choices.len());
+        self.choices[id] = Choice::Stay(info);
     }
 }
 
 impl FlowTable {
-    pub fn new_diff(og_table: &FlowTable) -> Self {
-        FlowTable {
-            avb_diff: vec![],
-            tsn_diff: vec![],
-            // arena: og_table.arena.clone(),
-            actions: og_table
-                .actions
-                .iter()
-                .map(|action| match action {
-                    Action::Pending => Action::Pending,
-                    Action::Init(t) => Action::Keep(*t),
-                    Action::Keep(t) => Action::Keep(*t),
-                    Action::Move(_, t) => Action::Keep(*t),
-                })
-                .collect(),
-        }
-    }
     /// 不管是否和本來相同，硬是更新
     pub fn update_tsn_info_force_diff(&mut self, id: usize, info: usize) {
         self.tsn_diff.push(id);
-        self.actions[id].move_to(info);
+        self.choices[id].pick(info);
     }
     pub fn update_avb_info_force_diff(&mut self, id: usize, info: usize) {
         self.avb_diff.push(id);
-        self.actions[id].move_to(info);
+        self.choices[id].pick(info);
     }
     pub fn update_tsn_info_diff(&mut self, id: usize, info: usize) {
-        if let Some(Action::Keep(og_value)) = self.actions.get(id) {
+        // FIXME: allow choice switch(x, x) for simplicity
+        if let Some(Choice::Stay(og_value)) = self.choices.get(id) {
             // NOTE: 若和本來值相同，就啥都不做
             if *og_value == info {
                 return;
@@ -186,78 +140,59 @@ impl FlowTable {
             self.tsn_diff.push(id);
         }
         // NOTE: 如果本來就是 New，就不推進 diff 表（因為之前推過了）
-        self.actions[id].move_to(info);
-    }
-    pub fn update_avb_info_diff(&mut self, id: usize, info: usize) {
-        if let Some(Action::Keep(og_value)) = self.actions.get(id) {
-            // NOTE: 若和本來值相同，就啥都不做
-            if *og_value == info {
-                return;
-            }
-            self.avb_diff.push(id);
-        }
-        // NOTE: 如果本來就是 New，就不推進 diff 表（因為之前推過了）
-        self.actions[id].move_to(info);
+        self.choices[id].pick(info);
     }
     pub fn iter_tsn_diff<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
         self.tsn_diff.iter()
-        // let actions = &self.actions;
-        // self.arena.tsns.iter()
-        //     .filter(move |&&id| matches!(actions.get(id), Some(Action::Move(_))))
+            .filter(move |&&id| matches!(self.choices[id],
+                    Choice::Switch(Some(prev), next) if prev != next))
     }
     pub fn iter_avb_diff<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
         self.avb_diff.iter()
-        // let actions = &self.actions;
-        // self.arena.avbs.iter()
-        //     .filter(move |&&id| matches!(actions.get(id), Some(Action::Move(_))))
+            .filter(move |&&id| matches!(self.choices[id],
+                    Choice::Switch(Some(prev), next) if prev != next))
     }
     pub fn kth_prev(&self, id: usize) -> Option<usize> {
-        self.actions[id].kth_prev()
+        self.choices[id].kth_prev()
     }
     pub fn kth_next(&self, id: usize) -> Option<usize> {
-        self.actions[id].kth_next()
+        self.choices[id].kth_next()
     }
 }
 
-impl Action {
-    fn move_to(&mut self, next: usize) {
+impl Choice {
+    fn pick(&mut self, next: usize) {
         *self = match self {
-            Action::Pending
-                => Action::Move(None, next),
-            Action::Init(ref mut prev)
-                => Action::Move(Some(mem::take(prev)), next),
-            Action::Keep(ref mut prev)
-                => Action::Move(Some(mem::take(prev)), next),
-            Action::Move(ref mut prev, _)
-                => Action::Move(mem::take(prev), next),
+            Choice::Pending
+                => Choice::Switch(None, next),
+            Choice::Stay(ref mut prev)
+                => Choice::Switch(Some(mem::take(prev)), next),
+            Choice::Switch(ref mut prev, _)
+                => Choice::Switch(mem::take(prev), next),
         };
     }
-    fn keep_it(&mut self) {
+    fn confirm(&mut self) {
         *self = match self {
-            Action::Pending
-                => Action::Pending,
-            Action::Init(ref mut prev)
-                => Action::Keep(mem::take(prev)),
-            Action::Keep(ref mut prev)
-                => Action::Keep(mem::take(prev)),
-            Action::Move(_, ref mut next)
-                => Action::Keep(mem::take(next)),
+            Choice::Pending
+                => Choice::Pending,
+            Choice::Stay(ref mut prev)
+                => Choice::Stay(mem::take(prev)),
+            Choice::Switch(_, ref mut next)
+                => Choice::Stay(mem::take(next)),
         };
     }
     fn kth_prev(&self) -> Option<usize> {
         match self {
-            Action::Pending => None,
-            Action::Init(prev) => Some(*prev),
-            Action::Keep(prev) => Some(*prev),
-            Action::Move(prev, _) => *prev,
+            Choice::Pending => None,
+            Choice::Stay(prev) => Some(*prev),
+            Choice::Switch(prev, _) => *prev,
         }
     }
     fn kth_next(&self) -> Option<usize> {
         match self {
-            Action::Pending => None,
-            Action::Init(prev) => Some(*prev),
-            Action::Keep(prev) => Some(*prev),
-            Action::Move(_, next) => Some(*next),
+            Choice::Pending => None,
+            Choice::Stay(prev) => Some(*prev),
+            Choice::Switch(_, next) => Some(*next),
         }
     }
 }

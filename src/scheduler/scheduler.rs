@@ -1,10 +1,7 @@
 use crate::{component::flowtable::FlowArena, utils::stream::TSN};
 use crate::component::GCL;
-use crate::component::flowtable::FlowTable;
 use crate::MAX_QUEUE;
 
-type FT = FlowTable;
-type DT = FlowTable;
 type Links = Vec<((usize, usize), f64)>;
 
 const MTU: usize = 1500;
@@ -58,23 +55,23 @@ fn cmp_flow<F: Fn(usize) -> Links>(
 /// * `changed_table` - 被改動到的那部份資料流，包含新增與換路徑
 /// * `gcl` - 本來的 Gate Control List
 /// * 回傳 - Ok(false) 代表沒事發生，Ok(true) 代表發生大洗牌
-pub fn schedule_online<F: Fn(usize) -> Links>(
-    arena: &FlowArena,
-    og_table: &mut FT,
-    changed_table: &DT,
-    gcl: &mut GCL,
-    get_links: &F,
-) -> Result<bool, ()> {
-    let result = schedule_fixed_og(arena, gcl, get_links, &changed_table.tsn_diff);
-    og_table.apply_diff(true, changed_table);
-    if !result.is_ok() {
-        gcl.clear();
-        schedule_fixed_og(arena, gcl, get_links, &arena.tsns)?;
-        Ok(true)
-    } else {
-        Ok(false)
-    }
-}
+// pub fn schedule_online<F: Fn(usize) -> Links>(
+//     arena: &FlowArena,
+//     og_table: &mut FT,
+//     changed_table: &DT,
+//     gcl: &mut GCL,
+//     get_links: &F,
+// ) -> Result<bool, ()> {
+//     let result = schedule_fixed_og(arena, gcl, get_links, &changed_table.tsn_diff);
+//     og_table.apply_diff(true, changed_table);
+//     if !result.is_ok() {
+//         gcl.clear();
+//         schedule_fixed_og(arena, gcl, get_links, &arena.tsns)?;
+//         Ok(true)
+//     } else {
+//         Ok(false)
+//     }
+// }
 
 /// 也可以當作離線排程算法來使用
 pub fn schedule_fixed_og<F: Fn(usize) -> Links>(

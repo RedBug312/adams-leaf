@@ -81,7 +81,7 @@ impl Calculator for NetworkWrapper {
         let arena = Rc::clone(&self.arena);
         let network = Rc::clone(&self.network);
         let (src, dst) = self.arena.ends(id);
-        let route_t = route.unwrap_or(self.flow_table.get_info(id).unwrap());
+        let route_t = route.unwrap_or(self.flow_table.kth_next(id).unwrap());
         let route = unsafe {
             let r = (self.get_route_func)(src, dst, route_t);
             &*r
@@ -100,7 +100,7 @@ impl Calculator for NetworkWrapper {
         }
         if is_rerouted(
             id,
-            self.flow_table.get_info(id).unwrap(),
+            self.flow_table.kth_next(id).unwrap(),
             self.old_new_table.as_ref().unwrap(),
         ) {
             reroute_cnt += 1;
@@ -120,7 +120,7 @@ impl Calculator for NetworkWrapper {
         let mut all_avb_wcd = 0.0;
         let mut all_reroute_cnt = 0;
         for &id in arena.tsns.iter() {
-            let t = self.flow_table.get_info(id)
+            let t = self.flow_table.kth_next(id)
                 .expect("Failed get info from flowtable");
             if is_rerouted(id, t, self.old_new_table.as_ref().unwrap()) {
                 all_reroute_cnt += 1;
@@ -135,7 +135,7 @@ impl Calculator for NetworkWrapper {
                 // 逾時了！
                 all_avb_fail_cnt += 1;
             }
-            let t = self.flow_table.get_info(id)
+            let t = self.flow_table.kth_next(id)
                 .expect("Failed get info from flowtable");
             if is_rerouted(id, t, self.old_new_table.as_ref().unwrap()) {
                 all_reroute_cnt += 1;
@@ -153,7 +153,7 @@ impl Calculator for NetworkWrapper {
 }
 
 fn is_rerouted(id: usize, route: usize, old_new_table: &FlowTable) -> bool {
-    if let Some(old_route) = old_new_table.get_info(id) {
+    if let Some(old_route) = old_new_table.kth_next(id) {
         route != old_route
     } else {
         false

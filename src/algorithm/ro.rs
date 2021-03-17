@@ -121,7 +121,7 @@ impl RO {
             let new_route = self.find_min_cost_route(wrapper, target_id, None);
             let old_route = wrapper
                 .get_flow_table()
-                .get_info(target_id)
+                .kth_prev(target_id)
                 .unwrap();
 
             let cost = if old_route == new_route {

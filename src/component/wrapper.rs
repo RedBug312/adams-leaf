@@ -5,7 +5,6 @@ use crate::network::Network;
 use crate::component::flowtable::FlowTable;
 use crate::component::GCL;
 use super::{cost::{RoutingCost, Calculator}, flowtable::FlowArena};
-use crate::scheduler::schedule_online;
 
 type Route = Vec<usize>;
 
@@ -77,7 +76,7 @@ impl NetworkWrapper {
     }
     pub fn get_route(&self, flow_id: usize) -> &Route {
         let (src, dst) = self.arena.ends(flow_id);
-        let info = self.flow_table.get_info(flow_id).unwrap();
+        let info = self.flow_table.kth_next(flow_id).unwrap();
         let route = (self.get_route_func)(src, dst, info);
         unsafe { &*route }
     }
@@ -91,7 +90,7 @@ impl NetworkWrapper {
             .old_new_table
             .as_ref()
             .unwrap()
-            .get_info(flow_id)
+            .kth_next(flow_id)
         {
             Some(t)
         } else {
@@ -113,17 +112,18 @@ impl NetworkWrapper {
     pub fn update_avb(&mut self) {
         let avb_diff = self.flow_table.avb_diff.clone();
         for &id in avb_diff.iter() {
-            let prev = self.flow_table.kth_prev(id)
-                .expect("Failed to get prev kth with the given id");
+            let prev = self.flow_table.kth_prev(id);
             let next = self.flow_table.kth_next(id)
                 .expect("Failed to get next kth with the given id");
             // NOTE: 因為 self.graph 與 self.get_route 是平行所有權
             let graph = unsafe { &mut (*(self as *mut Self)).graph };
-            let route = self.get_kth_route(id, prev);
             // 忘掉舊的
-            graph.update_flowid_on_route(false, id, route);
-            let route = self.get_kth_route(id, next);
+            if prev.is_some() {
+                let route = self.get_kth_route(id, prev.unwrap());
+                graph.update_flowid_on_route(false, id, route);
+            }
             // 記憶新的
+            let route = self.get_kth_route(id, next);
             graph.update_flowid_on_route(true, id, route);
             // self.flow_table.update_info(id, next);
         }
@@ -135,11 +135,12 @@ impl NetworkWrapper {
     pub fn update_tsn(&mut self) {
         // NOTE: 在 schedule_online 函式中就會更新資料流表（這當然是個不太好的實作……）
         //       因此在這裡就不用執行 self.flow_table.update_info()
+
         for &id in self.flow_table.iter_tsn_diff() {
             // NOTE: 拔除 GCL
-            let prev = self.flow_table.kth_prev(id)
-                .expect("Failed to get route with the given id");
-            let route = self.get_kth_route(id, prev);
+            let prev = self.flow_table.kth_prev(id);
+            if prev.is_none() { continue; }
+            let route = self.get_kth_route(id, prev.unwrap());
             let links = self
                 .network
                 .get_links_id_bandwidth(route)
@@ -161,6 +162,7 @@ impl NetworkWrapper {
             }
         };
 
+        // FIXME: stream with choice switch(x, x) is scheduled again
         let result = schedule_fixed_og(&arena, &mut self.gcl, &closure, &self.flow_table.tsn_diff);
         let result = match result {
             Ok(_) => Ok(false),
