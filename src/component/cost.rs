@@ -80,12 +80,8 @@ impl Calculator for NetworkWrapper {
     fn _compute_avb_wcd(&self, id: usize, route: Option<usize>) -> u32 {
         let arena = Rc::clone(&self.arena);
         let network = Rc::clone(&self.network);
-        let (src, dst) = self.arena.ends(id);
-        let route_t = route.unwrap_or(self.flow_table.kth_next(id).unwrap());
-        let route = unsafe {
-            let r = (self.get_route_func)(src, dst, route_t);
-            &*r
-        };
+        let kth = route.unwrap_or(self.flow_table.kth_next(id).unwrap());
+        let route = self.get_kth_route(id, kth);
         compute_avb_latency(&network, &self.graph, id, route, &arena, &self.gcl)
     }
     fn _compute_single_avb_cost(&self, id: usize) -> RoutingCost {

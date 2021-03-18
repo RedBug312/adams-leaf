@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{ops::Range, rc::Rc};
 use crate::{scheduler::schedule_fixed_og, utils::stream::{TSN, AVB}};
 use crate::network::MemorizingGraph;
 use crate::network::Network;
@@ -14,17 +14,16 @@ pub struct NetworkWrapper {
     pub arena: Rc<FlowArena>,
     pub flow_table: FlowTable,
     pub old_new_table: Option<Rc<FlowTable>>, // 在每次運算中類似常數，故用 RC 來包
-    pub get_route_func: Rc<dyn Fn(usize, usize, usize) -> *const Route>,
     pub gcl: GCL,
     pub network: Rc<Network>,
     pub graph: MemorizingGraph,
     pub tsn_fail: bool,
+    pub candidates: Vec<Vec<Route>>,
+    pub inputs: Range<usize>,
 }
 
 impl NetworkWrapper {
-    pub fn new<F>(graph: Network, get_route_func: F) -> Self
-    where
-        F: 'static + Fn(usize, usize, usize) -> *const Route,
+    pub fn new(graph: Network) -> Self
     {
         let memorizing = MemorizingGraph::new(&graph);
         NetworkWrapper {
@@ -35,17 +34,20 @@ impl NetworkWrapper {
             tsn_fail: false,
             network: Rc::new(graph),
             graph: memorizing,
-            get_route_func: Rc::new(get_route_func),
+            candidates: vec![],
+            inputs: 0..0,
         }
     }
     /// 插入新的資料流，同時會捨棄先前的新舊表，並創建另一份新舊表
-    pub fn insert(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>, default_info: usize) {
+    pub fn insert(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
         // 釋放舊的表備份表
         // self.old_new_table = None;
         // 插入
         // let new_ids = self.flow_table.insert(tsns, avbs, default_info.clone());
         let arena = Rc::get_mut(&mut self.arena)
             .expect("插入資料流時發生數據爭用");
+
+        let oldlen = arena.len();
 
         let (mut new_tsns, mut new_avbs) = arena.append(tsns, avbs);
         let len = arena.len();
@@ -59,32 +61,22 @@ impl NetworkWrapper {
         self.flow_table.tsn_diff.append(&mut new_tsns);
         self.flow_table.avb_diff.append(&mut new_avbs);
 
-        self.update_avb();
-        self.update_tsn();
-
+        self.inputs = oldlen..len;
     }
     pub fn get_route(&self, flow_id: usize) -> &Route {
-        let (src, dst) = self.arena.ends(flow_id);
-        let info = self.flow_table.kth_next(flow_id).unwrap();
-        let route = (self.get_route_func)(src, dst, info);
-        unsafe { &*route }
+        let kth = self.flow_table.kth_next(flow_id).unwrap();
+        let route = self.candidates[flow_id].get(kth).unwrap();
+        route
     }
-    pub fn get_kth_route(&self, flow_id: usize, k: usize) -> &Route {
-        let (src, dst) = self.arena.ends(flow_id);
-        let route = (self.get_route_func)(src, dst, k);
-        unsafe { &*route }
+    pub fn get_kth_route(&self, flow_id: usize, kth: usize) -> &Route {
+        let route = self.candidates[flow_id].get(kth).unwrap();
+        route
     }
     pub fn get_old_route(&self, flow_id: usize) -> Option<usize> {
-        if let Some(t) = self
-            .old_new_table
+        self.old_new_table
             .as_ref()
             .unwrap()
             .kth_prev(flow_id)
-        {
-            Some(t)
-        } else {
-            None
-        }
     }
     pub fn update_single_avb(&mut self, id: usize, info: usize) {
         // NOTE: 因為 self.graph 與 self.get_route 是平行所有權
@@ -144,9 +136,8 @@ impl NetworkWrapper {
         let closure = |id| {
             // NOTE: 因為 self.flow_table.get 和 self.get_route_func 和 self.graph 與其它部份是平行所有權
             unsafe {
-                let (src, dst) = (*_self).arena.ends(id);
-                let k = (*_self).flow_table.kth_next(id).unwrap();
-                let route = &*(((*_self).get_route_func)(src, dst, k));
+                let kth = (*_self).flow_table.kth_next(id).unwrap();
+                let route = (*_self).candidates[id].get(kth).unwrap();
                 (*_self).network.get_links_id_bandwidth(route)
             }
         };

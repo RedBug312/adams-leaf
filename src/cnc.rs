@@ -20,17 +20,21 @@ impl CNC {
             "spf" => SPF::new(&graph).into(),
             _     => panic!("Failed specify an unknown routing algorithm"),
         };
-        let wrapper = algorithm.build_wrapper(graph);
+        let wrapper = NetworkWrapper::new(graph);
         Self { algorithm, wrapper }
     }
     pub fn add_streams(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
         let wrapper = &mut self.wrapper;
-        wrapper.insert(tsns, avbs, 0);
+        wrapper.insert(tsns, avbs);
     }
     pub fn configure(&mut self) -> u128 {
         let wrapper = &mut self.wrapper;
         let limit = Duration::from_micros(Config::get().t_limit as u64);
+
         let start = Instant::now();
+        self.algorithm.prepare(wrapper);
+        wrapper.update_avb();
+        wrapper.update_tsn();
         self.algorithm.configure(wrapper, start + limit);
         let elapsed = start.elapsed().as_micros();
 

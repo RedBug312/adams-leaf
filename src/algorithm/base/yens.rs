@@ -91,6 +91,11 @@ impl YensAlgo {
             .map(|paths| paths.len())
             .unwrap_or(0)
     }
+    pub fn k_shortest_paths(&self, src: usize, dst: usize) -> Vec<Path> {
+        self.path.get(&(src, dst))
+            .map(|r| r.clone())
+            .unwrap_or(vec![])
+    }
 }
 
 

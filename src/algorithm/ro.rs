@@ -153,15 +153,16 @@ impl RO {
         self.yens.count_shortest_paths(src, dst)
     }
 }
+
 impl Algorithm for RO {
+    fn prepare(&mut self, wrapper: &mut NetworkWrapper) {
+        for id in wrapper.inputs.clone() {
+            let (src, dst) = wrapper.arena.ends(id);
+            let candidates = self.yens.k_shortest_paths(src, dst);
+            wrapper.candidates.push(candidates);
+        }
+    }
     fn configure(&mut self, wrapper: &mut NetworkWrapper, deadline: Instant) {
         self.grasp(wrapper, deadline);
-    }
-    fn build_wrapper(&self, network: Network) -> NetworkWrapper {
-        let yens = Rc::clone(&self.yens);
-        let closure = move |src, dst, k| {
-            yens.kth_shortest_path(src, dst, k).unwrap() as *const Vec<usize>
-        };
-        NetworkWrapper::new(network, closure)
     }
 }

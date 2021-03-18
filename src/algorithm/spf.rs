@@ -21,13 +21,17 @@ impl SPF {
 }
 
 impl Algorithm for SPF {
-    fn configure(&mut self, _wrapper: &mut NetworkWrapper, _deadline: Instant) {
+    fn prepare(&mut self, wrapper: &mut NetworkWrapper) {
+        // split borrowing
+        let inputs = wrapper.inputs.clone();
+        let arena = &wrapper.arena;
+        let candidates = &mut wrapper.candidates;
+
+        let input_candidates = inputs
+            .map(|id| arena.ends(id))
+            .map(|ends| self.yens.k_shortest_paths(ends.0, ends.1));
+        candidates.extend(input_candidates);
     }
-    fn build_wrapper(&self, network: Network) -> NetworkWrapper {
-        let yens = Rc::clone(&self.yens);
-        let closure = move |src, dst, _| {
-            yens.kth_shortest_path(src, dst, 0).unwrap() as *const Vec<usize>
-        };
-        NetworkWrapper::new(network, closure)
+    fn configure(&mut self, _wrapper: &mut NetworkWrapper, _deadline: Instant) {
     }
 }

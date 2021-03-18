@@ -1,6 +1,5 @@
 use std::time::Instant;
 use enum_dispatch::enum_dispatch;
-use crate::network::Network;
 use super::ants::AdamsAnt;
 use super::ro::RO;
 use super::spf::SPF;
@@ -17,5 +16,5 @@ pub enum AlgorithmEnum {
 #[enum_dispatch(AlgorithmEnum)]
 pub trait Algorithm {
     fn configure(&mut self, wrapper: &mut NetworkWrapper, deadline: Instant);
-    fn build_wrapper(&self, network: Network) -> NetworkWrapper;
+    fn prepare(&mut self, wrapper: &mut NetworkWrapper);
 }
