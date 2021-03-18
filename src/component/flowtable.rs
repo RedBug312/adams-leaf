@@ -26,17 +26,22 @@ impl FlowArena {
     pub fn new() -> Self {
         FlowArena { ..Default::default() }
     }
-    pub fn insert_tsn(&mut self, flow: TSN) -> usize {
-        let id = self.streams.len();
-        self.tsns.push(id);
-        self.streams.push(Either::TSN(id, flow));
-        id
-    }
-    pub fn insert_avb(&mut self, flow: AVB) -> usize {
-        let id = self.streams.len();
-        self.avbs.push(id);
-        self.streams.push(Either::AVB(id, flow));
-        id
+    pub fn append(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) -> (Vec<usize>, Vec<usize>) {
+        let mut new_tsns = vec![];
+        let mut new_avbs = vec![];
+        let len = self.streams.len();
+        for (idx, tsn) in tsns.into_iter().enumerate() {
+            self.tsns.push(len + idx);
+            new_tsns.push(len + idx);
+            self.streams.push(Either::TSN(len + idx, tsn));
+        }
+        let len = self.streams.len();
+        for (idx, avb) in avbs.into_iter().enumerate() {
+            self.avbs.push(len + idx);
+            new_avbs.push(len + idx);
+            self.streams.push(Either::AVB(len + idx, avb));
+        }
+        (new_tsns, new_avbs)
     }
     pub fn tsn(&self, id: usize) -> Option<&TSN> {
         let either = self.streams.get(id)
@@ -94,6 +99,14 @@ impl FlowTable {
             tsn_diff: vec![],
         }
     }
+    pub fn resize_pending(&mut self, len: usize) {
+        // for oldnewtable
+        self.choices.resize(len, Choice::Pending);
+    }
+    pub fn resize_switch(&mut self, len: usize) {
+        // for difftable
+        self.choices.resize(len, Choice::Switch(None, 0));
+    }
     pub fn apply(&mut self, is_tsn: bool) {
         if is_tsn {
             for &id in self.tsn_diff.iter() {
@@ -104,15 +117,6 @@ impl FlowTable {
                 self.choices[id].confirm();
             }
         }
-    }
-    pub fn insert_xxx(&mut self, flows: Vec<usize>) {
-        for id in flows {
-            let id: usize = id.into();
-            self.choices[id] = Choice::Pending;
-        }
-    }
-    pub fn push_init(&mut self, default: usize) {
-        self.choices.push(Choice::Switch(None, default));
     }
     pub fn update_info(&mut self, id: usize, info: usize) {
         debug_assert!(id < self.choices.len());
@@ -159,6 +163,7 @@ impl FlowTable {
         self.choices[id].kth_next()
     }
 }
+
 
 impl Choice {
     fn pick(&mut self, next: usize) {

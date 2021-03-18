@@ -41,38 +41,27 @@ impl NetworkWrapper {
     /// 插入新的資料流，同時會捨棄先前的新舊表，並創建另一份新舊表
     pub fn insert(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>, default_info: usize) {
         // 釋放舊的表備份表
-        self.old_new_table = None;
+        // self.old_new_table = None;
         // 插入
         // let new_ids = self.flow_table.insert(tsns, avbs, default_info.clone());
         let arena = Rc::get_mut(&mut self.arena)
             .expect("插入資料流時發生數據爭用");
-        let mut new_tsns = vec![];
-        let mut new_avbs = vec![];
-        for tsn in tsns {
-            let id = arena.insert_tsn(tsn);
-            self.flow_table.push_init(default_info);
-            new_tsns.push(id);
-        }
-        for avb in avbs {
-            let id = arena.insert_avb(avb);
-            self.flow_table.push_init(default_info);
-            new_avbs.push(id);
-        }
 
-        for &flow_id in new_tsns.iter() {
-            self.flow_table.update_tsn_info_force_diff(flow_id, default_info.clone());
-        }
-        for &flow_id in new_avbs.iter() {
-            self.flow_table.update_avb_info_force_diff(flow_id, default_info.clone());
-        }
+        let (mut new_tsns, mut new_avbs) = arena.append(tsns, avbs);
+        let len = arena.len();
+
+        let mut old_new_table = self.flow_table.clone();
+        old_new_table.resize_pending(len);
+        self.old_new_table = Some(Rc::new(old_new_table));
+
+        self.flow_table.resize_switch(len);
+
+        self.flow_table.tsn_diff.append(&mut new_tsns);
+        self.flow_table.avb_diff.append(&mut new_avbs);
 
         self.update_avb();
         self.update_tsn();
 
-        let mut old_new_table = self.flow_table.clone();
-        old_new_table.insert_xxx(new_tsns);
-        old_new_table.insert_xxx(new_avbs);
-        self.old_new_table = Some(Rc::new(old_new_table));
     }
     pub fn get_route(&self, flow_id: usize) -> &Route {
         let (src, dst) = self.arena.ends(flow_id);
@@ -90,7 +79,7 @@ impl NetworkWrapper {
             .old_new_table
             .as_ref()
             .unwrap()
-            .kth_next(flow_id)
+            .kth_prev(flow_id)
         {
             Some(t)
         } else {
