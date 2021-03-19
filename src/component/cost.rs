@@ -149,7 +149,7 @@ impl Calculator for NetworkWrapper {
 }
 
 fn is_rerouted(id: usize, route: usize, old_new_table: &FlowTable) -> bool {
-    if let Some(old_route) = old_new_table.kth_next(id) {
+    if let Some(old_route) = old_new_table.kth_prev(id) {
         route != old_route
     } else {
         false

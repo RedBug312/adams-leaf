@@ -52,11 +52,8 @@ impl NetworkWrapper {
         let (mut new_tsns, mut new_avbs) = arena.append(tsns, avbs);
         let len = arena.len();
 
-        let mut old_new_table = self.flow_table.clone();
-        old_new_table.resize_pending(len);
-        self.old_new_table = Some(Rc::new(old_new_table));
-
-        self.flow_table.resize_switch(len);
+        self.flow_table.resize(len);
+        self.old_new_table = Some(Rc::new(self.flow_table.clone()));
 
         self.flow_table.tsn_diff.append(&mut new_tsns);
         self.flow_table.avb_diff.append(&mut new_avbs);
@@ -91,37 +88,41 @@ impl NetworkWrapper {
     }
     /// 更新 AVB 資料流表與圖上資訊
     pub fn update_avb(&mut self) {
-        let avb_diff = self.flow_table.avb_diff.clone();
-        for &id in avb_diff.iter() {
-            let prev = self.flow_table.kth_prev(id);
+        let avbs = &self.arena.avbs;
+        let mut updates = Vec::with_capacity(avbs.len());
+
+        updates.extend(self.flow_table.filter_switch(avbs));
+        for &id in updates.iter() {
+            let prev = self.flow_table.kth_prev(id)
+                .expect("Failed to get prev kth with the given id");
+            // NOTE: 因為 self.graph 與 self.get_route 是平行所有權
+            let graph = unsafe { &mut (*(self as *mut Self)).graph };
+            let route = self.get_kth_route(id, prev);
+            graph.update_flowid_on_route(false, id, route);
+        }
+
+        let avbs = &self.arena.avbs;
+        updates.extend(self.flow_table.filter_pending(avbs));
+        for &id in updates.iter() {
             let next = self.flow_table.kth_next(id)
                 .expect("Failed to get next kth with the given id");
             // NOTE: 因為 self.graph 與 self.get_route 是平行所有權
             let graph = unsafe { &mut (*(self as *mut Self)).graph };
-            // 忘掉舊的
-            if prev.is_some() {
-                let route = self.get_kth_route(id, prev.unwrap());
-                graph.update_flowid_on_route(false, id, route);
-            }
-            // 記憶新的
             let route = self.get_kth_route(id, next);
             graph.update_flowid_on_route(true, id, route);
-            // self.flow_table.update_info(id, next);
         }
         self.flow_table.apply(false);
-        self.flow_table.avb_diff = vec![];
-
     }
     /// 更新 TSN 資料流表與 GCL
     pub fn update_tsn(&mut self) {
-        // NOTE: 在 schedule_online 函式中就會更新資料流表（這當然是個不太好的實作……）
-        //       因此在這裡就不用執行 self.flow_table.update_info()
+        let tsns = &self.arena.tsns;
+        let mut updates = Vec::with_capacity(tsns.len());
 
-        for &id in self.flow_table.iter_tsn_diff() {
-            // NOTE: 拔除 GCL
-            let prev = self.flow_table.kth_prev(id);
-            if prev.is_none() { continue; }
-            let route = self.get_kth_route(id, prev.unwrap());
+        updates.extend(self.flow_table.filter_switch(tsns));
+        for &id in updates.iter() {
+            let prev = self.flow_table.kth_prev(id)
+                .expect("Failed to get prev kth with the given id");
+            let route = self.get_kth_route(id, prev);
             let links = self
                 .network
                 .get_links_id_bandwidth(route)
@@ -130,6 +131,7 @@ impl NetworkWrapper {
                 .collect();
             self.gcl.delete_flow(&links, id);
         }
+
         let _self = self as *const Self;
         let arena = Rc::clone(&self.arena);
 
@@ -142,8 +144,9 @@ impl NetworkWrapper {
             }
         };
 
+        updates.extend(self.flow_table.filter_pending(tsns));
         // FIXME: stream with choice switch(x, x) is scheduled again
-        let result = schedule_fixed_og(&arena, &mut self.gcl, &closure, &self.flow_table.tsn_diff);
+        let result = schedule_fixed_og(&arena, &mut self.gcl, &closure, &updates);
         let result = match result {
             Ok(_) => Ok(false),
             Err(_) => {
@@ -153,17 +156,8 @@ impl NetworkWrapper {
             }
         };
 
-        // let result = schedule_online(&arena, &mut self.flow_table, diff, &mut self.gcl, &closure);
-
-        if result.is_err() {
-            self.tsn_fail = true;
-        } else {
-            // TODO: 應該如何處理 result = Ok(bool) ？
-            self.tsn_fail = false;
-        }
-        // self.flow_table.apply_diff(true, diff);
+        self.tsn_fail = result.is_err();
         self.flow_table.apply(true);
-        self.flow_table.tsn_diff = vec![];
     }
     pub fn get_flow_table(&self) -> &FlowTable {
         &self.flow_table

@@ -1,12 +1,13 @@
-use std::mem;
-
 use crate::utils::stream::{AVB, TSN};
+
+
+const KTH_DEFAULT: usize = 0;
 
 #[derive(Clone)]
 enum Choice {
-    Pending,
+    Pending(usize),
     Stay(usize),
-    Switch(Option<usize>, usize),
+    Switch(usize, usize),
 }
 
 enum Either {
@@ -21,6 +22,13 @@ pub struct FlowArena {
     streams: Vec<Either>,
 }
 
+#[derive(Clone)]
+pub struct FlowTable {
+    choices: Vec<Choice>,
+    pub avb_diff: Vec<usize>,
+    pub tsn_diff: Vec<usize>,
+}
+
 
 impl FlowArena {
     pub fn new() -> Self {
@@ -28,13 +36,13 @@ impl FlowArena {
     }
     pub fn append(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) -> (Vec<usize>, Vec<usize>) {
         let mut new_tsns = vec![];
-        let mut new_avbs = vec![];
         let len = self.streams.len();
         for (idx, tsn) in tsns.into_iter().enumerate() {
             self.tsns.push(len + idx);
             new_tsns.push(len + idx);
             self.streams.push(Either::TSN(len + idx, tsn));
         }
+        let mut new_avbs = vec![];
         let len = self.streams.len();
         for (idx, avb) in avbs.into_iter().enumerate() {
             self.avbs.push(len + idx);
@@ -78,19 +86,6 @@ impl FlowArena {
     }
 }
 
-/// 儲存的資料分為兩部份：資料流本身，以及隨附的資訊（T）。
-///
-/// __注意！這個資料結構 clone 的時候並不會把所有資料流複製一次，只會複製資訊的部份。__
-///
-/// 此處隱含的假設為：資料流本身不會時常變化，在演算法執行的過程中應該是唯一不變的，因此用一個 Rc 來記憶即可。
-///
-/// TODO 觀察在大資料量下這個改動是否有優化的效果。在小資料量下似乎沒啥差別。
-#[derive(Clone)]
-pub struct FlowTable {
-    choices: Vec<Choice>,
-    pub avb_diff: Vec<usize>,
-    pub tsn_diff: Vec<usize>,
-}
 impl FlowTable {
     pub fn new() -> Self {
         FlowTable {
@@ -99,21 +94,17 @@ impl FlowTable {
             tsn_diff: vec![],
         }
     }
-    pub fn resize_pending(&mut self, len: usize) {
+    pub fn resize(&mut self, len: usize) {
         // for oldnewtable
-        self.choices.resize(len, Choice::Pending);
-    }
-    pub fn resize_switch(&mut self, len: usize) {
-        // for difftable
-        self.choices.resize(len, Choice::Switch(None, 0));
+        self.choices.resize(len, Choice::Pending(KTH_DEFAULT));
     }
     pub fn apply(&mut self, is_tsn: bool) {
         if is_tsn {
-            for &id in self.tsn_diff.iter() {
+            for id in self.tsn_diff.drain(..) {
                 self.choices[id].confirm();
             }
         } else {
-            for &id in self.avb_diff.iter() {
+            for id in self.avb_diff.drain(..) {
                 self.choices[id].confirm();
             }
         }
@@ -146,21 +137,25 @@ impl FlowTable {
         // NOTE: 如果本來就是 New，就不推進 diff 表（因為之前推過了）
         self.choices[id].pick(info);
     }
-    pub fn iter_tsn_diff<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
-        self.tsn_diff.iter()
-            .filter(move |&&id| matches!(self.choices[id],
-                    Choice::Switch(Some(prev), next) if prev != next))
-    }
-    pub fn iter_avb_diff<'a>(&'a self) -> impl Iterator<Item=&usize> + 'a {
-        self.avb_diff.iter()
-            .filter(move |&&id| matches!(self.choices[id],
-                    Choice::Switch(Some(prev), next) if prev != next))
-    }
     pub fn kth_prev(&self, id: usize) -> Option<usize> {
         self.choices[id].kth_prev()
     }
     pub fn kth_next(&self, id: usize) -> Option<usize> {
         self.choices[id].kth_next()
+    }
+    pub fn filter_pending<'a>(&'a self, source: &'a Vec<usize>)
+        -> impl Iterator<Item=usize> + 'a {
+        source.iter().cloned()
+            .filter(move |&id| matches!(self.choices[id],
+                    Choice::Pending(_))
+        )
+    }
+    pub fn filter_switch<'a>(&'a self, source: &'a Vec<usize>)
+        -> impl Iterator<Item=usize> + 'a {
+        source.iter().cloned()
+            .filter(move |&id| matches!(self.choices[id],
+                    Choice::Switch(prev, next) if prev != next)
+        )
     }
 }
 
@@ -168,35 +163,29 @@ impl FlowTable {
 impl Choice {
     fn pick(&mut self, next: usize) {
         *self = match self {
-            Choice::Pending
-                => Choice::Switch(None, next),
-            Choice::Stay(ref mut prev)
-                => Choice::Switch(Some(mem::take(prev)), next),
-            Choice::Switch(ref mut prev, _)
-                => Choice::Switch(mem::take(prev), next),
+            Choice::Pending(_)      => Choice::Pending(next),
+            Choice::Stay(prev)      => Choice::Switch(*prev, next),
+            Choice::Switch(prev, _) => Choice::Switch(*prev, next),
         };
     }
     fn confirm(&mut self) {
         *self = match self {
-            Choice::Pending
-                => Choice::Pending,
-            Choice::Stay(ref mut prev)
-                => Choice::Stay(mem::take(prev)),
-            Choice::Switch(_, ref mut next)
-                => Choice::Stay(mem::take(next)),
+            Choice::Pending(next)   => Choice::Stay(*next),
+            Choice::Stay(prev)      => Choice::Stay(*prev),
+            Choice::Switch(_, next) => Choice::Stay(*next),
         };
     }
     fn kth_prev(&self) -> Option<usize> {
         match self {
-            Choice::Pending => None,
-            Choice::Stay(prev) => Some(*prev),
-            Choice::Switch(prev, _) => *prev,
+            Choice::Pending(_)      => None,
+            Choice::Stay(prev)      => Some(*prev),
+            Choice::Switch(prev, _) => Some(*prev),
         }
     }
     fn kth_next(&self) -> Option<usize> {
         match self {
-            Choice::Pending => None,
-            Choice::Stay(prev) => Some(*prev),
+            Choice::Pending(next)   => Some(*next),
+            Choice::Stay(prev)      => Some(*prev),
             Choice::Switch(_, next) => Some(*next),
         }
     }
