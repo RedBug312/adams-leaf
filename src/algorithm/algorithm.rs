@@ -1,6 +1,6 @@
 use std::time::Instant;
 use enum_dispatch::enum_dispatch;
-use super::ants::AdamsAnt;
+use super::aco::AdamsAnt;
 use super::ro::RO;
 use super::spf::SPF;
 use crate::component::NetworkWrapper;
