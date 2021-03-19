@@ -49,14 +49,11 @@ impl NetworkWrapper {
 
         let oldlen = arena.len();
 
-        let (mut new_tsns, mut new_avbs) = arena.append(tsns, avbs);
+        arena.append(tsns, avbs);
         let len = arena.len();
 
         self.flow_table.resize(len);
         self.old_new_table = Some(Rc::new(self.flow_table.clone()));
-
-        self.flow_table.tsn_diff.append(&mut new_tsns);
-        self.flow_table.avb_diff.append(&mut new_avbs);
 
         self.inputs = oldlen..len;
     }
@@ -75,19 +72,13 @@ impl NetworkWrapper {
             .unwrap()
             .kth_prev(flow_id)
     }
-    pub fn update_single_avb(&mut self, id: usize, info: usize) {
-        // NOTE: 因為 self.graph 與 self.get_route 是平行所有權
-        let graph = unsafe { &mut (*(self as *mut Self)).graph };
-        let og_route = self.get_route(id);
-        // 忘掉舊的
-        graph.update_flowid_on_route(false, id, og_route);
-        self.flow_table.update_info(id, info);
-        let new_route = self.get_route(id);
-        // 記憶新的
-        graph.update_flowid_on_route(true, id, new_route);
+    pub fn adopt_decision(&mut self) {
+        self.update_avb();
+        self.update_tsn();
+        self.flow_table.confirm();
     }
     /// 更新 AVB 資料流表與圖上資訊
-    pub fn update_avb(&mut self) {
+    fn update_avb(&mut self) {
         let avbs = &self.arena.avbs;
         let mut updates = Vec::with_capacity(avbs.len());
 
@@ -111,10 +102,9 @@ impl NetworkWrapper {
             let route = self.get_kth_route(id, next);
             graph.update_flowid_on_route(true, id, route);
         }
-        self.flow_table.apply(false);
     }
     /// 更新 TSN 資料流表與 GCL
-    pub fn update_tsn(&mut self) {
+    fn update_tsn(&mut self) {
         let tsns = &self.arena.tsns;
         let mut updates = Vec::with_capacity(tsns.len());
 
@@ -157,7 +147,6 @@ impl NetworkWrapper {
         };
 
         self.tsn_fail = result.is_err();
-        self.flow_table.apply(true);
     }
     pub fn get_flow_table(&self) -> &FlowTable {
         &self.flow_table

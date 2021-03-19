@@ -33,8 +33,7 @@ impl CNC {
 
         let start = Instant::now();
         self.algorithm.prepare(wrapper);
-        wrapper.update_avb();
-        wrapper.update_tsn();
+        wrapper.adopt_decision();
         self.algorithm.configure(wrapper, start + limit);
         let elapsed = start.elapsed().as_micros();
 

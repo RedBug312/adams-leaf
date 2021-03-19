@@ -177,19 +177,14 @@ fn compute_aco_dist(
     state: &Vec<usize>,
     best_dist: &mut f64,
 ) -> (RoutingCost, f64) {
-    let arena = Rc::clone(&wrapper.arena);
     let mut cur_wrapper = wrapper.clone();
 
-    for (id, &route_k) in state.iter().enumerate() {
+    for (id, &kth) in state.iter().enumerate() {
         // NOTE: 若發現和舊的資料一樣，這個 update_info 函式會自動把它忽略掉
-        match arena.is_tsn(id) {
-            true  => cur_wrapper.flow_table.update_tsn_info_diff(id, route_k),
-            false => cur_wrapper.flow_table.update_avb_info_force_diff(id, route_k),
-        }
+        cur_wrapper.flow_table.pick(id, kth);
     }
 
-    cur_wrapper.update_tsn();
-    cur_wrapper.update_avb();
+    cur_wrapper.adopt_decision();
     let cost = cur_wrapper.compute_all_cost();
     let dist = dist_computing(&cost);
 

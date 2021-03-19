@@ -1,7 +1,7 @@
 use super::Algorithm;
 use crate::utils::config::Config;
 use crate::network::Network;
-use crate::component::{NetworkWrapper};
+use crate::component::NetworkWrapper;
 use super::base::yens::YensAlgo;
 use crate::MAX_K;
 use rand::{Rng, SeedableRng};
@@ -87,10 +87,10 @@ impl Algorithm for RO {
                 let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
                 let set = gen_n_distinct_outof_k(alpha, candidate_cnt, &mut rng);
                 let new_route = self.find_min_cost_route(wrapper, id, Some(set));
-                cur_wrapper.flow_table.update_avb_info_force_diff(id, new_route);
+                cur_wrapper.flow_table.pick(id, new_route);
                 // cur_wrapper.update_single_avb(id, new_route);
             }
-            cur_wrapper.update_avb();
+            cur_wrapper.adopt_decision();
             // PHASE 2
             let cost = cur_wrapper.compute_all_cost();
             if cost.compute_without_reroute_cost() < min_cost.compute_without_reroute_cost() {
@@ -122,13 +122,15 @@ impl Algorithm for RO {
                     .kth_prev(target_id)
                     .unwrap();
 
-                let cost = if old_route == new_route {
+                if old_route == new_route {
                     continue;
-                } else {
-                    // 實際更新下去，並計算成本
-                    cur_wrapper.update_single_avb(target_id, new_route);
-                    cur_wrapper.compute_all_cost()
-                };
+                }
+
+                // 實際更新下去，並計算成本
+                cur_wrapper.flow_table.pick(target_id, new_route);
+                cur_wrapper.adopt_decision();
+                let cost = cur_wrapper.compute_all_cost();
+
                 if cost.compute_without_reroute_cost() < min_cost.compute_without_reroute_cost() {
                     *wrapper = cur_wrapper.clone();
                     min_cost = cost.clone();
@@ -138,7 +140,7 @@ impl Algorithm for RO {
                     // println!("found min_cost = {:?}", cost);
                 } else {
                     // 恢復上一動
-                    cur_wrapper.update_single_avb(target_id, old_route);
+                    cur_wrapper.flow_table.pick(target_id, old_route);
                     iter_times_inner += 1;
                     if iter_times_inner == arena.len() {
                         //  NOTE: 迭代次數上限與資料流數量掛勾
