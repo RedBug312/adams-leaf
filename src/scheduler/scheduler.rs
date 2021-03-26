@@ -1,5 +1,8 @@
-use crate::{component::{NetworkWrapper, flowtable::FlowArena}, utils::stream::TSN};
+use std::cmp::Ordering;
+use crate::component::flowtable::FlowArena;
+use crate::component::NetworkWrapper;
 use crate::component::GCL;
+use crate::utils::stream::TSN;
 use crate::MAX_QUEUE;
 
 type Links = Vec<((usize, usize), f64)>;
@@ -7,24 +10,23 @@ type Links = Vec<((usize, usize), f64)>;
 const MTU: usize = 1500;
 
 
-pub struct Scheduler {
-}
+pub struct Scheduler {}
 
 
 impl Scheduler {
     pub fn new() -> Self {
         Scheduler {}
     }
-    pub fn configure(&self, wrapper: &mut NetworkWrapper) {
-        update_avb(wrapper);
-        update_tsn(wrapper);
+    pub fn configure(&self, wrapper: &mut NetworkWrapper, arena: &FlowArena) {
+        update_avb(wrapper, arena);
+        update_tsn(wrapper, arena);
         wrapper.flow_table.confirm();
     }
 }
 
 /// 更新 AVB 資料流表與圖上資訊
-fn update_avb(wrapper: &mut NetworkWrapper) {
-    let avbs = &wrapper.arena.avbs;
+fn update_avb(wrapper: &mut NetworkWrapper, arena: &FlowArena) {
+    let avbs = &arena.avbs;
     let mut updates = Vec::with_capacity(avbs.len());
 
     updates.extend(wrapper.flow_table.filter_switch(avbs));
@@ -37,7 +39,7 @@ fn update_avb(wrapper: &mut NetworkWrapper) {
         graph.update_flowid_on_route(false, id, route);
     }
 
-    let avbs = &wrapper.arena.avbs;
+    let avbs = &arena.avbs;
     updates.extend(wrapper.flow_table.filter_pending(avbs));
     for &id in updates.iter() {
         let next = wrapper.flow_table.kth_next(id)
@@ -49,8 +51,8 @@ fn update_avb(wrapper: &mut NetworkWrapper) {
     }
 }
 /// 更新 TSN 資料流表與 GCL
-fn update_tsn(wrapper: &mut NetworkWrapper) {
-    let tsns = &wrapper.arena.tsns;
+fn update_tsn(wrapper: &mut NetworkWrapper, arena: &FlowArena) {
+    let tsns = &arena.tsns;
     let mut updates = Vec::with_capacity(tsns.len());
 
     updates.extend(wrapper.flow_table.filter_switch(tsns));
@@ -68,7 +70,6 @@ fn update_tsn(wrapper: &mut NetworkWrapper) {
     }
 
     let _wrapper = wrapper as *const NetworkWrapper;
-    let arena = Rc::clone(&wrapper.arena);
 
     let closure = |id| {
         // NOTE: 因為 wrapper.flow_table.get 和 wrapper.get_route_func 和 wrapper.graph 與其它部份是平行所有權
@@ -104,7 +105,6 @@ fn get_frame_cnt(size: usize) -> usize {
     }
 }
 
-use std::{cmp::Ordering, rc::Rc};
 /// 排序的標準：
 /// * `deadline` - 時間較緊的要排前面
 /// * `period` - 週期短的要排前面

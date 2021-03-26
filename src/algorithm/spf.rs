@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use std::time::Instant;
-use crate::network::Network;
+use crate::{component::flowtable::FlowArena, network::Network};
 use crate::component::NetworkWrapper;
 use super::{Algorithm, algorithm::Eval};
 use super::base::yens::YensAlgo;
@@ -21,17 +21,12 @@ impl SPF {
 }
 
 impl Algorithm for SPF {
-    fn prepare(&mut self, wrapper: &mut NetworkWrapper) {
-        // split borrowing
-        let inputs = wrapper.inputs.clone();
-        let arena = &wrapper.arena;
-        let candidates = &mut wrapper.candidates;
-
-        let input_candidates = inputs
+    fn prepare(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena) {
+        let input_candidates = arena.inputs()
             .map(|id| arena.ends(id))
             .map(|ends| self.yens.k_shortest_paths(ends.0, ends.1));
-        candidates.extend(input_candidates);
+        wrapper.candidates.extend(input_candidates);
     }
-    fn configure(&mut self, _wrapper: &mut NetworkWrapper, _deadline: Instant, _evaluate: Eval) {
+    fn configure(&mut self, _wrapper: &mut NetworkWrapper, _arena: &FlowArena, _deadline: Instant, _evaluate: Eval) {
     }
 }

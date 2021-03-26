@@ -1,5 +1,5 @@
 use super::{Algorithm, algorithm::Eval};
-use crate::network::Network;
+use crate::{component::flowtable::FlowArena, network::Network};
 use crate::component::NetworkWrapper;
 use crate::component::evaluator::evaluate_avb_latency_for_kth;
 use super::base::yens::YensAlgo;
@@ -34,12 +34,11 @@ impl RO {
         }
     }
     /// 若有給定候選路徑的子集合，就從中選。若無，則遍歷所有候選路徑
-    fn find_min_cost_route(&self, wrapper: &NetworkWrapper, id: usize, set: Option<Vec<usize>>) -> usize {
-        let arena = Rc::clone(&wrapper.arena);
+    fn find_min_cost_route(&self, wrapper: &NetworkWrapper, arena: &FlowArena, id: usize, set: Option<Vec<usize>>) -> usize {
         let (src, dst) = arena.ends(id);
         let (mut min_cost, mut best_k) = (std::f64::MAX, 0);
         let mut closure = |k: usize| {
-            let cost = evaluate_avb_latency_for_kth(wrapper, id, k) as f64;
+            let cost = evaluate_avb_latency_for_kth(wrapper, arena, id, k) as f64;
             if cost < min_cost {
                 min_cost = cost;
                 best_k = k;
@@ -62,17 +61,16 @@ impl RO {
 }
 
 impl Algorithm for RO {
-    fn prepare(&mut self, wrapper: &mut NetworkWrapper) {
-        for id in wrapper.inputs.clone() {
-            let (src, dst) = wrapper.arena.ends(id);
+    fn prepare(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena) {
+        for id in arena.inputs() {
+            let (src, dst) = arena.ends(id);
             let candidates = self.yens.k_shortest_paths(src, dst);
             wrapper.candidates.push(candidates);
         }
     }
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
-    fn configure(&mut self, wrapper: &mut NetworkWrapper, deadline: Instant, evaluate: Eval) {
+    fn configure(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena, deadline: Instant, evaluate: Eval) {
         // self.grasp(wrapper, deadline);
-        let arena = Rc::clone(&wrapper.arena);
         let mut rng = ChaChaRng::seed_from_u64(420);
         let mut iter_times = 0;
         let mut min_cost = evaluate(wrapper);
@@ -86,7 +84,7 @@ impl Algorithm for RO {
                 let candidate_cnt = self.get_candidate_count(flow.src, flow.dst);
                 let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
                 let set = gen_n_distinct_outof_k(alpha, candidate_cnt, &mut rng);
-                let new_route = self.find_min_cost_route(wrapper, id, Some(set));
+                let new_route = self.find_min_cost_route(wrapper, arena, id, Some(set));
                 cur_wrapper.flow_table.pick(id, new_route);
                 // cur_wrapper.update_single_avb(id, new_route);
             }
@@ -115,7 +113,7 @@ impl Algorithm for RO {
                     continue;
                 }
 
-                let new_route = self.find_min_cost_route(wrapper, target_id, None);
+                let new_route = self.find_min_cost_route(wrapper, arena, target_id, None);
                 let old_route = wrapper
                     .get_flow_table()
                     .kth_prev(target_id)

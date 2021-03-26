@@ -1,17 +1,17 @@
-use std::{ops::Range, rc::Rc};
-use crate::utils::stream::{TSN, AVB};
+use std::rc::Rc;
+use std::ops::Range;
 use crate::network::MemorizingGraph;
 use crate::network::Network;
 use crate::component::flowtable::FlowTable;
 use crate::component::GCL;
-use super::flowtable::FlowArena;
+
 
 type Route = Vec<usize>;
+
 
 /// 這個結構預期會被複製很多次，因此其中的每個元件都應儘可能想辦法降低複製成本
 #[derive(Clone)]
 pub struct NetworkWrapper {
-    pub arena: Rc<FlowArena>,
     pub flow_table: FlowTable,
     pub old_new_table: Option<Rc<FlowTable>>, // 在每次運算中類似常數，故用 RC 來包
     pub gcl: GCL,
@@ -27,7 +27,6 @@ impl NetworkWrapper {
     {
         let memorizing = MemorizingGraph::new(&graph);
         NetworkWrapper {
-            arena: Rc::new(FlowArena::new()),
             flow_table: FlowTable::new(),
             old_new_table: None,
             gcl: GCL::new(1),
@@ -39,23 +38,9 @@ impl NetworkWrapper {
         }
     }
     /// 插入新的資料流，同時會捨棄先前的新舊表，並創建另一份新舊表
-    pub fn insert(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
-        // 釋放舊的表備份表
-        // self.old_new_table = None;
-        // 插入
-        // let new_ids = self.flow_table.insert(tsns, avbs, default_info.clone());
-        let arena = Rc::get_mut(&mut self.arena)
-            .expect("插入資料流時發生數據爭用");
-
-        let oldlen = arena.len();
-
-        arena.append(tsns, avbs);
-        let len = arena.len();
-
+    pub fn resize(&mut self, len: usize) {
         self.flow_table.resize(len);
         self.old_new_table = Some(Rc::new(self.flow_table.clone()));
-
-        self.inputs = oldlen..len;
     }
     pub fn get_route(&self, flow_id: usize) -> &Route {
         let kth = self.flow_table.kth_next(flow_id).unwrap();

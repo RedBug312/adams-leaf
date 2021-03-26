@@ -1,9 +1,8 @@
 use std::rc::Rc;
-
+use super::{NetworkWrapper, RoutingCost};
 use crate::network::{Network, MemorizingGraph};
 use crate::component::{flowtable::*, GCL};
 
-use super::{NetworkWrapper, RoutingCost};
 
 /// AVB 資料流最多可以佔用的資源百分比（模擬 Credit Base Shaper 的效果）
 const MAX_AVB_SETTING: f64 = 0.75;
@@ -20,14 +19,14 @@ impl Evaluator {
     pub fn new(weights: [f64; 4]) -> Self {
         Evaluator { weights }
     }
-    pub fn compute_avb_wcd(&self, wrapper: &NetworkWrapper, id: usize) -> u32 {
+    pub fn compute_avb_wcd(&self, wrapper: &NetworkWrapper, arena: &FlowArena, id: usize) -> u32 {
         let kth = wrapper.flow_table.kth_next(id).unwrap();
-        evaluate_avb_latency_for_kth(wrapper, id, kth)
+        evaluate_avb_latency_for_kth(wrapper, arena, id, kth)
     }
-    pub fn compute_single_avb_cost(&self, wrapper: &NetworkWrapper, id: usize) -> RoutingCost {
-        let flow = wrapper.arena.avb(id)
+    pub fn compute_single_avb_cost(&self, wrapper: &NetworkWrapper, arena: &FlowArena, id: usize) -> RoutingCost {
+        let flow = arena.avb(id)
             .expect("Failed to obtain AVB spec from TSN stream");
-        let avb_wcd = self.compute_avb_wcd(wrapper, id) as f64 / flow.max_delay as f64;
+        let avb_wcd = self.compute_avb_wcd(wrapper, arena, id) as f64 / flow.max_delay as f64;
         let mut avb_fail_cnt = 0;
         let mut reroute_cnt = 0;
         if avb_wcd >= 1.0 {
@@ -50,8 +49,7 @@ impl Evaluator {
             reroute_overhead: reroute_cnt,
         }
     }
-    pub fn compute_all_cost(&self, wrapper: &NetworkWrapper) -> RoutingCost {
-        let arena = Rc::clone(&wrapper.arena);
+    pub fn compute_all_cost(&self, wrapper: &NetworkWrapper, arena: &FlowArena) -> RoutingCost {
         let mut all_avb_fail_cnt = 0;
         let mut all_avb_wcd = 0.0;
         let mut all_reroute_cnt = 0;
@@ -63,9 +61,9 @@ impl Evaluator {
             }
         }
         for &id in arena.avbs.iter() {
-            let flow = wrapper.arena.avb(id)
+            let flow = arena.avb(id)
                 .expect("Failed to obtain AVB spec from TSN stream");
-            let wcd = self.compute_avb_wcd(wrapper, id);
+            let wcd = self.compute_avb_wcd(wrapper, arena, id);
             all_avb_wcd += wcd as f64 / flow.max_delay as f64;
             if wcd > flow.max_delay {
                 // 逾時了！
@@ -88,11 +86,10 @@ impl Evaluator {
     }
 }
 
-pub fn evaluate_avb_latency_for_kth(wrapper: &NetworkWrapper, id: usize, kth: usize) -> u32 {
-    let arena = Rc::clone(&wrapper.arena);
+pub fn evaluate_avb_latency_for_kth(wrapper: &NetworkWrapper, arena: &FlowArena, id: usize, kth: usize) -> u32 {
     let network = Rc::clone(&wrapper.network);
     let route = wrapper.get_kth_route(id, kth);
-    compute_avb_latency(&network, &wrapper.graph, id, route, &arena, &wrapper.gcl)
+    compute_avb_latency(&network, &wrapper.graph, id, route, arena, &wrapper.gcl)
 }
 
 fn is_rerouted(id: usize, route: usize, old_new_table: &FlowTable) -> bool {

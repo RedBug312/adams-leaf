@@ -6,7 +6,7 @@ use rand_chacha::ChaChaRng;
 use rand::{Rng, SeedableRng};
 use super::Algorithm;
 use super::base::ants::ACOJudgeResult;
-use crate::{network::Network, utils::config::Config};
+use crate::{component::flowtable::FlowArena, network::Network, utils::config::Config};
 use crate::component::NetworkWrapper;
 use crate::component::evaluator::evaluate_avb_latency_for_kth;
 use super::base::ants::ACO;
@@ -31,12 +31,11 @@ impl AdamsAnt {
 }
 
 impl Algorithm for AdamsAnt {
-    fn configure(&mut self, wrapper: &mut NetworkWrapper, deadline: Instant, evaluate: Eval) {
-        let arena = Rc::clone(&wrapper.arena);
+    fn configure(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena, deadline: Instant, evaluate: Eval) {
         self.aco
             .extend_state_len(arena.len());
 
-        let vis = compute_visibility(wrapper, self);
+        let vis = compute_visibility(wrapper, arena, self);
         let cost = evaluate(wrapper);
 
         let mut best_dist = distance(cost.0);
@@ -100,9 +99,9 @@ impl Algorithm for AdamsAnt {
         println!("ACO epoch = {}", epoch);
         best_state.state.expect("找不到最好的解");
     }
-    fn prepare(&mut self, wrapper: &mut NetworkWrapper) {
-        for id in wrapper.inputs.clone() {
-            let (src, dst) = wrapper.arena.ends(id);
+    fn prepare(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena) {
+        for id in arena.inputs() {
+            let (src, dst) = arena.ends(id);
             let candidates = self.yens.k_shortest_paths(src, dst);
             wrapper.candidates.push(candidates);
         }
@@ -140,8 +139,7 @@ fn select_cluster(visibility: &[f64; MAX_K], pheromone: &[f64; MAX_K], k: usize,
 }
 
 
-fn compute_visibility(wrapper: &NetworkWrapper, algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
-    let arena = Rc::clone(&wrapper.arena);
+fn compute_visibility(wrapper: &NetworkWrapper, arena: &FlowArena, algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
     let config = Config::get();
     // TODO 好好設計能見度函式！
     // 目前：路徑長的倒數
@@ -150,8 +148,8 @@ fn compute_visibility(wrapper: &NetworkWrapper, algo: &AdamsAnt) -> Vec<[f64; MA
     for &id in arena.avbs.iter() {
         let flow = arena.avb(id)
             .expect("Failed to obtain AVB spec from TSN stream");
-        for i in 0..algo.get_candidate_count(flow.src, flow.dst) {
-            vis[id][i] = 1.0 / evaluate_avb_latency_for_kth(wrapper, id, i) as f64;
+        for kth in 0..algo.get_candidate_count(flow.src, flow.dst) {
+            vis[id][kth] = 1.0 / evaluate_avb_latency_for_kth(wrapper, arena, id, kth) as f64;
         }
         if let Some(route_k) = wrapper.get_old_route(id) {
             // 是舊資料流，調高本來路徑的能見度

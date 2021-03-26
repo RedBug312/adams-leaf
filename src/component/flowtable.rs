@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::utils::stream::{AVB, TSN};
 
 
@@ -17,9 +19,10 @@ enum Either {
 
 #[derive(Default)]
 pub struct FlowArena {
+    streams: Vec<Either>,
     pub avbs: Vec<usize>,
     pub tsns: Vec<usize>,
-    streams: Vec<Either>,
+    inputs: Range<usize>,
 }
 
 #[derive(Clone, Default)]
@@ -32,6 +35,9 @@ impl FlowArena {
     pub fn new() -> Self {
         FlowArena { ..Default::default() }
     }
+    pub fn inputs(&self) -> Range<usize> {
+        self.inputs.clone()
+    }
     pub fn append(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
         let len = self.streams.len();
         for (idx, tsn) in tsns.into_iter().enumerate() {
@@ -43,6 +49,7 @@ impl FlowArena {
             self.avbs.push(len + idx);
             self.streams.push(Either::AVB(len + idx, avb));
         }
+        self.inputs = self.inputs.end..self.streams.len();
     }
     pub fn tsn(&self, id: usize) -> Option<&TSN> {
         let either = self.streams.get(id)
