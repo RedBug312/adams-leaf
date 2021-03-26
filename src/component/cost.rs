@@ -16,6 +16,14 @@ pub struct RoutingCost {
 
 
 impl RoutingCost {
+    pub fn objectives(&self) -> [f64; 4] {
+        let mut objs = [0f64; 4];
+        objs[0] = self.tsn_schedule_fail as u8 as f64;
+        objs[1] = self.avb_fail_cnt as f64 / self.avb_cnt as f64;
+        objs[2] = self.reroute_overhead as f64 / (self.avb_cnt + self.tsn_cnt) as f64;
+        objs[3] = self.avb_wcd / self.avb_cnt as f64;
+        objs
+    }
     pub fn compute(&self) -> f64 {
         let config = Config::get();
         let cost = self.compute_without_reroute_cost();

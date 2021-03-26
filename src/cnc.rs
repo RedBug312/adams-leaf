@@ -31,10 +31,27 @@ impl CNC {
         let wrapper = &mut self.wrapper;
         let limit = Duration::from_micros(Config::get().t_limit as u64);
 
+        let config = Config::get();
+        let mut weights = [config.w0, config.w1, config.w2, config.w3];
+        if matches!(self.algorithm, AlgorithmEnum::RO(_)) {
+            weights[2] = 0f64;
+        }
+
+        let evaluate = |w: &NetworkWrapper| {
+            let objectives = w.compute_all_cost().objectives();
+            let early_exit = objectives[1] == 0f64 && Config::get().fast_stop;
+            let cost: f64 = objectives.iter()
+                .zip(weights.iter())
+                .map(|(x, y)| x * y)
+                .sum();
+            (cost, early_exit)
+        };
+        let evaluate = Box::new(evaluate);
+
         let start = Instant::now();
         self.algorithm.prepare(wrapper);
         wrapper.adopt_decision();
-        self.algorithm.configure(wrapper, start + limit);
+        self.algorithm.configure(wrapper, start + limit, evaluate);
         let elapsed = start.elapsed().as_micros();
 
         self.show_results();

@@ -1,12 +1,12 @@
 use std::rc::Rc;
 use std::collections::BinaryHeap;
 use std::time::Instant;
-use super::base::ants::WeightedState;
+use super::{algorithm::Eval, base::ants::WeightedState};
 use rand_chacha::ChaChaRng;
 use rand::{Rng, SeedableRng};
 use super::Algorithm;
 use super::base::ants::ACOJudgeResult;
-use crate::{component::RoutingCost, network::Network, utils::config::Config};
+use crate::{network::Network, utils::config::Config};
 use crate::component::NetworkWrapper;
 use super::base::ants::ACO;
 use super::base::yens::YensAlgo;
@@ -30,14 +30,15 @@ impl AdamsAnt {
 }
 
 impl Algorithm for AdamsAnt {
-    fn configure(&mut self, wrapper: &mut NetworkWrapper, deadline: Instant) {
+    fn configure(&mut self, wrapper: &mut NetworkWrapper, deadline: Instant, evaluate: Eval) {
         let arena = Rc::clone(&wrapper.arena);
         self.aco
             .extend_state_len(arena.len());
 
         let vis = compute_visibility(wrapper, self);
+        let cost = evaluate(&wrapper);
 
-        let mut best_dist = dist_computing(&wrapper.compute_all_cost());
+        let mut best_dist = distance(cost.0);
 
         let visibility = &vis;
 
@@ -61,8 +62,9 @@ impl Algorithm for AdamsAnt {
                     // TODO online pharamon update
                 }
 
-                let (cost, dist) = compute_aco_dist(wrapper, &cur_state, &mut best_dist);
-                let judge = if cost.avb_fail_cnt == 0 && Config::get().fast_stop {
+                let cost = compute_aco_dist(wrapper, &cur_state, &mut best_dist, &evaluate);
+                let dist = distance(cost.0);
+                let judge = if cost.1 {
                     // 找到可行解，且為快速終止模式
                     ACOJudgeResult::Stop(dist)
                 } else {
@@ -176,7 +178,8 @@ fn compute_aco_dist(
     wrapper: &mut NetworkWrapper,
     state: &Vec<usize>,
     best_dist: &mut f64,
-) -> (RoutingCost, f64) {
+    evaluate: &Eval,
+) -> (f64, bool) {
     let mut cur_wrapper = wrapper.clone();
 
     for (id, &kth) in state.iter().enumerate() {
@@ -185,13 +188,13 @@ fn compute_aco_dist(
     }
 
     cur_wrapper.adopt_decision();
-    let cost = cur_wrapper.compute_all_cost();
-    let dist = dist_computing(&cost);
+    let cost = evaluate(&cur_wrapper);
+    let dist = distance(cost.0);
 
-    if Config::get().fast_stop && cost.avb_fail_cnt == 0 {
+    if cost.1 {
         // 快速終止！
         *wrapper = cur_wrapper;
-        return (cost, dist);
+        return cost;
     }
 
     if dist < *best_dist {
@@ -199,10 +202,10 @@ fn compute_aco_dist(
         // 記錄 FlowTable 及 GCL
         *wrapper = cur_wrapper;
     }
-    (cost, dist)
+    cost
 }
 
-fn dist_computing(cost: &RoutingCost) -> f64 {
+fn distance(cost: f64) -> f64 {
     let base: f64 = 10.0;
-    base.powf(cost.compute() - 1.0)
+    base.powf(cost - 1.0)
 }

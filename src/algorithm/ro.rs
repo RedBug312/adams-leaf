@@ -1,5 +1,4 @@
-use super::Algorithm;
-use crate::utils::config::Config;
+use super::{Algorithm, algorithm::Eval};
 use crate::network::Network;
 use crate::component::NetworkWrapper;
 use super::base::yens::YensAlgo;
@@ -70,12 +69,12 @@ impl Algorithm for RO {
         }
     }
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
-    fn configure(&mut self, wrapper: &mut NetworkWrapper, deadline: Instant) {
+    fn configure(&mut self, wrapper: &mut NetworkWrapper, deadline: Instant, evaluate: Eval) {
         // self.grasp(wrapper, deadline);
         let arena = Rc::clone(&wrapper.arena);
         let mut rng = ChaChaRng::seed_from_u64(420);
         let mut iter_times = 0;
-        let mut min_cost = wrapper.compute_all_cost();
+        let mut min_cost = evaluate(wrapper);
         while Instant::now() < deadline {
             iter_times += 1;
             // PHASE 1
@@ -92,8 +91,8 @@ impl Algorithm for RO {
             }
             cur_wrapper.adopt_decision();
             // PHASE 2
-            let cost = cur_wrapper.compute_all_cost();
-            if cost.compute_without_reroute_cost() < min_cost.compute_without_reroute_cost() {
+            let cost = evaluate(&cur_wrapper);
+            if cost.0 < min_cost.0 {
                 min_cost = cost;
                 // #[cfg(debug_assertions)]
                 // println!("found min_cost = {:?} at first glance!", cost);
@@ -105,7 +104,7 @@ impl Algorithm for RO {
 
             let mut iter_times_inner = 0;
             while Instant::now() < deadline {
-                if min_cost.avb_fail_cnt == 0 && Config::get().fast_stop {
+                if min_cost.1 {
                     break; // 找到可行解，返回
                 }
 
@@ -129,9 +128,9 @@ impl Algorithm for RO {
                 // 實際更新下去，並計算成本
                 cur_wrapper.flow_table.pick(target_id, new_route);
                 cur_wrapper.adopt_decision();
-                let cost = cur_wrapper.compute_all_cost();
+                let cost = evaluate(&cur_wrapper);
 
-                if cost.compute_without_reroute_cost() < min_cost.compute_without_reroute_cost() {
+                if cost.0 < min_cost.0 {
                     *wrapper = cur_wrapper.clone();
                     min_cost = cost.clone();
                     iter_times_inner = 0;
@@ -149,7 +148,7 @@ impl Algorithm for RO {
                 }
             }
 
-            if min_cost.avb_fail_cnt == 0 && Config::get().fast_stop {
+            if min_cost.1 {
                 // 找到可行解，且為快速終止模式
                 break;
             }

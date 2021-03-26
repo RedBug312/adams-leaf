@@ -6,6 +6,9 @@ use super::spf::SPF;
 use crate::component::NetworkWrapper;
 
 
+pub type Eval<'a> = Box<dyn Fn(&NetworkWrapper) -> (f64, bool) + 'a>;
+
+
 #[enum_dispatch]
 pub enum AlgorithmEnum {
     AdamsAnt,
@@ -15,6 +18,6 @@ pub enum AlgorithmEnum {
 
 #[enum_dispatch(AlgorithmEnum)]
 pub trait Algorithm {
-    fn configure(&mut self, wrapper: &mut NetworkWrapper, deadline: Instant);
+    fn configure(&mut self, wrapper: &mut NetworkWrapper, deadline: Instant, evaluate: Eval);
     fn prepare(&mut self, wrapper: &mut NetworkWrapper);
 }
