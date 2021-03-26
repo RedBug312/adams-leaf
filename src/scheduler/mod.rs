@@ -1,2 +1,3 @@
 mod scheduler;
-pub use scheduler::schedule_fixed_og;
+
+pub use scheduler::Scheduler;

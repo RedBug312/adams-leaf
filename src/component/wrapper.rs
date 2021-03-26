@@ -1,5 +1,5 @@
 use std::{ops::Range, rc::Rc};
-use crate::{scheduler::schedule_fixed_og, utils::stream::{TSN, AVB}};
+use crate::utils::stream::{TSN, AVB};
 use crate::network::MemorizingGraph;
 use crate::network::Network;
 use crate::component::flowtable::FlowTable;
@@ -71,82 +71,6 @@ impl NetworkWrapper {
             .as_ref()
             .unwrap()
             .kth_prev(flow_id)
-    }
-    pub fn adopt_decision(&mut self) {
-        self.update_avb();
-        self.update_tsn();
-        self.flow_table.confirm();
-    }
-    /// 更新 AVB 資料流表與圖上資訊
-    fn update_avb(&mut self) {
-        let avbs = &self.arena.avbs;
-        let mut updates = Vec::with_capacity(avbs.len());
-
-        updates.extend(self.flow_table.filter_switch(avbs));
-        for &id in updates.iter() {
-            let prev = self.flow_table.kth_prev(id)
-                .expect("Failed to get prev kth with the given id");
-            // NOTE: 因為 self.graph 與 self.get_route 是平行所有權
-            let graph = unsafe { &mut (*(self as *mut Self)).graph };
-            let route = self.get_kth_route(id, prev);
-            graph.update_flowid_on_route(false, id, route);
-        }
-
-        let avbs = &self.arena.avbs;
-        updates.extend(self.flow_table.filter_pending(avbs));
-        for &id in updates.iter() {
-            let next = self.flow_table.kth_next(id)
-                .expect("Failed to get next kth with the given id");
-            // NOTE: 因為 self.graph 與 self.get_route 是平行所有權
-            let graph = unsafe { &mut (*(self as *mut Self)).graph };
-            let route = self.get_kth_route(id, next);
-            graph.update_flowid_on_route(true, id, route);
-        }
-    }
-    /// 更新 TSN 資料流表與 GCL
-    fn update_tsn(&mut self) {
-        let tsns = &self.arena.tsns;
-        let mut updates = Vec::with_capacity(tsns.len());
-
-        updates.extend(self.flow_table.filter_switch(tsns));
-        for &id in updates.iter() {
-            let prev = self.flow_table.kth_prev(id)
-                .expect("Failed to get prev kth with the given id");
-            let route = self.get_kth_route(id, prev);
-            let links = self
-                .network
-                .get_links_id_bandwidth(route)
-                .iter()
-                .map(|(ends, _)| *ends)
-                .collect();
-            self.gcl.delete_flow(&links, id);
-        }
-
-        let _self = self as *const Self;
-        let arena = Rc::clone(&self.arena);
-
-        let closure = |id| {
-            // NOTE: 因為 self.flow_table.get 和 self.get_route_func 和 self.graph 與其它部份是平行所有權
-            unsafe {
-                let kth = (*_self).flow_table.kth_next(id).unwrap();
-                let route = (*_self).candidates[id].get(kth).unwrap();
-                (*_self).network.get_links_id_bandwidth(route)
-            }
-        };
-
-        updates.extend(self.flow_table.filter_pending(tsns));
-        // FIXME: stream with choice switch(x, x) is scheduled again
-        let result = schedule_fixed_og(&arena, &mut self.gcl, &closure, &updates);
-        let result = match result {
-            Ok(_) => Ok(false),
-            Err(_) => {
-                self.gcl.clear();
-                schedule_fixed_og(&arena, &mut self.gcl, &closure, &arena.tsns)
-                    .and(Ok(true))
-            }
-        };
-
-        self.tsn_fail = result.is_err();
     }
     pub fn get_flow_table(&self) -> &FlowTable {
         &self.flow_table

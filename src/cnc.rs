@@ -1,6 +1,6 @@
 use std::{rc::Rc, time::{Duration, Instant}};
 
-use crate::{algorithm::{AlgorithmEnum, Algorithm, AdamsAnt, RO, SPF}, component::Evaluator};
+use crate::{algorithm::{AlgorithmEnum, Algorithm, AdamsAnt, RO, SPF}, component::Evaluator, scheduler::Scheduler};
 use crate::component::NetworkWrapper;
 use crate::component::RoutingCost;
 use crate::network::Network;
@@ -9,6 +9,7 @@ use crate::utils::stream::{TSN, AVB};
 
 pub struct CNC {
     algorithm: AlgorithmEnum,
+    scheduler: Scheduler,
     evaluator: Evaluator,
     wrapper: NetworkWrapper,
 }
@@ -26,9 +27,10 @@ impl CNC {
             "spf" => SPF::new(&graph).into(),
             _     => panic!("Failed specify an unknown routing algorithm"),
         };
-        let wrapper = NetworkWrapper::new(graph);
+        let scheduler = Scheduler::new();
         let evaluator = Evaluator::new(weights);
-        Self { algorithm, wrapper, evaluator }
+        let wrapper = NetworkWrapper::new(graph);
+        Self { algorithm, scheduler, evaluator, wrapper }
     }
     pub fn add_streams(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
         let wrapper = &mut self.wrapper;
@@ -36,11 +38,12 @@ impl CNC {
     }
     pub fn configure(&mut self) -> u128 {
         let wrapper = &mut self.wrapper;
+        let scheduler = &self.scheduler;
         let evaluator = &self.evaluator;
         let limit = Duration::from_micros(Config::get().t_limit as u64);
 
         let evaluate = |w: &mut NetworkWrapper| {
-            w.adopt_decision();  // where it's mutated
+            scheduler.configure(w);  // where it's mutated
             let objs = evaluator.compute_all_cost(w).objectives();
             let early_exit = objs[1] == 0f64 && Config::get().fast_stop;
             let cost: f64 = objs.iter()
@@ -53,7 +56,7 @@ impl CNC {
 
         let start = Instant::now();
         self.algorithm.prepare(wrapper);
-        wrapper.adopt_decision();
+        self.scheduler.configure(wrapper);  // should not schedule before routing
         self.algorithm.configure(wrapper, start + limit, evaluate);
         let elapsed = start.elapsed().as_micros();
 

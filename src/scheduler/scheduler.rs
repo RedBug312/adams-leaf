@@ -1,10 +1,98 @@
-use crate::{component::flowtable::FlowArena, utils::stream::TSN};
+use crate::{component::{NetworkWrapper, flowtable::FlowArena}, utils::stream::TSN};
 use crate::component::GCL;
 use crate::MAX_QUEUE;
 
 type Links = Vec<((usize, usize), f64)>;
 
 const MTU: usize = 1500;
+
+
+pub struct Scheduler {
+}
+
+
+impl Scheduler {
+    pub fn new() -> Self {
+        Scheduler {}
+    }
+    pub fn configure(&self, wrapper: &mut NetworkWrapper) {
+        update_avb(wrapper);
+        update_tsn(wrapper);
+        wrapper.flow_table.confirm();
+    }
+}
+
+/// 更新 AVB 資料流表與圖上資訊
+fn update_avb(wrapper: &mut NetworkWrapper) {
+    let avbs = &wrapper.arena.avbs;
+    let mut updates = Vec::with_capacity(avbs.len());
+
+    updates.extend(wrapper.flow_table.filter_switch(avbs));
+    for &id in updates.iter() {
+        let prev = wrapper.flow_table.kth_prev(id)
+            .expect("Failed to get prev kth with the given id");
+        // NOTE: 因為 wrapper.graph 與 wrapper.get_route 是平行所有權
+        let graph = unsafe { &mut (*(wrapper as *mut NetworkWrapper)).graph };
+        let route = wrapper.get_kth_route(id, prev);
+        graph.update_flowid_on_route(false, id, route);
+    }
+
+    let avbs = &wrapper.arena.avbs;
+    updates.extend(wrapper.flow_table.filter_pending(avbs));
+    for &id in updates.iter() {
+        let next = wrapper.flow_table.kth_next(id)
+            .expect("Failed to get next kth with the given id");
+        // NOTE: 因為 wrapper.graph 與 wrapper.get_route 是平行所有權
+        let graph = unsafe { &mut (*(wrapper as *mut NetworkWrapper)).graph };
+        let route = wrapper.get_kth_route(id, next);
+        graph.update_flowid_on_route(true, id, route);
+    }
+}
+/// 更新 TSN 資料流表與 GCL
+fn update_tsn(wrapper: &mut NetworkWrapper) {
+    let tsns = &wrapper.arena.tsns;
+    let mut updates = Vec::with_capacity(tsns.len());
+
+    updates.extend(wrapper.flow_table.filter_switch(tsns));
+    for &id in updates.iter() {
+        let prev = wrapper.flow_table.kth_prev(id)
+            .expect("Failed to get prev kth with the given id");
+        let route = wrapper.get_kth_route(id, prev);
+        let links = wrapper
+            .network
+            .get_links_id_bandwidth(route)
+            .iter()
+            .map(|(ends, _)| *ends)
+            .collect();
+        wrapper.gcl.delete_flow(&links, id);
+    }
+
+    let _wrapper = wrapper as *const NetworkWrapper;
+    let arena = Rc::clone(&wrapper.arena);
+
+    let closure = |id| {
+        // NOTE: 因為 wrapper.flow_table.get 和 wrapper.get_route_func 和 wrapper.graph 與其它部份是平行所有權
+        unsafe {
+            let kth = (*_wrapper).flow_table.kth_next(id).unwrap();
+            let route = (*_wrapper).candidates[id].get(kth).unwrap();
+            (*_wrapper).network.get_links_id_bandwidth(route)
+        }
+    };
+
+    updates.extend(wrapper.flow_table.filter_pending(tsns));
+    // FIXME: stream with choice switch(x, x) is scheduled again
+    let result = schedule_fixed_og(&arena, &mut wrapper.gcl, &closure, &updates);
+    let result = match result {
+        Ok(_) => Ok(false),
+        Err(_) => {
+            wrapper.gcl.clear();
+            schedule_fixed_og(&arena, &mut wrapper.gcl, &closure, &arena.tsns)
+                .and(Ok(true))
+        }
+    };
+
+    wrapper.tsn_fail = result.is_err();
+}
 
 /// 一個大小為 size 的資料流要切成幾個封包才夠？
 #[inline(always)]
@@ -16,7 +104,7 @@ fn get_frame_cnt(size: usize) -> usize {
     }
 }
 
-use std::cmp::Ordering;
+use std::{cmp::Ordering, rc::Rc};
 /// 排序的標準：
 /// * `deadline` - 時間較緊的要排前面
 /// * `period` - 週期短的要排前面
