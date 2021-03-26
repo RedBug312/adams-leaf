@@ -22,11 +22,9 @@ pub struct FlowArena {
     streams: Vec<Either>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct FlowTable {
     choices: Vec<Choice>,
-    pub avb_diff: Vec<usize>,
-    pub tsn_diff: Vec<usize>,
 }
 
 
@@ -34,22 +32,17 @@ impl FlowArena {
     pub fn new() -> Self {
         FlowArena { ..Default::default() }
     }
-    pub fn append(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) -> (Vec<usize>, Vec<usize>) {
-        let mut new_tsns = vec![];
+    pub fn append(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
         let len = self.streams.len();
         for (idx, tsn) in tsns.into_iter().enumerate() {
             self.tsns.push(len + idx);
-            new_tsns.push(len + idx);
             self.streams.push(Either::TSN(len + idx, tsn));
         }
-        let mut new_avbs = vec![];
         let len = self.streams.len();
         for (idx, avb) in avbs.into_iter().enumerate() {
             self.avbs.push(len + idx);
-            new_avbs.push(len + idx);
             self.streams.push(Either::AVB(len + idx, avb));
         }
-        (new_tsns, new_avbs)
     }
     pub fn tsn(&self, id: usize) -> Option<&TSN> {
         let either = self.streams.get(id)
@@ -75,12 +68,6 @@ impl FlowArena {
             Either::AVB(_, avb) => (avb.src, avb.dst),
         }
     }
-    // XXX
-    pub fn is_tsn(&self, id: usize) -> bool {
-        let either = self.streams.get(id)
-            .expect("Failed to obtain end devices from an invalid id");
-        matches!(either, Either::TSN(_, _))
-    }
     pub fn len(&self) -> usize {
         self.streams.len()
     }
@@ -88,54 +75,17 @@ impl FlowArena {
 
 impl FlowTable {
     pub fn new() -> Self {
-        FlowTable {
-            choices: vec![],
-            avb_diff: vec![],
-            tsn_diff: vec![],
-        }
+        FlowTable { ..Default::default() }
     }
     pub fn resize(&mut self, len: usize) {
-        // for oldnewtable
         self.choices.resize(len, Choice::Pending(KTH_DEFAULT));
     }
-    pub fn apply(&mut self, is_tsn: bool) {
-        if is_tsn {
-            for id in self.tsn_diff.drain(..) {
-                self.choices[id].confirm();
-            }
-        } else {
-            for id in self.avb_diff.drain(..) {
-                self.choices[id].confirm();
-            }
-        }
+    pub fn confirm(&mut self) {
+        self.choices.iter_mut()
+            .for_each(|choice| choice.confirm());
     }
-    pub fn update_info(&mut self, id: usize, info: usize) {
-        debug_assert!(id < self.choices.len());
-        self.choices[id] = Choice::Stay(info);
-    }
-}
-
-impl FlowTable {
-    /// 不管是否和本來相同，硬是更新
-    pub fn update_tsn_info_force_diff(&mut self, id: usize, info: usize) {
-        self.tsn_diff.push(id);
-        self.choices[id].pick(info);
-    }
-    pub fn update_avb_info_force_diff(&mut self, id: usize, info: usize) {
-        self.avb_diff.push(id);
-        self.choices[id].pick(info);
-    }
-    pub fn update_tsn_info_diff(&mut self, id: usize, info: usize) {
-        // FIXME: allow choice switch(x, x) for simplicity
-        if let Some(Choice::Stay(og_value)) = self.choices.get(id) {
-            // NOTE: 若和本來值相同，就啥都不做
-            if *og_value == info {
-                return;
-            }
-            self.tsn_diff.push(id);
-        }
-        // NOTE: 如果本來就是 New，就不推進 diff 表（因為之前推過了）
-        self.choices[id].pick(info);
+    pub fn pick(&mut self, id: usize, kth: usize) {
+        self.choices[id].pick(kth);
     }
     pub fn kth_prev(&self, id: usize) -> Option<usize> {
         self.choices[id].kth_prev()

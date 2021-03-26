@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::time::Instant;
 use crate::network::Network;
 use crate::component::NetworkWrapper;
-use super::Algorithm;
+use super::{Algorithm, algorithm::Eval};
 use super::base::yens::YensAlgo;
 
 
@@ -32,6 +32,6 @@ impl Algorithm for SPF {
             .map(|ends| self.yens.k_shortest_paths(ends.0, ends.1));
         candidates.extend(input_candidates);
     }
-    fn configure(&mut self, _wrapper: &mut NetworkWrapper, _deadline: Instant) {
+    fn configure(&mut self, _wrapper: &mut NetworkWrapper, _deadline: Instant, _evaluate: Eval) {
     }
 }
