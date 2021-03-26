@@ -34,11 +34,11 @@ impl RO {
         }
     }
     /// 若有給定候選路徑的子集合，就從中選。若無，則遍歷所有候選路徑
-    fn find_min_cost_route(&self, wrapper: &NetworkWrapper, arena: &FlowArena, id: usize, set: Option<Vec<usize>>) -> usize {
+    fn find_min_cost_route(&self, wrapper: &NetworkWrapper, arena: &FlowArena, network: &Network, id: usize, set: Option<Vec<usize>>) -> usize {
         let (src, dst) = arena.ends(id);
         let (mut min_cost, mut best_k) = (std::f64::MAX, 0);
         let mut closure = |k: usize| {
-            let cost = evaluate_avb_latency_for_kth(wrapper, arena, id, k) as f64;
+            let cost = evaluate_avb_latency_for_kth(wrapper, arena, network, id, k) as f64;
             if cost < min_cost {
                 min_cost = cost;
                 best_k = k;
@@ -69,7 +69,7 @@ impl Algorithm for RO {
         }
     }
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
-    fn configure(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena, deadline: Instant, evaluate: Eval) {
+    fn configure(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena, network: &Network, deadline: Instant, evaluate: Eval) {
         // self.grasp(wrapper, deadline);
         let mut rng = ChaChaRng::seed_from_u64(420);
         let mut iter_times = 0;
@@ -78,14 +78,13 @@ impl Algorithm for RO {
             iter_times += 1;
             // PHASE 1
             let mut cur_wrapper = wrapper.clone();
-            for &id in arena.avbs.iter() {
-                let flow = arena.avb(id)
-                    .expect("Failed to obtain AVB spec from TSN stream");
-                let candidate_cnt = self.get_candidate_count(flow.src, flow.dst);
+            for &avb in arena.avbs() {
+                let (src, dst) = arena.ends(avb);
+                let candidate_cnt = self.get_candidate_count(src, dst);
                 let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
                 let set = gen_n_distinct_outof_k(alpha, candidate_cnt, &mut rng);
-                let new_route = self.find_min_cost_route(wrapper, arena, id, Some(set));
-                cur_wrapper.flow_table.pick(id, new_route);
+                let new_route = self.find_min_cost_route(wrapper, arena, network, avb, Some(set));
+                cur_wrapper.flow_table.pick(avb, new_route);
                 // cur_wrapper.update_single_avb(id, new_route);
             }
             // PHASE 2
@@ -109,11 +108,11 @@ impl Algorithm for RO {
                 let rand = rng
                     .gen_range(0..arena.len());
                 let target_id = rand.into();
-                if arena.avb(target_id).is_none() {
+                if arena.avb_spec(target_id).is_none() {
                     continue;
                 }
 
-                let new_route = self.find_min_cost_route(wrapper, arena, target_id, None);
+                let new_route = self.find_min_cost_route(wrapper, arena, network, target_id, None);
                 let old_route = wrapper
                     .get_flow_table()
                     .kth_prev(target_id)

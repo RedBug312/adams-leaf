@@ -20,8 +20,8 @@ enum Either {
 #[derive(Default)]
 pub struct FlowArena {
     streams: Vec<Either>,
-    pub avbs: Vec<usize>,
-    pub tsns: Vec<usize>,
+    tsns: Vec<usize>,
+    avbs: Vec<usize>,
     inputs: Range<usize>,
 }
 
@@ -35,23 +35,19 @@ impl FlowArena {
     pub fn new() -> Self {
         FlowArena { ..Default::default() }
     }
-    pub fn inputs(&self) -> Range<usize> {
+    pub fn tsns(&self) -> &Vec<usize> {
+        &self.tsns
+    }
+    pub fn avbs(&self) -> &Vec<usize> {
+        &self.avbs
+    }
+    pub fn inputs<'a>(&'a self) -> impl Iterator<Item=usize> + 'a {
         self.inputs.clone()
     }
-    pub fn append(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
-        let len = self.streams.len();
-        for (idx, tsn) in tsns.into_iter().enumerate() {
-            self.tsns.push(len + idx);
-            self.streams.push(Either::TSN(len + idx, tsn));
-        }
-        let len = self.streams.len();
-        for (idx, avb) in avbs.into_iter().enumerate() {
-            self.avbs.push(len + idx);
-            self.streams.push(Either::AVB(len + idx, avb));
-        }
-        self.inputs = self.inputs.end..self.streams.len();
+    pub fn len(&self) -> usize {
+        self.streams.len()
     }
-    pub fn tsn(&self, id: usize) -> Option<&TSN> {
+    pub fn tsn_spec(&self, id: usize) -> Option<&TSN> {
         let either = self.streams.get(id)
             .expect("Failed to obtain TSN spec from an invalid id");
         match either {
@@ -59,7 +55,7 @@ impl FlowArena {
             Either::AVB(_, _) => None,
         }
     }
-    pub fn avb(&self, id: usize) -> Option<&AVB> {
+    pub fn avb_spec(&self, id: usize) -> Option<&AVB> {
         let either = self.streams.get(id)
             .expect("Failed to obtain AVB spec from an invalid id");
         match either {
@@ -75,8 +71,18 @@ impl FlowArena {
             Either::AVB(_, avb) => (avb.src, avb.dst),
         }
     }
-    pub fn len(&self) -> usize {
-        self.streams.len()
+    pub fn append(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
+        let len = self.streams.len();
+        for (idx, tsn) in tsns.into_iter().enumerate() {
+            self.tsns.push(len + idx);
+            self.streams.push(Either::TSN(len + idx, tsn));
+        }
+        let len = self.streams.len();
+        for (idx, avb) in avbs.into_iter().enumerate() {
+            self.avbs.push(len + idx);
+            self.streams.push(Either::AVB(len + idx, avb));
+        }
+        self.inputs = self.inputs.end..self.streams.len();
     }
 }
 

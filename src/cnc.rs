@@ -14,6 +14,7 @@ pub struct CNC {
     evaluator: Evaluator,
     wrapper: NetworkWrapper,
     arena: FlowArena,
+    network: Network,
 }
 
 impl CNC {
@@ -31,9 +32,10 @@ impl CNC {
         };
         let scheduler = Scheduler::new();
         let evaluator = Evaluator::new(weights);
-        let wrapper = NetworkWrapper::new(graph);
+        let wrapper = NetworkWrapper::new(&graph);
         let arena = FlowArena::new();
-        Self { algorithm, scheduler, evaluator, wrapper, arena }
+        let network = graph;
+        Self { algorithm, scheduler, evaluator, wrapper, arena, network }
     }
     pub fn add_streams(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
         self.arena.append(tsns, avbs);
@@ -44,11 +46,12 @@ impl CNC {
         let scheduler = &self.scheduler;
         let evaluator = &self.evaluator;
         let arena = &self.arena;
+        let network = &self.network;
         let limit = Duration::from_micros(Config::get().t_limit as u64);
 
         let evaluate = |w: &mut NetworkWrapper| {
-            scheduler.configure(w, arena);  // where it's mutated
-            let objs = evaluator.compute_all_cost(w, arena).objectives();
+            scheduler.configure(w, arena, network);  // where it's mutated
+            let objs = evaluator.compute_all_cost(w, arena, network).objectives();
             let early_exit = objs[1] == 0f64 && Config::get().fast_stop;
             let cost: f64 = objs.iter()
                 .zip(evaluator.weights.iter())
@@ -60,13 +63,13 @@ impl CNC {
 
         let start = Instant::now();
         self.algorithm.prepare(wrapper, arena);
-        self.scheduler.configure(wrapper, arena);  // should not schedule before routing
-        self.algorithm.configure(wrapper, arena, start + limit, evaluate);
+        self.scheduler.configure(wrapper, arena, network);  // should not schedule before routing
+        self.algorithm.configure(wrapper, arena, network, start + limit, evaluate);
         let elapsed = start.elapsed().as_micros();
 
         let wrapper = &self.wrapper;
         self.show_results();
-        let cost = self.evaluator.compute_all_cost(wrapper, arena);
+        let cost = self.evaluator.compute_all_cost(wrapper, arena, network);
         RoutingCost::show_brief(vec![cost]);
 
         elapsed
@@ -74,21 +77,22 @@ impl CNC {
     fn show_results(&self) {
         let arena = &self.arena;
         let wrapper = &self.wrapper;
+        let network = &self.network;
         println!("TT Flows:");
-        for &id in arena.tsns.iter() {
+        for &id in arena.tsns() {
             let route = self.wrapper.get_route(id);
             println!("flow id = FlowID({:?}), route = {:?}", id, route);
         }
         println!("AVB Flows:");
-        for &id in arena.avbs.iter() {
+        for &id in arena.avbs() {
             let route = self.wrapper.get_route(id);
-            let cost = self.evaluator.compute_single_avb_cost(wrapper, arena, id);
+            let cost = self.evaluator.compute_single_avb_cost(wrapper, arena, network, id);
             println!(
                 "flow id = FlowID({:?}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",
                 id, route, cost.avb_wcd, cost.reroute_overhead
             );
         }
-        let all_cost = self.evaluator.compute_all_cost(wrapper, arena);
+        let all_cost = self.evaluator.compute_all_cost(wrapper, arena, network);
         println!("the cost structure = {:?}", all_cost,);
         println!("{}", all_cost.compute());
     }

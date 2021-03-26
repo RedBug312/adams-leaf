@@ -31,11 +31,11 @@ impl AdamsAnt {
 }
 
 impl Algorithm for AdamsAnt {
-    fn configure(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena, deadline: Instant, evaluate: Eval) {
+    fn configure(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena, network: &Network, deadline: Instant, evaluate: Eval) {
         self.aco
             .extend_state_len(arena.len());
 
-        let vis = compute_visibility(wrapper, arena, self);
+        let vis = compute_visibility(wrapper, arena, network, self);
         let cost = evaluate(wrapper);
 
         let mut best_dist = distance(cost.0);
@@ -139,34 +139,32 @@ fn select_cluster(visibility: &[f64; MAX_K], pheromone: &[f64; MAX_K], k: usize,
 }
 
 
-fn compute_visibility(wrapper: &NetworkWrapper, arena: &FlowArena, algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
+fn compute_visibility(wrapper: &NetworkWrapper, arena: &FlowArena, network: &Network, algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
     let config = Config::get();
     // TODO 好好設計能見度函式！
     // 目前：路徑長的倒數
     let len = algo.aco.get_state_len();
     let mut vis = vec![[0.0; MAX_K]; len];
-    for &id in arena.avbs.iter() {
-        let flow = arena.avb(id)
-            .expect("Failed to obtain AVB spec from TSN stream");
-        for kth in 0..algo.get_candidate_count(flow.src, flow.dst) {
-            vis[id][kth] = 1.0 / evaluate_avb_latency_for_kth(wrapper, arena, id, kth) as f64;
+    for &avb in arena.avbs() {
+        let (src, dst) = arena.ends(avb);
+        for kth in 0..algo.get_candidate_count(src, dst) {
+            vis[avb][kth] = 1.0 / evaluate_avb_latency_for_kth(wrapper, arena, network, avb, kth) as f64;
         }
-        if let Some(route_k) = wrapper.get_old_route(id) {
+        if let Some(route_k) = wrapper.get_old_route(avb) {
             // 是舊資料流，調高本來路徑的能見度
-            vis[id][route_k] *= config.avb_memory;
+            vis[avb][route_k] *= config.avb_memory;
         }
     }
-    for &id in arena.tsns.iter() {
-        let flow = arena.tsn(id)
-            .expect("Failed to obtain TSN spec from AVB stream");
-        for i in 0..algo.get_candidate_count(flow.src, flow.dst) {
-            let route = algo.yens.kth_shortest_path(flow.src, flow.dst, i).unwrap();
-            vis[id][i] = 1.0 / route.len() as f64;
+    for &tsn in arena.tsns() {
+        let (src, dst) = arena.ends(tsn);
+        for i in 0..algo.get_candidate_count(src, dst) {
+            let route = algo.yens.kth_shortest_path(src, dst, i).unwrap();
+            vis[tsn][i] = 1.0 / route.len() as f64;
         }
 
-        if let Some(route_k) = wrapper.get_old_route(id) {
+        if let Some(route_k) = wrapper.get_old_route(tsn) {
             // 是舊資料流，調高本來路徑的能見度
-            vis[id][route_k] *= config.tsn_memory;
+            vis[tsn][route_k] *= config.tsn_memory;
         }
     }
     vis

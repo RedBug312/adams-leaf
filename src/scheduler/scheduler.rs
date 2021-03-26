@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use crate::component::flowtable::FlowArena;
 use crate::component::NetworkWrapper;
 use crate::component::GCL;
+use crate::network::Network;
 use crate::utils::stream::TSN;
 use crate::MAX_QUEUE;
 
@@ -17,16 +18,16 @@ impl Scheduler {
     pub fn new() -> Self {
         Scheduler {}
     }
-    pub fn configure(&self, wrapper: &mut NetworkWrapper, arena: &FlowArena) {
+    pub fn configure(&self, wrapper: &mut NetworkWrapper, arena: &FlowArena, network: &Network) {
         update_avb(wrapper, arena);
-        update_tsn(wrapper, arena);
+        update_tsn(wrapper, arena, network);
         wrapper.flow_table.confirm();
     }
 }
 
 /// 更新 AVB 資料流表與圖上資訊
 fn update_avb(wrapper: &mut NetworkWrapper, arena: &FlowArena) {
-    let avbs = &arena.avbs;
+    let avbs = arena.avbs();
     let mut updates = Vec::with_capacity(avbs.len());
 
     updates.extend(wrapper.flow_table.filter_switch(avbs));
@@ -39,7 +40,7 @@ fn update_avb(wrapper: &mut NetworkWrapper, arena: &FlowArena) {
         graph.update_flowid_on_route(false, id, route);
     }
 
-    let avbs = &arena.avbs;
+    let avbs = arena.avbs();
     updates.extend(wrapper.flow_table.filter_pending(avbs));
     for &id in updates.iter() {
         let next = wrapper.flow_table.kth_next(id)
@@ -50,9 +51,10 @@ fn update_avb(wrapper: &mut NetworkWrapper, arena: &FlowArena) {
         graph.update_flowid_on_route(true, id, route);
     }
 }
+
 /// 更新 TSN 資料流表與 GCL
-fn update_tsn(wrapper: &mut NetworkWrapper, arena: &FlowArena) {
-    let tsns = &arena.tsns;
+fn update_tsn(wrapper: &mut NetworkWrapper, arena: &FlowArena, network: &Network) {
+    let tsns = arena.tsns();
     let mut updates = Vec::with_capacity(tsns.len());
 
     updates.extend(wrapper.flow_table.filter_switch(tsns));
@@ -60,8 +62,7 @@ fn update_tsn(wrapper: &mut NetworkWrapper, arena: &FlowArena) {
         let prev = wrapper.flow_table.kth_prev(id)
             .expect("Failed to get prev kth with the given id");
         let route = wrapper.get_kth_route(id, prev);
-        let links = wrapper
-            .network
+        let links = network
             .get_links_id_bandwidth(route)
             .iter()
             .map(|(ends, _)| *ends)
@@ -76,7 +77,7 @@ fn update_tsn(wrapper: &mut NetworkWrapper, arena: &FlowArena) {
         unsafe {
             let kth = (*_wrapper).flow_table.kth_next(id).unwrap();
             let route = (*_wrapper).candidates[id].get(kth).unwrap();
-            (*_wrapper).network.get_links_id_bandwidth(route)
+            network.get_links_id_bandwidth(route)
         }
     };
 
@@ -87,7 +88,7 @@ fn update_tsn(wrapper: &mut NetworkWrapper, arena: &FlowArena) {
         Ok(_) => Ok(false),
         Err(_) => {
             wrapper.gcl.clear();
-            schedule_fixed_og(&arena, &mut wrapper.gcl, &closure, &arena.tsns)
+            schedule_fixed_og(&arena, &mut wrapper.gcl, &closure, tsns)
                 .and(Ok(true))
         }
     };
@@ -110,25 +111,25 @@ fn get_frame_cnt(size: usize) -> usize {
 /// * `period` - 週期短的要排前面
 /// * `route length` - 路徑長的要排前面
 fn cmp_flow<F: Fn(usize) -> Links>(
-    id1: usize,
-    id2: usize,
+    tsn1: usize,
+    tsn2: usize,
     arena: &FlowArena,
     get_links: &F,
 ) -> Ordering {
-    let flow1 = arena.tsn(id1).unwrap();
-    let flow2 = arena.tsn(id2).unwrap();
-    if flow1.max_delay < flow2.max_delay {
+    let spec1 = arena.tsn_spec(tsn1).unwrap();
+    let spec2 = arena.tsn_spec(tsn2).unwrap();
+    if spec1.max_delay < spec2.max_delay {
         Ordering::Less
-    } else if flow1.max_delay > flow2.max_delay {
+    } else if spec1.max_delay > spec2.max_delay {
         Ordering::Greater
     } else {
-        if flow1.period < flow2.period {
+        if spec1.period < spec2.period {
             Ordering::Less
-        } else if flow1.period > flow2.period {
+        } else if spec1.period > spec2.period {
             Ordering::Greater
         } else {
-            let rlen_1 = get_links(id1).len();
-            let rlen_2 = get_links(id2).len();
+            let rlen_1 = get_links(tsn1).len();
+            let rlen_2 = get_links(tsn2).len();
             if rlen_1 > rlen_2 {
                 Ordering::Less
             } else {
@@ -170,16 +171,16 @@ pub fn schedule_fixed_og<F: Fn(usize) -> Links>(
 ) -> Result<(), ()> {
     let mut tsn_ids = tsns.clone();
     tsn_ids.sort_by(|&id1, &id2| cmp_flow(id1, id2, arena, get_links));
-    for flow_id in tsn_ids.into_iter() {
-        let flow = arena.tsn(flow_id).unwrap();
-        let links = get_links(flow_id);
+    for tsn in tsn_ids.into_iter() {
+        let spec = arena.tsn_spec(tsn).unwrap();
+        let links = get_links(tsn);
         let mut all_offsets: Vec<Vec<u32>> = vec![];
         // NOTE 一個資料流的每個封包，在單一埠口上必需採用同一個佇列
         let mut ro: Vec<u8> = vec![0; links.len()];
-        let k = get_frame_cnt(flow.size);
+        let k = get_frame_cnt(spec.size);
         let mut m = 0;
         while m < k {
-            let offsets = calculate_offsets(flow_id, arena, &all_offsets, &links, &ro, gcl);
+            let offsets = calculate_offsets(tsn, arena, &all_offsets, &links, &ro, gcl);
             if offsets.len() == links.len() {
                 m += 1;
                 all_offsets.push(offsets);
@@ -196,20 +197,20 @@ pub fn schedule_fixed_og<F: Fn(usize) -> Links>(
             let queue_id = ro[i];
             let trans_time = ((MTU as f64) / links[i].1).ceil() as u32;
             // 考慮 hyper period 中每個狀況
-            let p = flow.period as usize;
+            let p = spec.period as usize;
             for time_shift in (0..gcl.get_hyper_p()).step_by(p) {
                 for m in 0..k {
                     // insert gate evt
                     gcl.insert_gate_evt(
                         link_id,
-                        flow_id,
+                        tsn,
                         queue_id,
                         time_shift + all_offsets[m][i],
                         trans_time,
                     );
                     // insert queue evt
                     let queue_evt_start = if i == 0 {
-                        flow.offset
+                        spec.offset
                     } else {
                         all_offsets[m][i - 1] // 前一個埠口一開始傳即視為開始佔用
                     };
@@ -218,7 +219,7 @@ pub fn schedule_fixed_og<F: Fn(usize) -> Links>(
                     let queue_evt_duration = all_offsets[m][i] - queue_evt_start;
                     gcl.insert_queue_evt(
                         link_id,
-                        flow_id,
+                        tsn,
                         queue_id,
                         time_shift + queue_evt_start,
                         queue_evt_duration,
@@ -234,14 +235,14 @@ pub fn schedule_fixed_og<F: Fn(usize) -> Links>(
 
 /// 回傳值為為一個陣列，若其長度小於路徑長，代表排一排爆開
 fn calculate_offsets(
-    id: usize,
+    tsn: usize,
     arena: &FlowArena,
     all_offsets: &Vec<Vec<u32>>,
     links: &Vec<((usize, usize), f64)>,
     ro: &Vec<u8>,
     gcl: &GCL,
 ) -> Vec<u32> {
-    let flow = arena.tsn(id)
+    let spec = arena.tsn_spec(tsn)
         .expect("Failed to obtain TSN spec from AVB stream");
     let mut offsets = Vec::<u32>::with_capacity(links.len());
     let hyper_p = gcl.get_hyper_p();
@@ -251,7 +252,7 @@ fn calculate_offsets(
             // 路徑起始
             if all_offsets.len() == 0 {
                 // 資料流的第一個封包
-                flow.offset
+                spec.offset
             } else {
                 // #m-1 封包完整送出，且經過處理時間
                 all_offsets[all_offsets.len() - 1][i] + trans_time
@@ -272,7 +273,7 @@ fn calculate_offsets(
             }
         };
         let mut cur_offset = arrive_time;
-        let p = flow.period as usize;
+        let p = spec.period as usize;
         for time_shift in (0..hyper_p).step_by(p) {
             // 考慮 hyper period 中每種狀況
             /*
@@ -287,7 +288,7 @@ fn calculate_offsets(
                     gcl.get_next_empty_time(links[i].0, time_shift + cur_offset, trans_time);
                 if let Some(time) = option {
                     cur_offset = time - time_shift;
-                    if miss_deadline(cur_offset, trans_time, flow) {
+                    if miss_deadline(cur_offset, trans_time, spec) {
                         return offsets;
                     }
                     continue;
@@ -302,13 +303,13 @@ fn calculate_offsets(
                     );
                     if let Some(time) = option {
                         cur_offset = time - time_shift;
-                        if miss_deadline(cur_offset, trans_time, flow) {
+                        if miss_deadline(cur_offset, trans_time, spec) {
                             return offsets;
                         }
                         continue;
                     }
                 }
-                if miss_deadline(cur_offset, trans_time, flow) {
+                if miss_deadline(cur_offset, trans_time, spec) {
                     return offsets;
                 }
                 break;

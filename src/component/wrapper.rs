@@ -15,7 +15,6 @@ pub struct NetworkWrapper {
     pub flow_table: FlowTable,
     pub old_new_table: Option<Rc<FlowTable>>, // 在每次運算中類似常數，故用 RC 來包
     pub gcl: GCL,
-    pub network: Rc<Network>,
     pub graph: MemorizingGraph,
     pub tsn_fail: bool,
     pub candidates: Vec<Vec<Route>>,
@@ -23,15 +22,14 @@ pub struct NetworkWrapper {
 }
 
 impl NetworkWrapper {
-    pub fn new(graph: Network) -> Self
+    pub fn new(graph: &Network) -> Self
     {
-        let memorizing = MemorizingGraph::new(&graph);
+        let memorizing = MemorizingGraph::new(graph);
         NetworkWrapper {
             flow_table: FlowTable::new(),
             old_new_table: None,
             gcl: GCL::new(1),
             tsn_fail: false,
-            network: Rc::new(graph),
             graph: memorizing,
             candidates: vec![],
             inputs: 0..0,

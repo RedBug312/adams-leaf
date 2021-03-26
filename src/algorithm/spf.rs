@@ -27,6 +27,6 @@ impl Algorithm for SPF {
             .map(|ends| self.yens.k_shortest_paths(ends.0, ends.1));
         wrapper.candidates.extend(input_candidates);
     }
-    fn configure(&mut self, _wrapper: &mut NetworkWrapper, _arena: &FlowArena, _deadline: Instant, _evaluate: Eval) {
+    fn configure(&mut self, _wrapper: &mut NetworkWrapper, _arena: &FlowArena, _network: &Network, _deadline: Instant, _evaluate: Eval) {
     }
 }
