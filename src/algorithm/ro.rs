@@ -89,9 +89,8 @@ impl Algorithm for RO {
                 cur_wrapper.flow_table.pick(id, new_route);
                 // cur_wrapper.update_single_avb(id, new_route);
             }
-            cur_wrapper.adopt_decision();
             // PHASE 2
-            let cost = evaluate(&cur_wrapper);
+            let cost = evaluate(&mut cur_wrapper);
             if cost.0 < min_cost.0 {
                 min_cost = cost;
                 // #[cfg(debug_assertions)]
@@ -127,8 +126,7 @@ impl Algorithm for RO {
 
                 // 實際更新下去，並計算成本
                 cur_wrapper.flow_table.pick(target_id, new_route);
-                cur_wrapper.adopt_decision();
-                let cost = evaluate(&cur_wrapper);
+                let cost = evaluate(&mut cur_wrapper);
 
                 if cost.0 < min_cost.0 {
                     *wrapper = cur_wrapper.clone();

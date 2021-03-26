@@ -37,7 +37,8 @@ impl CNC {
             weights[2] = 0f64;
         }
 
-        let evaluate = |w: &NetworkWrapper| {
+        let evaluate = |w: &mut NetworkWrapper| {
+            w.adopt_decision();  // where it's mutated
             let objectives = w.compute_all_cost().objectives();
             let early_exit = objectives[1] == 0f64 && Config::get().fast_stop;
             let cost: f64 = objectives.iter()

@@ -36,7 +36,7 @@ impl Algorithm for AdamsAnt {
             .extend_state_len(arena.len());
 
         let vis = compute_visibility(wrapper, self);
-        let cost = evaluate(&wrapper);
+        let cost = evaluate(wrapper);
 
         let mut best_dist = distance(cost.0);
 
@@ -187,8 +187,7 @@ fn compute_aco_dist(
         cur_wrapper.flow_table.pick(id, kth);
     }
 
-    cur_wrapper.adopt_decision();
-    let cost = evaluate(&cur_wrapper);
+    let cost = evaluate(&mut cur_wrapper);
     let dist = distance(cost.0);
 
     if cost.1 {

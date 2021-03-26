@@ -6,7 +6,7 @@ use super::spf::SPF;
 use crate::component::NetworkWrapper;
 
 
-pub type Eval<'a> = Box<dyn Fn(&NetworkWrapper) -> (f64, bool) + 'a>;
+pub type Eval<'a> = Box<dyn Fn(&mut NetworkWrapper) -> (f64, bool) + 'a>;
 
 
 #[enum_dispatch]
