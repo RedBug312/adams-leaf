@@ -4,7 +4,7 @@ use crate::network::MemorizingGraph;
 use crate::network::Network;
 use crate::component::flowtable::FlowTable;
 use crate::component::GCL;
-use super::{cost::{RoutingCost, Calculator}, flowtable::FlowArena};
+use super::flowtable::FlowArena;
 
 type Route = Vec<usize>;
 
@@ -150,16 +150,6 @@ impl NetworkWrapper {
     }
     pub fn get_flow_table(&self) -> &FlowTable {
         &self.flow_table
-    }
-    /// 路徑為可選參數，若不給代表照資料流表來走
-    pub fn compute_avb_wcd(&self, flow: usize, route: Option<usize>) -> u32 {
-        self._compute_avb_wcd(flow, route)
-    }
-    pub fn compute_all_cost(&self) -> RoutingCost {
-        self._compute_all_cost()
-    }
-    pub fn compute_single_avb_cost(&self, flow: usize) -> RoutingCost {
-        self._compute_single_avb_cost(flow)
     }
 }
 

@@ -1,6 +1,3 @@
-use std::rc::Rc;
-
-use super::{compute_avb_latency, NetworkWrapper, FlowTable};
 use crate::utils::config::Config;
 
 
@@ -75,91 +72,5 @@ impl RoutingCost {
             all_avb_wcd / times,
             all_cost / times,
         );
-    }
-}
-
-pub trait Calculator {
-    fn _compute_avb_wcd(&self, flow: usize, route: Option<usize>) -> u32;
-    fn _compute_single_avb_cost(&self, flow: usize) -> RoutingCost;
-    fn _compute_all_cost(&self) -> RoutingCost;
-}
-
-impl Calculator for NetworkWrapper {
-    fn _compute_avb_wcd(&self, id: usize, route: Option<usize>) -> u32 {
-        let arena = Rc::clone(&self.arena);
-        let network = Rc::clone(&self.network);
-        let kth = route.unwrap_or(self.flow_table.kth_next(id).unwrap());
-        let route = self.get_kth_route(id, kth);
-        compute_avb_latency(&network, &self.graph, id, route, &arena, &self.gcl)
-    }
-    fn _compute_single_avb_cost(&self, id: usize) -> RoutingCost {
-        let flow = self.arena.avb(id)
-            .expect("Failed to obtain AVB spec from TSN stream");
-        let avb_wcd = self._compute_avb_wcd(id, None) as f64 / flow.max_delay as f64;
-        let mut avb_fail_cnt = 0;
-        let mut reroute_cnt = 0;
-        if avb_wcd >= 1.0 {
-            // 逾時了！
-            avb_fail_cnt += 1;
-        }
-        if is_rerouted(
-            id,
-            self.flow_table.kth_next(id).unwrap(),
-            self.old_new_table.as_ref().unwrap(),
-        ) {
-            reroute_cnt += 1;
-        }
-        RoutingCost {
-            tsn_schedule_fail: self.tsn_fail,
-            avb_cnt: 1,
-            tsn_cnt: 0,
-            avb_fail_cnt,
-            avb_wcd,
-            reroute_overhead: reroute_cnt,
-        }
-    }
-    fn _compute_all_cost(&self) -> RoutingCost {
-        let arena = Rc::clone(&self.arena);
-        let mut all_avb_fail_cnt = 0;
-        let mut all_avb_wcd = 0.0;
-        let mut all_reroute_cnt = 0;
-        for &id in arena.tsns.iter() {
-            let t = self.flow_table.kth_next(id)
-                .expect("Failed get info from flowtable");
-            if is_rerouted(id, t, self.old_new_table.as_ref().unwrap()) {
-                all_reroute_cnt += 1;
-            }
-        }
-        for &id in arena.avbs.iter() {
-            let flow = self.arena.avb(id)
-                .expect("Failed to obtain AVB spec from TSN stream");
-            let wcd = self._compute_avb_wcd(id, None);
-            all_avb_wcd += wcd as f64 / flow.max_delay as f64;
-            if wcd > flow.max_delay {
-                // 逾時了！
-                all_avb_fail_cnt += 1;
-            }
-            let t = self.flow_table.kth_next(id)
-                .expect("Failed get info from flowtable");
-            if is_rerouted(id, t, self.old_new_table.as_ref().unwrap()) {
-                all_reroute_cnt += 1;
-            }
-        }
-        RoutingCost {
-            tsn_schedule_fail: self.tsn_fail,
-            avb_cnt: arena.avbs.len(),
-            tsn_cnt: arena.tsns.len(),
-            avb_fail_cnt: all_avb_fail_cnt,
-            avb_wcd: all_avb_wcd,
-            reroute_overhead: all_reroute_cnt,
-        }
-    }
-}
-
-fn is_rerouted(id: usize, route: usize, old_new_table: &FlowTable) -> bool {
-    if let Some(old_route) = old_new_table.kth_prev(id) {
-        route != old_route
-    } else {
-        false
     }
 }

@@ -1,6 +1,7 @@
 use super::{Algorithm, algorithm::Eval};
 use crate::network::Network;
 use crate::component::NetworkWrapper;
+use crate::component::evaluator::evaluate_avb_latency_for_kth;
 use super::base::yens::YensAlgo;
 use crate::MAX_K;
 use rand::{Rng, SeedableRng};
@@ -38,7 +39,7 @@ impl RO {
         let (src, dst) = arena.ends(id);
         let (mut min_cost, mut best_k) = (std::f64::MAX, 0);
         let mut closure = |k: usize| {
-            let cost = wrapper.compute_avb_wcd(id, Some(k)) as f64;
+            let cost = evaluate_avb_latency_for_kth(wrapper, id, k) as f64;
             if cost < min_cost {
                 min_cost = cost;
                 best_k = k;

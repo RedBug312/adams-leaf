@@ -8,6 +8,7 @@ use super::Algorithm;
 use super::base::ants::ACOJudgeResult;
 use crate::{network::Network, utils::config::Config};
 use crate::component::NetworkWrapper;
+use crate::component::evaluator::evaluate_avb_latency_for_kth;
 use super::base::ants::ACO;
 use super::base::yens::YensAlgo;
 use crate::MAX_K;
@@ -150,7 +151,7 @@ fn compute_visibility(wrapper: &NetworkWrapper, algo: &AdamsAnt) -> Vec<[f64; MA
         let flow = arena.avb(id)
             .expect("Failed to obtain AVB spec from TSN stream");
         for i in 0..algo.get_candidate_count(flow.src, flow.dst) {
-            vis[id][i] = 1.0 / wrapper.compute_avb_wcd(id, Some(i)) as f64;
+            vis[id][i] = 1.0 / evaluate_avb_latency_for_kth(wrapper, id, i) as f64;
         }
         if let Some(route_k) = wrapper.get_old_route(id) {
             // 是舊資料流，調高本來路徑的能見度
