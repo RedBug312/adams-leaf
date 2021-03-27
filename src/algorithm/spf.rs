@@ -1,72 +1,32 @@
-use super::RoutingAlgo;
-use crate::MAX_K;
-use crate::utils::stream::{TSN, AVB};
-use crate::network::Network;
-use crate::component::{NetworkWrapper, RoutingCost};
+use std::rc::Rc;
+use std::time::Instant;
+use crate::{component::flowtable::FlowArena, network::Network};
+use crate::component::NetworkWrapper;
+use super::{Algorithm, algorithm::Eval};
 use super::base::yens::YensAlgo;
-use std::{cell::RefCell, rc::Rc, time::Instant};
+
 
 pub struct SPF {
-    compute_time: u128,
-    wrapper: NetworkWrapper,
+    yens: Rc<YensAlgo>,
 }
+
 
 impl SPF {
-    pub fn new(g: Network) -> Self {
-        let yens_algo = Rc::new(RefCell::new(YensAlgo::default()));
-        let tmp_yens = yens_algo.clone();
-        tmp_yens.borrow_mut().compute(&g, MAX_K);
-        let wrapper = NetworkWrapper::new(g, move |src, dst, _| {
-            tmp_yens.borrow().kth_shortest_path(src, dst, 0).unwrap()
-                as *const Vec<usize>
-        });
+    pub fn new(network: &Network) -> Self {
+        let yens = YensAlgo::new(&network, 1);
         SPF {
-            compute_time: 0,
-            wrapper,
+            yens: Rc::new(yens),
         }
     }
 }
 
-impl RoutingAlgo for SPF {
-    fn get_last_compute_time(&self) -> u128 {
-        self.compute_time
+impl Algorithm for SPF {
+    fn prepare(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena) {
+        let input_candidates = arena.inputs()
+            .map(|id| arena.ends(id))
+            .map(|ends| self.yens.k_shortest_paths(ends.0, ends.1));
+        wrapper.candidates.extend(input_candidates);
     }
-    fn add_flows(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
-        let init_time = Instant::now();
-        for flow in tsns.into_iter() {
-            self.wrapper.insert(vec![flow], vec![], 0);
-        }
-        for flow in avbs.into_iter() {
-            self.wrapper.insert(vec![], vec![flow], 0);
-        }
-        self.compute_time = init_time.elapsed().as_micros();
-    }
-    fn get_rerouted_flows(&self) -> &Vec<usize> {
-        unimplemented!();
-    }
-    fn get_route(&self, id: usize) -> &Vec<usize> {
-        self.wrapper.get_route(id)
-    }
-    fn show_results(&self) {
-        println!("TT Flows:");
-        for &id in self.wrapper.get_flow_table().iter_tsn() {
-            let route = self.get_route(id);
-            println!("flow id = FlowID({:?}), route = {:?}", id, route);
-        }
-        println!("AVB Flows:");
-        for &id in self.wrapper.get_flow_table().iter_avb() {
-            let route = self.get_route(id);
-            let cost = self.wrapper.compute_single_avb_cost(id);
-            println!(
-                "flow id = FlowID({:?}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",
-                id, route, cost.avb_wcd, cost.reroute_overhead
-            );
-        }
-        let all_cost = self.wrapper.compute_all_cost();
-        println!("the cost structure = {:?}", all_cost,);
-        println!("{}", all_cost.compute());
-    }
-    fn get_cost(&self) -> RoutingCost {
-        self.wrapper.compute_all_cost()
+    fn configure(&mut self, _wrapper: &mut NetworkWrapper, _arena: &FlowArena, _network: &Network, _deadline: Instant, _evaluate: Eval) {
     }
 }

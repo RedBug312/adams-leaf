@@ -15,6 +15,11 @@ pub struct YensAlgo {
 }
 
 impl YensAlgo {
+    pub fn new(graph: &Network, kmax: usize) -> Self {
+        let mut yens = Self::default();
+        yens.compute(graph, kmax);
+        yens
+    }
     pub fn compute(&mut self, graph: &Network, k: usize) {
         self.k = k;
         self.dijkstra.compute(graph);
@@ -85,6 +90,11 @@ impl YensAlgo {
         self.path.get(&(src, dst))
             .map(|paths| paths.len())
             .unwrap_or(0)
+    }
+    pub fn k_shortest_paths(&self, src: usize, dst: usize) -> Vec<Path> {
+        self.path.get(&(src, dst))
+            .map(|r| r.clone())
+            .unwrap_or(vec![])
     }
 }
 

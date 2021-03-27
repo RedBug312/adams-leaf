@@ -1,9 +1,15 @@
+use std::time::Instant;
 use enum_dispatch::enum_dispatch;
-use super::ants::AdamsAnt;
+use super::aco::AdamsAnt;
 use super::ro::RO;
 use super::spf::SPF;
-use crate::utils::stream::{TSN, AVB};
-use crate::component::RoutingCost;
+use crate::component::flowtable::FlowArena;
+use crate::component::NetworkWrapper;
+use crate::network::Network;
+
+
+pub type Eval<'a> = Box<dyn Fn(&mut NetworkWrapper) -> (f64, bool) + 'a>;
+
 
 #[enum_dispatch]
 pub enum AlgorithmEnum {
@@ -13,11 +19,7 @@ pub enum AlgorithmEnum {
 }
 
 #[enum_dispatch(AlgorithmEnum)]
-pub trait RoutingAlgo {
-    fn add_flows(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>);
-    fn get_rerouted_flows(&self) -> &Vec<usize>;
-    fn get_route(&self, id: usize) -> &Vec<usize>;
-    fn show_results(&self);
-    fn get_last_compute_time(&self) -> u128;
-    fn get_cost(&self) -> RoutingCost;
+pub trait Algorithm {
+    fn prepare(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena);
+    fn configure(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena, network: &Network, deadline: Instant, evaluate: Eval);
 }

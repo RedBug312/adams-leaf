@@ -1,10 +1,95 @@
-use crate::network::MemorizingGraph;
+use super::{NetworkWrapper, RoutingCost};
+use crate::network::Network;
 use crate::component::{flowtable::*, GCL};
+
 
 /// AVB 資料流最多可以佔用的資源百分比（模擬 Credit Base Shaper 的效果）
 const MAX_AVB_SETTING: f64 = 0.75;
 /// BE 資料流最多可以多大
 const MAX_BE_SIZE: f64 = 1500.0;
+
+
+#[derive(Default)]
+pub struct Evaluator {
+    pub weights: [f64; 4],
+}
+
+impl Evaluator {
+    pub fn new(weights: [f64; 4]) -> Self {
+        Evaluator { weights }
+    }
+    pub fn compute_avb_wcd(&self, wrapper: &NetworkWrapper, arena: &FlowArena, network: &Network, id: usize) -> u32 {
+        let kth = wrapper.kth_next(id).unwrap();
+        evaluate_avb_latency_for_kth(wrapper, arena, network, id, kth)
+    }
+    pub fn compute_single_avb_cost(&self, wrapper: &NetworkWrapper, latest: &NetworkWrapper, arena: &FlowArena, network: &Network, avb: usize) -> RoutingCost {
+        let spec = arena.avb_spec(avb)
+            .expect("Failed to obtain AVB spec from TSN stream");
+        let avb_wcd = self.compute_avb_wcd(wrapper, arena, network, avb) as f64 / spec.max_delay as f64;
+        let mut avb_fail_cnt = 0;
+        let mut reroute_cnt = 0;
+        if avb_wcd >= 1.0 {
+            // 逾時了！
+            avb_fail_cnt += 1;
+        }
+        if is_rerouted(
+            wrapper.kth_next(avb),
+            latest.kth(avb),
+        ) {
+            reroute_cnt += 1;
+        }
+        RoutingCost {
+            tsn_schedule_fail: wrapper.tsn_fail,
+            avb_cnt: 1,
+            tsn_cnt: 0,
+            avb_fail_cnt,
+            avb_wcd,
+            reroute_overhead: reroute_cnt,
+        }
+    }
+    pub fn compute_all_cost(&self, wrapper: &NetworkWrapper, latest: &NetworkWrapper, arena: &FlowArena, network: &Network) -> RoutingCost {
+        let mut all_avb_fail_cnt = 0;
+        let mut all_avb_wcd = 0.0;
+        let mut all_reroute_cnt = 0;
+        for &id in arena.tsns() {
+            let t = wrapper.kth_next(id);
+            if is_rerouted(t, latest.kth(id)) {
+                all_reroute_cnt += 1;
+            }
+        }
+        for &avb in arena.avbs() {
+            let spec = arena.avb_spec(avb)
+                .expect("Failed to obtain AVB spec from TSN stream");
+            let wcd = self.compute_avb_wcd(wrapper, arena, network, avb);
+            all_avb_wcd += wcd as f64 / spec.max_delay as f64;
+            if wcd > spec.max_delay {
+                // 逾時了！
+                all_avb_fail_cnt += 1;
+            }
+            let t = wrapper.kth_next(avb);
+            if is_rerouted(t, latest.kth(avb)) {
+                all_reroute_cnt += 1;
+            }
+        }
+        RoutingCost {
+            tsn_schedule_fail: wrapper.tsn_fail,
+            avb_cnt: arena.avbs().len(),
+            tsn_cnt: arena.tsns().len(),
+            avb_fail_cnt: all_avb_fail_cnt,
+            avb_wcd: all_avb_wcd,
+            reroute_overhead: all_reroute_cnt,
+        }
+    }
+}
+
+pub fn evaluate_avb_latency_for_kth(wrapper: &NetworkWrapper, arena: &FlowArena, network: &Network, id: usize, kth: usize) -> u32 {
+    compute_avb_latency(wrapper, network, id, kth, arena)
+}
+
+fn is_rerouted(current: Option<usize>, latest: Option<usize>) -> bool {
+    latest.is_some() && current != latest
+}
+
 
 /// 計算 AVB 資料流的端對端延遲（包含 TT、BE 及其它 AVB 所造成的延遲）
 /// * `g` - 全局網路拓撲，每條邊上記錄其承載哪些資料流
@@ -14,44 +99,47 @@ const MAX_BE_SIZE: f64 = 1500.0;
 /// TODO: 改用 FlowArena?
 /// * `gcl` - 所有 TT 資料流的 Gate Control List
 pub fn compute_avb_latency(
-    g: &MemorizingGraph,
+    wrapper: &NetworkWrapper,
+    network: &Network,
     id: usize,
-    route: &Vec<usize>,
-    flow_table: &FlowTable,
-    gcl: &GCL,
+    kth: usize,
+    arena: &FlowArena,
 ) -> u32 {
-    let overlap_flow_id = g.get_overlap_flows(route);
+    let route = wrapper.kth_route(id, kth);
+    let gcl = &wrapper.allocated_tsns;
+    let overlap_flow_id = wrapper.get_overlap_flows(route);
     let mut end_to_end_lanency = 0.0;
-    for (i, (ends, bandwidth)) in g.get_links_id_bandwidth(route).into_iter().enumerate() {
-        let wcd = wcd_on_single_link(id, bandwidth, flow_table, &overlap_flow_id[i]);
+    for (i, (ends, bandwidth)) in network.get_links_id_bandwidth(route).into_iter().enumerate() {
+        let wcd = wcd_on_single_link(id, bandwidth, arena, &overlap_flow_id[i]);
         end_to_end_lanency += wcd + tt_interfere_avb_single_link(ends, wcd as f64, gcl) as f64;
     }
     end_to_end_lanency as u32
 }
 fn wcd_on_single_link(
-    id: usize,
+    avb: usize,
     bandwidth: f64,
-    flow_table: &FlowTable,
+    arena: &FlowArena,
     overlap_flow_id: &Vec<usize>,
 ) -> f64 {
-    let flow = flow_table.get_avb(id)
-        .expect("Failed to obtain AVB spec with an invalid id");
+    let spec = arena.avb_spec(avb)
+        .expect("Failed to obtain AVB spec from TSN stream");
     let mut wcd = 0.0;
     // MAX None AVB
     wcd += MAX_BE_SIZE / bandwidth;
     // AVB 資料流最多只能佔用這樣的頻寬
     let bandwidth = MAX_AVB_SETTING * bandwidth;
     // On link
-    wcd += flow.size as f64 / bandwidth;
+    wcd += spec.size as f64 / bandwidth;
     // Ohter AVB
-    for &other_flow_id in overlap_flow_id.iter() {
-        if other_flow_id != id {
-            let other_flow = flow_table.get_avb(other_flow_id).unwrap();
+    for &other_avb in overlap_flow_id.iter() {
+        if other_avb != avb {
+            let other_spec = arena.avb_spec(other_avb)
+                .expect("Failed to obtain AVB spec from TSN stream");
             // 自己是 B 類或別人是 A 類，就有機會要等……換句話說，只有自己是 A 而別人是 B 不用等
-            let self_type = flow.avb_type;
-            let other_type = other_flow.avb_type;
+            let self_type = spec.avb_type;
+            let other_type = other_spec.avb_type;
             if self_type == 'B' || other_type == 'A' {
-                wcd += other_flow.size as f64 / bandwidth;
+                wcd += other_spec.size as f64 / bandwidth;
             }
         }
     }

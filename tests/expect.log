@@ -172,10 +172,10 @@ test #0    0          0          7.8999999999999995   0.2633333333333333
 average:   0          0          7.8999999999999995   0.2633333333333333
 start iteration #1
 1
-RoutingCost { tsn_schedule_fail: false, avb_fail_cnt: 2, avb_wcd: 11.831999999999995, reroute_overhead: 13, avb_cnt: 44, tsn_cnt: 14 }
+(4.814363636363637, false)
 start iteration #2
 2
-RoutingCost { tsn_schedule_fail: false, avb_fail_cnt: 1, avb_wcd: 13.565999999999999, reroute_overhead: 8, avb_cnt: 44, tsn_cnt: 14 }
+(2.5810454545454546, false)
 TT Flows:
 flow id = FlowID(0), route = [4, 10, 13, 5]
 flow id = FlowID(1), route = [4, 10, 13, 5]

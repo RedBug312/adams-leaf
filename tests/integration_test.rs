@@ -10,10 +10,12 @@ fn it_runs_aco() {
     let mut cnc = CNC::new("aco", network);
 
     cnc.add_streams(tsns1, avbs1);
-    cnc.configure();
+    let elapsed = cnc.configure();
+    println!("--- #1 elapsed time: {} μs ---", elapsed);
 
     cnc.add_streams(tsns2, avbs2);
-    cnc.configure();
+    let elapsed = cnc.configure();
+    println!("--- #2 elapsed time: {} μs ---", elapsed);
 }
 
 #[test]
@@ -25,10 +27,12 @@ fn it_runs_ro() {
     let mut cnc = CNC::new("ro", network);
 
     cnc.add_streams(tsns1, avbs1);
-    cnc.configure();
+    let elapsed = cnc.configure();
+    println!("--- #1 elapsed time: {} μs ---", elapsed);
 
     cnc.add_streams(tsns2, avbs2);
-    cnc.configure();
+    let elapsed = cnc.configure();
+    println!("--- #2 elapsed time: {} μs ---", elapsed);
 }
 
 #[test]
@@ -40,8 +44,10 @@ fn it_runs_spf() {
     let mut cnc = CNC::new("spf", network);
 
     cnc.add_streams(tsns1, avbs1);
-    cnc.configure();
+    let elapsed = cnc.configure();
+    println!("--- #1 elapsed time: {} μs ---", elapsed);
 
     cnc.add_streams(tsns2, avbs2);
-    cnc.configure();
+    let elapsed = cnc.configure();
+    println!("--- #2 elapsed time: {} μs ---", elapsed);
 }
