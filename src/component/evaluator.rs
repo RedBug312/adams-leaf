@@ -22,7 +22,7 @@ impl Evaluator {
         let kth = wrapper.flow_table.kth_next(id).unwrap();
         evaluate_avb_latency_for_kth(wrapper, arena, network, id, kth)
     }
-    pub fn compute_single_avb_cost(&self, wrapper: &NetworkWrapper, arena: &FlowArena, network: &Network, avb: usize) -> RoutingCost {
+    pub fn compute_single_avb_cost(&self, wrapper: &NetworkWrapper, latest: &NetworkWrapper, arena: &FlowArena, network: &Network, avb: usize) -> RoutingCost {
         let spec = arena.avb_spec(avb)
             .expect("Failed to obtain AVB spec from TSN stream");
         let avb_wcd = self.compute_avb_wcd(wrapper, arena, network, avb) as f64 / spec.max_delay as f64;
@@ -33,9 +33,8 @@ impl Evaluator {
             avb_fail_cnt += 1;
         }
         if is_rerouted(
-            avb,
-            wrapper.flow_table.kth_next(avb).unwrap(),
-            wrapper.old_new_table.as_ref().unwrap(),
+            wrapper.flow_table.kth_next(avb),
+            latest.flow_table.kth_prev(avb),
         ) {
             reroute_cnt += 1;
         }
@@ -48,14 +47,13 @@ impl Evaluator {
             reroute_overhead: reroute_cnt,
         }
     }
-    pub fn compute_all_cost(&self, wrapper: &NetworkWrapper, arena: &FlowArena, network: &Network) -> RoutingCost {
+    pub fn compute_all_cost(&self, wrapper: &NetworkWrapper, latest: &NetworkWrapper, arena: &FlowArena, network: &Network) -> RoutingCost {
         let mut all_avb_fail_cnt = 0;
         let mut all_avb_wcd = 0.0;
         let mut all_reroute_cnt = 0;
         for &id in arena.tsns() {
-            let t = wrapper.flow_table.kth_next(id)
-                .expect("Failed get info from flowtable");
-            if is_rerouted(id, t, wrapper.old_new_table.as_ref().unwrap()) {
+            let t = wrapper.flow_table.kth_next(id);
+            if is_rerouted(t, latest.flow_table.kth_prev(id)) {
                 all_reroute_cnt += 1;
             }
         }
@@ -68,9 +66,8 @@ impl Evaluator {
                 // 逾時了！
                 all_avb_fail_cnt += 1;
             }
-            let t = wrapper.flow_table.kth_next(avb)
-                .expect("Failed get info from flowtable");
-            if is_rerouted(avb, t, wrapper.old_new_table.as_ref().unwrap()) {
+            let t = wrapper.flow_table.kth_next(avb);
+            if is_rerouted(t, latest.flow_table.kth_prev(avb)) {
                 all_reroute_cnt += 1;
             }
         }
@@ -92,12 +89,8 @@ pub fn evaluate_avb_latency_for_kth(wrapper: &NetworkWrapper, arena: &FlowArena,
     compute_avb_latency(network, graph, id, route, arena, gcl)
 }
 
-fn is_rerouted(id: usize, route: usize, old_new_table: &FlowTable) -> bool {
-    if let Some(old_route) = old_new_table.kth_prev(id) {
-        route != old_route
-    } else {
-        false
-    }
+fn is_rerouted(current: Option<usize>, latest: Option<usize>) -> bool {
+    latest.is_some() && current != latest
 }
 
 

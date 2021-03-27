@@ -1,5 +1,3 @@
-use std::rc::Rc;
-use std::ops::Range;
 use crate::network::MemorizingGraph;
 use crate::network::Network;
 use crate::component::flowtable::FlowTable;
@@ -13,12 +11,10 @@ type Route = Vec<usize>;
 #[derive(Clone)]
 pub struct NetworkWrapper {
     pub flow_table: FlowTable,
-    pub old_new_table: Option<Rc<FlowTable>>, // 在每次運算中類似常數，故用 RC 來包
     pub gcl: GCL,
     pub graph: MemorizingGraph,
-    pub tsn_fail: bool,
     pub candidates: Vec<Vec<Route>>,
-    pub inputs: Range<usize>,
+    pub tsn_fail: bool,
 }
 
 impl NetworkWrapper {
@@ -27,18 +23,15 @@ impl NetworkWrapper {
         let memorizing = MemorizingGraph::new(graph);
         NetworkWrapper {
             flow_table: FlowTable::new(),
-            old_new_table: None,
             gcl: GCL::new(1),
-            tsn_fail: false,
             graph: memorizing,
             candidates: vec![],
-            inputs: 0..0,
+            tsn_fail: false,
         }
     }
     /// 插入新的資料流，同時會捨棄先前的新舊表，並創建另一份新舊表
     pub fn resize(&mut self, len: usize) {
         self.flow_table.resize(len);
-        self.old_new_table = Some(Rc::new(self.flow_table.clone()));
     }
     pub fn get_route(&self, flow_id: usize) -> &Route {
         let kth = self.flow_table.kth_next(flow_id).unwrap();
@@ -48,12 +41,6 @@ impl NetworkWrapper {
     pub fn get_kth_route(&self, flow_id: usize, kth: usize) -> &Route {
         let route = self.candidates[flow_id].get(kth).unwrap();
         route
-    }
-    pub fn get_old_route(&self, flow_id: usize) -> Option<usize> {
-        self.old_new_table
-            .as_ref()
-            .unwrap()
-            .kth_prev(flow_id)
     }
     pub fn get_flow_table(&self) -> &FlowTable {
         &self.flow_table
