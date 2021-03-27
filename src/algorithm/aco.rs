@@ -13,16 +13,22 @@ use super::base::ants::ACO;
 use super::base::yens::YensAlgo;
 use crate::MAX_K;
 
+
 pub struct AdamsAnt {
-    pub aco: ACO,
-    pub yens: Rc<YensAlgo>,
+    aco: ACO,
+    yens: Rc<YensAlgo>,
+    memory: Vec<[f64; MAX_K]>,
 }
+
+
 impl AdamsAnt {
     pub fn new(network: &Network) -> Self {
         let yens = YensAlgo::new(&network, MAX_K);
+        let memory = vec![];
         AdamsAnt {
             aco: ACO::new(0, MAX_K, None),
             yens: Rc::new(yens),
+            memory,
         }
     }
     pub fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
@@ -31,6 +37,26 @@ impl AdamsAnt {
 }
 
 impl Algorithm for AdamsAnt {
+    fn prepare(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena) {
+        for id in arena.inputs() {
+            let (src, dst) = arena.ends(id);
+            let candidates = self.yens.k_shortest_paths(src, dst);
+            wrapper.candidates.push(candidates);
+        }
+        // before initial scheduler configure
+        let config = Config::get();
+        self.memory = vec![[1.0; MAX_K]; arena.len()];
+        for &tsn in arena.tsns() {
+            if let Some(kth) = wrapper.flow_table.kth_prev(tsn) {
+                self.memory[tsn][kth] = config.tsn_memory;
+            }
+        }
+        for &avb in arena.avbs() {
+            if let Some(kth) = wrapper.flow_table.kth_prev(avb) {
+                self.memory[avb][kth] = config.avb_memory;
+            }
+        }
+    }
     fn configure(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena, network: &Network, deadline: Instant, evaluate: Eval) {
         self.aco
             .extend_state_len(arena.len());
@@ -99,13 +125,6 @@ impl Algorithm for AdamsAnt {
         println!("ACO epoch = {}", epoch);
         best_state.state.expect("找不到最好的解");
     }
-    fn prepare(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena) {
-        for id in arena.inputs() {
-            let (src, dst) = arena.ends(id);
-            let candidates = self.yens.k_shortest_paths(src, dst);
-            wrapper.candidates.push(candidates);
-        }
-    }
 }
 
 
@@ -140,31 +159,21 @@ fn select_cluster(visibility: &[f64; MAX_K], pheromone: &[f64; MAX_K], k: usize,
 
 
 fn compute_visibility(wrapper: &NetworkWrapper, arena: &FlowArena, network: &Network, algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
-    let config = Config::get();
     // TODO 好好設計能見度函式！
     // 目前：路徑長的倒數
-    let len = algo.aco.get_state_len();
+    let len = arena.len();
     let mut vis = vec![[0.0; MAX_K]; len];
     for &avb in arena.avbs() {
         let (src, dst) = arena.ends(avb);
         for kth in 0..algo.get_candidate_count(src, dst) {
-            vis[avb][kth] = 1.0 / evaluate_avb_latency_for_kth(wrapper, arena, network, avb, kth) as f64;
-        }
-        if let Some(route_k) = wrapper.get_old_route(avb) {
-            // 是舊資料流，調高本來路徑的能見度
-            vis[avb][route_k] *= config.avb_memory;
+            vis[avb][kth] = 1.0 / evaluate_avb_latency_for_kth(wrapper, arena, network, avb, kth) as f64 * algo.memory[avb][kth];
         }
     }
     for &tsn in arena.tsns() {
         let (src, dst) = arena.ends(tsn);
-        for i in 0..algo.get_candidate_count(src, dst) {
-            let route = algo.yens.kth_shortest_path(src, dst, i).unwrap();
-            vis[tsn][i] = 1.0 / route.len() as f64;
-        }
-
-        if let Some(route_k) = wrapper.get_old_route(tsn) {
-            // 是舊資料流，調高本來路徑的能見度
-            vis[tsn][route_k] *= config.tsn_memory;
+        for kth in 0..algo.get_candidate_count(src, dst) {
+            let route = algo.yens.kth_shortest_path(src, dst, kth).unwrap();
+            vis[tsn][kth] = 1.0 / route.len() as f64 * algo.memory[tsn][kth];
         }
     }
     vis

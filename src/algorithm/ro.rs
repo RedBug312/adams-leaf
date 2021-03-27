@@ -11,54 +11,11 @@ use std::time::Instant;
 
 const ALPHA_PORTION: f64 = 0.5;
 
-fn gen_n_distinct_outof_k(n: usize, k: usize, rng: &mut ChaChaRng) -> Vec<usize> {
-    let mut vec = Vec::with_capacity(n);
-    for i in 0..k {
-        let rand = rng.gen();
-        let random: usize = rand;
-        vec.push((random, i));
-    }
-    vec.sort();
-    vec.into_iter().map(|(_, i)| i).take(n).collect()
-}
 
 pub struct RO {
     yens: Rc<YensAlgo>,
 }
 
-impl RO {
-    pub fn new(network: &Network) -> Self {
-        let yens = YensAlgo::new(&network, MAX_K);
-        RO {
-            yens: Rc::new(yens),
-        }
-    }
-    /// 若有給定候選路徑的子集合，就從中選。若無，則遍歷所有候選路徑
-    fn find_min_cost_route(&self, wrapper: &NetworkWrapper, arena: &FlowArena, network: &Network, id: usize, set: Option<Vec<usize>>) -> usize {
-        let (src, dst) = arena.ends(id);
-        let (mut min_cost, mut best_k) = (std::f64::MAX, 0);
-        let mut closure = |k: usize| {
-            let cost = evaluate_avb_latency_for_kth(wrapper, arena, network, id, k) as f64;
-            if cost < min_cost {
-                min_cost = cost;
-                best_k = k;
-            }
-        };
-        if let Some(vec) = set {
-            for k in vec.into_iter() {
-                closure(k);
-            }
-        } else {
-            for k in 0..self.get_candidate_count(src, dst) {
-                closure(k);
-            }
-        }
-        best_k
-    }
-    fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
-        self.yens.count_shortest_paths(src, dst)
-    }
-}
 
 impl Algorithm for RO {
     fn prepare(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena) {
@@ -152,4 +109,49 @@ impl Algorithm for RO {
             println!("{:?}", min_cost);
         }
     }
+}
+
+impl RO {
+    pub fn new(network: &Network) -> Self {
+        let yens = YensAlgo::new(&network, MAX_K);
+        RO {
+            yens: Rc::new(yens),
+        }
+    }
+    /// 若有給定候選路徑的子集合，就從中選。若無，則遍歷所有候選路徑
+    fn find_min_cost_route(&self, wrapper: &NetworkWrapper, arena: &FlowArena, network: &Network, id: usize, set: Option<Vec<usize>>) -> usize {
+        let (src, dst) = arena.ends(id);
+        let (mut min_cost, mut best_k) = (std::f64::MAX, 0);
+        let mut closure = |k: usize| {
+            let cost = evaluate_avb_latency_for_kth(wrapper, arena, network, id, k) as f64;
+            if cost < min_cost {
+                min_cost = cost;
+                best_k = k;
+            }
+        };
+        if let Some(vec) = set {
+            for k in vec.into_iter() {
+                closure(k);
+            }
+        } else {
+            for k in 0..self.get_candidate_count(src, dst) {
+                closure(k);
+            }
+        }
+        best_k
+    }
+    fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
+        self.yens.count_shortest_paths(src, dst)
+    }
+}
+
+fn gen_n_distinct_outof_k(n: usize, k: usize, rng: &mut ChaChaRng) -> Vec<usize> {
+    let mut vec = Vec::with_capacity(n);
+    for i in 0..k {
+        let rand = rng.gen();
+        let random: usize = rand;
+        vec.push((random, i));
+    }
+    vec.sort();
+    vec.into_iter().map(|(_, i)| i).take(n).collect()
 }

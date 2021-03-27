@@ -9,19 +9,9 @@ const Q0: f64 = 0.0;
 const MAX_PH: f64 = 30.0;
 const MIN_PH: f64 = 1.0;
 
-pub enum ACOArgsF64 {
-    Tao0,
-    Rho,
-    Q0,
-    MaxPh,
-    MinPh,
-}
-pub enum ACOArgsUSize {
-    R,
-    L,
-}
 
 pub type State = Vec<usize>;
+
 
 #[derive(PartialOrd)]
 pub struct WeightedState {
@@ -107,9 +97,6 @@ impl ACO {
             self.pheromone.extend((0..diff_len).map(|_| [tao0; MAX_K]));
         }
     }
-    pub fn get_pharamon(&self) -> &Vec<[f64; MAX_K]> {
-        return &self.pheromone;
-    }
     pub fn evaporate(&mut self) {
         let state_len = self.get_state_len();
         for i in 0..state_len {
@@ -150,21 +137,6 @@ impl ACO {
                 }
                 self.pheromone[i][j] = ph;
             }
-        }
-    }
-    pub fn set_args_f64(&mut self, arg_type: ACOArgsF64, arg: f64) {
-        match arg_type {
-            ACOArgsF64::Tao0 => self.tao0 = arg,
-            ACOArgsF64::Rho => self.rho = arg,
-            ACOArgsF64::Q0 => self.q0 = arg,
-            ACOArgsF64::MaxPh => self.max_ph = arg,
-            ACOArgsF64::MinPh => self.min_ph = arg,
-        }
-    }
-    pub fn set_args_usize(&mut self, arg_type: ACOArgsUSize, arg: usize) {
-        match arg_type {
-            ACOArgsUSize::L => self.l = arg,
-            ACOArgsUSize::R => self.r = arg,
         }
     }
 }
