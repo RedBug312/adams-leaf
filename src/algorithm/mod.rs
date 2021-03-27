@@ -6,6 +6,6 @@ mod algorithm;
 
 pub use algorithm::AlgorithmEnum;
 pub use algorithm::Algorithm;
-pub use aco::AdamsAnt;
+pub use aco::ACO;
 pub use ro::RO;
 pub use spf::SPF;

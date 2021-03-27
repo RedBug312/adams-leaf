@@ -1,68 +1,66 @@
-use std::rc::Rc;
+use crate::MAX_K;
+use crate::component::Decision;
+use crate::component::evaluator::evaluate_avb_latency_for_kth;
+use crate::component::FlowTable;
+use crate::network::Network;
+use crate::utils::config::Config;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaChaRng;
 use std::collections::BinaryHeap;
 use std::time::Instant;
-use super::{algorithm::Eval, base::ants::WeightedState};
-use rand_chacha::ChaChaRng;
-use rand::{Rng, SeedableRng};
 use super::Algorithm;
+use super::algorithm::Eval;
+use super::base::ants::AntColony;
 use super::base::ants::ACOJudgeResult;
-use crate::{component::flowtable::FlowArena, network::Network, utils::config::Config};
-use crate::component::NetworkWrapper;
-use crate::component::evaluator::evaluate_avb_latency_for_kth;
-use super::base::ants::ACO;
-use super::base::yens::YensAlgo;
-use crate::MAX_K;
+use super::base::ants::WeightedState;
+use super::base::yens::Yens;
 
 
-pub struct AdamsAnt {
-    aco: ACO,
-    yens: Rc<YensAlgo>,
+pub struct ACO {
+    ants: AntColony,
+    yens: Yens,
     memory: Vec<[f64; MAX_K]>,
 }
 
 
-impl AdamsAnt {
+impl ACO {
     pub fn new(network: &Network) -> Self {
-        let yens = YensAlgo::new(&network, MAX_K);
+        let ants = AntColony::new(0, MAX_K, None);
+        let yens = Yens::new(&network, MAX_K);
         let memory = vec![];
-        AdamsAnt {
-            aco: ACO::new(0, MAX_K, None),
-            yens: Rc::new(yens),
-            memory,
-        }
+        ACO { ants, yens, memory }
     }
     pub fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
         self.yens.count_shortest_paths(src, dst)
     }
 }
 
-impl Algorithm for AdamsAnt {
-    fn prepare(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena) {
-        for id in arena.inputs() {
-            let (src, dst) = arena.ends(id);
+impl Algorithm for ACO {
+    fn prepare(&mut self, decision: &mut Decision, flowtable: &FlowTable) {
+        for id in flowtable.inputs() {
+            let (src, dst) = flowtable.ends(id);
             let candidates = self.yens.k_shortest_paths(src, dst);
-            wrapper.candidates.push(candidates);
+            decision.candidates.push(candidates);
         }
         // before initial scheduler configure
         let config = Config::get();
-        self.memory = vec![[1.0; MAX_K]; arena.len()];
-        for &tsn in arena.tsns() {
-            if let Some(kth) = wrapper.kth(tsn) {
+        self.memory = vec![[1.0; MAX_K]; flowtable.len()];
+        for &tsn in flowtable.tsns() {
+            if let Some(kth) = decision.kth(tsn) {
                 self.memory[tsn][kth] = config.tsn_memory;
             }
         }
-        for &avb in arena.avbs() {
-            if let Some(kth) = wrapper.kth(avb) {
+        for &avb in flowtable.avbs() {
+            if let Some(kth) = decision.kth(avb) {
                 self.memory[avb][kth] = config.avb_memory;
             }
         }
     }
-    fn configure(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena, network: &Network, deadline: Instant, evaluate: Eval) {
-        self.aco
-            .extend_state_len(arena.len());
+    fn configure(&mut self, decision: &mut Decision, flowtable: &FlowTable, network: &Network, deadline: Instant, evaluate: Eval) {
+        self.ants.extend_state_len(flowtable.len());
 
-        let vis = compute_visibility(wrapper, arena, network, self);
-        let cost = evaluate(wrapper);
+        let vis = compute_visibility(decision, flowtable, network, self);
+        let cost = evaluate(decision);
 
         let mut best_dist = distance(cost.0);
 
@@ -78,17 +76,17 @@ impl Algorithm for AdamsAnt {
             //     self.aco.do_single_epoch(&visibility, &mut judge_func, &mut rng);
 
             let mut max_heap: BinaryHeap<WeightedState> = BinaryHeap::new();
-            let state_len = self.aco.get_state_len();
+            let state_len = self.ants.get_state_len();
             let mut should_stop = false;
-            for _ in 0..self.aco.r {
+            for _ in 0..self.ants.r {
                 let mut cur_state = Vec::<usize>::with_capacity(state_len);
                 for i in 0..state_len {
-                    let next = select_cluster(&visibility[i], &self.aco.pheromone[i], self.aco.k, self.aco.q0, &mut rng);
+                    let next = select_cluster(&visibility[i], &self.ants.pheromone[i], self.ants.k, self.ants.q0, &mut rng);
                     cur_state.push(next);
                     // TODO online pharamon update
                 }
 
-                let cost = compute_aco_dist(wrapper, &cur_state, &mut best_dist, &evaluate);
+                let cost = compute_aco_dist(decision, &cur_state, &mut best_dist, &evaluate);
                 let dist = distance(cost.0);
                 let judge = if cost.1 {
                     // 找到可行解，且為快速終止模式
@@ -108,9 +106,9 @@ impl Algorithm for AdamsAnt {
                     }
                 }
             }
-            self.aco.evaporate();
+            self.ants.evaporate();
 
-            let local_best_state = self.aco.offline_update(max_heap);
+            let local_best_state = self.ants.offline_update(max_heap);
 
             if local_best_state.get_dist() < best_state.get_dist() {
                 best_state = local_best_state;
@@ -119,7 +117,7 @@ impl Algorithm for AdamsAnt {
                 break;
             }
             #[cfg(debug_assertions)]
-            println!("pheromone = {:?}", self.aco.pheromone);
+            println!("pheromone = {:?}", self.ants.pheromone);
         }
         #[cfg(debug_assertions)]
         println!("ACO epoch = {}", epoch);
@@ -158,19 +156,19 @@ fn select_cluster(visibility: &[f64; MAX_K], pheromone: &[f64; MAX_K], k: usize,
 }
 
 
-fn compute_visibility(wrapper: &NetworkWrapper, arena: &FlowArena, network: &Network, algo: &AdamsAnt) -> Vec<[f64; MAX_K]> {
+fn compute_visibility(decision: &Decision, flowtable: &FlowTable, network: &Network, algo: &ACO) -> Vec<[f64; MAX_K]> {
     // TODO 好好設計能見度函式！
     // 目前：路徑長的倒數
-    let len = arena.len();
+    let len = flowtable.len();
     let mut vis = vec![[0.0; MAX_K]; len];
-    for &avb in arena.avbs() {
-        let (src, dst) = arena.ends(avb);
+    for &avb in flowtable.avbs() {
+        let (src, dst) = flowtable.ends(avb);
         for kth in 0..algo.get_candidate_count(src, dst) {
-            vis[avb][kth] = 1.0 / evaluate_avb_latency_for_kth(wrapper, arena, network, avb, kth) as f64 * algo.memory[avb][kth];
+            vis[avb][kth] = 1.0 / evaluate_avb_latency_for_kth(decision, flowtable, network, avb, kth) as f64 * algo.memory[avb][kth];
         }
     }
-    for &tsn in arena.tsns() {
-        let (src, dst) = arena.ends(tsn);
+    for &tsn in flowtable.tsns() {
+        let (src, dst) = flowtable.ends(tsn);
         for kth in 0..algo.get_candidate_count(src, dst) {
             let route = algo.yens.kth_shortest_path(src, dst, kth).unwrap();
             vis[tsn][kth] = 1.0 / route.len() as f64 * algo.memory[tsn][kth];
@@ -179,33 +177,33 @@ fn compute_visibility(wrapper: &NetworkWrapper, arena: &FlowArena, network: &Net
     vis
 }
 
-/// 本函式不只會計算距離，如果看見最佳解，還會把該解的網路包裝器記錄回 wrapper 參數
+/// 本函式不只會計算距離，如果看見最佳解，還會把該解的網路包裝器記錄回 decision 參數
 fn compute_aco_dist(
-    wrapper: &mut NetworkWrapper,
+    decision: &mut Decision,
     state: &Vec<usize>,
     best_dist: &mut f64,
     evaluate: &Eval,
 ) -> (f64, bool) {
-    let mut cur_wrapper = wrapper.clone();
+    let mut current = decision.clone();
 
     for (id, &kth) in state.iter().enumerate() {
         // NOTE: 若發現和舊的資料一樣，這個 update_info 函式會自動把它忽略掉
-        cur_wrapper.pick(id, kth);
+        current.pick(id, kth);
     }
 
-    let cost = evaluate(&mut cur_wrapper);
+    let cost = evaluate(&mut current);
     let dist = distance(cost.0);
 
     if cost.1 {
         // 快速終止！
-        *wrapper = cur_wrapper;
+        *decision = current;
         return cost;
     }
 
     if dist < *best_dist {
         *best_dist = dist;
         // 記錄 FlowTable 及 GCL
-        *wrapper = cur_wrapper;
+        *decision = current;
     }
     cost
 }

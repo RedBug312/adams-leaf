@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use crate::network::Network;
-use crate::component::GCL;
+use crate::component::GateCtrlList;
 
 
 const KTH_DEFAULT: usize = 0;
@@ -10,10 +10,10 @@ type Route = Vec<usize>;
 
 /// 這個結構預期會被複製很多次，因此其中的每個元件都應儘可能想辦法降低複製成本
 #[derive(Clone)]
-pub struct NetworkWrapper {
+pub struct Decision {
     choices: Vec<Choice>,
     pub candidates: Vec<Vec<Route>>,
-    pub allocated_tsns: GCL,
+    pub allocated_tsns: GateCtrlList,
     pub bypassing_avbs: HashMap<(usize, usize), HashSet<usize>>,
     pub tsn_fail: bool,
 }
@@ -26,15 +26,15 @@ enum Choice {
 }
 
 
-impl NetworkWrapper {
+impl Decision {
     pub fn new(graph: &Network) -> Self {
         let bypassing_avbs = graph.edges.keys()
             .map(|&ends| (ends, HashSet::new()))
             .collect();
-        NetworkWrapper {
+        Decision {
             choices: vec![],
             candidates: vec![],
-            allocated_tsns: GCL::new(1),
+            allocated_tsns: GateCtrlList::new(1),
             bypassing_avbs,
             tsn_fail: false,
         }
@@ -77,7 +77,7 @@ impl NetworkWrapper {
     }
 }
 
-impl NetworkWrapper {
+impl Decision {
     /// 確定一條資料流的路徑時，將該資料流的ID記憶在它經過的邊上，移除路徑時則將ID遺忘。
     ///
     /// __注意：此處兩個方向不視為同個邊！__

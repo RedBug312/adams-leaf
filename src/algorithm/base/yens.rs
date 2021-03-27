@@ -1,20 +1,20 @@
-extern crate rand;
-
+use crate::network::Network;
 use std::collections::HashMap;
 use super::dijkstra::Dijkstra;
 use super::heap::MyMinHeap;
-use crate::network::Network;
+
 
 type Path = Vec<usize>;
 
+
 #[derive(Default)]
-pub struct YensAlgo {
+pub struct Yens {
     path: HashMap<(usize, usize), Vec<Path>>,
     k: usize,
     dijkstra: Dijkstra,
 }
 
-impl YensAlgo {
+impl Yens {
     pub fn new(graph: &Network, kmax: usize) -> Self {
         let mut yens = Self::default();
         yens.compute(graph, kmax);

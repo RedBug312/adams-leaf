@@ -8,7 +8,7 @@ enum Either {
 }
 
 #[derive(Default)]
-pub struct FlowArena {
+pub struct FlowTable {
     streams: Vec<Either>,
     tsns: Vec<usize>,
     avbs: Vec<usize>,
@@ -16,9 +16,9 @@ pub struct FlowArena {
 }
 
 
-impl FlowArena {
+impl FlowTable {
     pub fn new() -> Self {
-        FlowArena { ..Default::default() }
+        FlowTable { ..Default::default() }
     }
     pub fn tsns(&self) -> &Vec<usize> {
         &self.tsns

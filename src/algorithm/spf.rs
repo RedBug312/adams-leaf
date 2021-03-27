@@ -1,32 +1,31 @@
-use std::rc::Rc;
+use crate::component::Decision;
+use crate::component::FlowTable;
+use crate::network::Network;
 use std::time::Instant;
-use crate::{component::flowtable::FlowArena, network::Network};
-use crate::component::NetworkWrapper;
-use super::{Algorithm, algorithm::Eval};
-use super::base::yens::YensAlgo;
+use super::base::yens::Yens;
+use super::algorithm::Eval;
+use super::Algorithm;
 
 
 pub struct SPF {
-    yens: Rc<YensAlgo>,
+    yens: Yens,
 }
 
+
+impl Algorithm for SPF {
+    fn prepare(&mut self, decision: &mut Decision, flowtable: &FlowTable) {
+        let input_candidates = flowtable.inputs()
+            .map(|id| flowtable.ends(id))
+            .map(|ends| self.yens.k_shortest_paths(ends.0, ends.1));
+        decision.candidates.extend(input_candidates);
+    }
+    fn configure(&mut self, _decision: &mut Decision, _flowtable: &FlowTable, _network: &Network, _deadline: Instant, _evaluate: Eval) {
+    }
+}
 
 impl SPF {
     pub fn new(network: &Network) -> Self {
-        let yens = YensAlgo::new(&network, 1);
-        SPF {
-            yens: Rc::new(yens),
-        }
-    }
-}
-
-impl Algorithm for SPF {
-    fn prepare(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena) {
-        let input_candidates = arena.inputs()
-            .map(|id| arena.ends(id))
-            .map(|ends| self.yens.k_shortest_paths(ends.0, ends.1));
-        wrapper.candidates.extend(input_candidates);
-    }
-    fn configure(&mut self, _wrapper: &mut NetworkWrapper, _arena: &FlowArena, _network: &Network, _deadline: Instant, _evaluate: Eval) {
+        let yens = Yens::new(&network, 1);
+        SPF { yens }
     }
 }

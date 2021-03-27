@@ -1,13 +1,13 @@
 use std::cmp::Ordering;
-use crate::component::flowtable::FlowArena;
-use crate::component::NetworkWrapper;
-use crate::component::GCL;
+use crate::component::FlowTable;
+use crate::component::Decision;
+use crate::component::GateCtrlList;
 use crate::network::Network;
 use crate::utils::stream::TSN;
 use crate::MAX_QUEUE;
 
-type Links = Vec<((usize, usize), f64)>;
 
+type Links = Vec<((usize, usize), f64)>;
 const MTU: usize = 1500;
 
 
@@ -18,75 +18,75 @@ impl Scheduler {
     pub fn new() -> Self {
         Scheduler {}
     }
-    pub fn configure(&self, wrapper: &mut NetworkWrapper, arena: &FlowArena, network: &Network) {
-        update_avb(wrapper, arena);
-        update_tsn(wrapper, arena, network);
-        wrapper.confirm();
+    pub fn configure(&self, decision: &mut Decision, flowtable: &FlowTable, network: &Network) {
+        update_avb(decision, flowtable);
+        update_tsn(decision, flowtable, network);
+        decision.confirm();
     }
 }
 
 /// 更新 AVB 資料流表與圖上資訊
-fn update_avb(wrapper: &mut NetworkWrapper, arena: &FlowArena) {
-    let avbs = arena.avbs();
+fn update_avb(decision: &mut Decision, flowtable: &FlowTable) {
+    let avbs = flowtable.avbs();
     let mut updates = Vec::with_capacity(avbs.len());
 
-    updates.extend(wrapper.filter_switch(avbs));
+    updates.extend(decision.filter_switch(avbs));
     for &id in updates.iter() {
-        let kth = wrapper.kth(id)
+        let kth = decision.kth(id)
             .expect("Failed to get prev kth with the given id");
-        wrapper.remove_bypassing_avb_on_kth_route(id, kth);
+        decision.remove_bypassing_avb_on_kth_route(id, kth);
     }
 
-    updates.extend(wrapper.filter_pending(avbs));
+    updates.extend(decision.filter_pending(avbs));
     for &id in updates.iter() {
-        let kth = wrapper.kth_next(id)
+        let kth = decision.kth_next(id)
             .expect("Failed to get next kth with the given id");
-        wrapper.insert_bypassing_avb_on_kth_route(id, kth);
+        decision.insert_bypassing_avb_on_kth_route(id, kth);
     }
 }
 
 /// 更新 TSN 資料流表與 GCL
-fn update_tsn(wrapper: &mut NetworkWrapper, arena: &FlowArena, network: &Network) {
-    let tsns = arena.tsns();
+fn update_tsn(decision: &mut Decision, flowtable: &FlowTable, network: &Network) {
+    let tsns = flowtable.tsns();
     let mut updates = Vec::with_capacity(tsns.len());
 
-    updates.extend(wrapper.filter_switch(tsns));
+    updates.extend(decision.filter_switch(tsns));
     for &id in updates.iter() {
-        let prev = wrapper.kth(id)
+        let prev = decision.kth(id)
             .expect("Failed to get prev kth with the given id");
-        let route = wrapper.kth_route(id, prev);
+        let route = decision.kth_route(id, prev);
         let links = network
             .get_links_id_bandwidth(route)
             .iter()
             .map(|(ends, _)| *ends)
             .collect();
-        wrapper.allocated_tsns.delete_flow(&links, id);
+        decision.allocated_tsns.delete_flow(&links, id);
     }
 
-    let _wrapper = wrapper as *const NetworkWrapper;
+    let _decision = decision as *const Decision;
 
     let closure = |id| {
-        // NOTE: 因為 wrapper.flow_table.get 和 wrapper.get_route_func 和 wrapper.graph 與其它部份是平行所有權
+        // NOTE: 因為 decision.flow_table.get 和 decision.get_route_func 和 decision.graph 與其它部份是平行所有權
         unsafe {
-            let kth = (*_wrapper).kth_next(id).unwrap();
-            let route = (*_wrapper).candidates[id].get(kth).unwrap();
+            let kth = (*_decision).kth_next(id).unwrap();
+            let route = (*_decision).candidates[id].get(kth).unwrap();
             network.get_links_id_bandwidth(route)
         }
     };
 
-    updates.extend(wrapper.filter_pending(tsns));
+    updates.extend(decision.filter_pending(tsns));
     // FIXME: stream with choice switch(x, x) is scheduled again
-    let result = schedule_fixed_og(&arena, &mut wrapper.allocated_tsns, &closure, &updates);
+    let result = schedule_fixed_og(&flowtable, &mut decision.allocated_tsns, &closure, &updates);
     let result = match result {
         Ok(_) => Ok(false),
         Err(_) => {
-            wrapper.allocated_tsns.clear();
-            schedule_fixed_og(&arena, &mut wrapper.allocated_tsns, &closure, tsns)
+            decision.allocated_tsns.clear();
+            schedule_fixed_og(&flowtable, &mut decision.allocated_tsns, &closure, tsns)
                 .and(Ok(true))
         }
     };
 
-    wrapper.tsn_fail = result.is_err();
+    decision.tsn_fail = result.is_err();
 }
 
 /// 一個大小為 size 的資料流要切成幾個封包才夠？
@@ -106,11 +106,11 @@ fn get_frame_cnt(size: usize) -> usize {
 fn cmp_flow<F: Fn(usize) -> Links>(
     tsn1: usize,
     tsn2: usize,
-    arena: &FlowArena,
+    flowtable: &FlowTable,
     get_links: &F,
 ) -> Ordering {
-    let spec1 = arena.tsn_spec(tsn1).unwrap();
-    let spec2 = arena.tsn_spec(tsn2).unwrap();
+    let spec1 = flowtable.tsn_spec(tsn1).unwrap();
+    let spec2 = flowtable.tsn_spec(tsn2).unwrap();
     if spec1.max_delay < spec2.max_delay {
         Ordering::Less
     } else if spec1.max_delay > spec2.max_delay {
@@ -138,17 +138,17 @@ fn cmp_flow<F: Fn(usize) -> Links>(
 /// * `gcl` - 本來的 Gate Control List
 /// * 回傳 - Ok(false) 代表沒事發生，Ok(true) 代表發生大洗牌
 // pub fn schedule_online<F: Fn(usize) -> Links>(
-//     arena: &FlowArena,
+//     flowtable: &FlowTable,
 //     og_table: &mut FT,
 //     changed_table: &DT,
 //     gcl: &mut GCL,
 //     get_links: &F,
 // ) -> Result<bool, ()> {
-//     let result = schedule_fixed_og(arena, gcl, get_links, &changed_table.tsn_diff);
+//     let result = schedule_fixed_og(flowtable, gcl, get_links, &changed_table.tsn_diff);
 //     og_table.apply_diff(true, changed_table);
 //     if !result.is_ok() {
 //         gcl.clear();
-//         schedule_fixed_og(arena, gcl, get_links, &arena.tsns)?;
+//         schedule_fixed_og(flowtable, gcl, get_links, &flowtable.tsns)?;
 //         Ok(true)
 //     } else {
 //         Ok(false)
@@ -157,15 +157,15 @@ fn cmp_flow<F: Fn(usize) -> Links>(
 
 /// 也可以當作離線排程算法來使用
 pub fn schedule_fixed_og<F: Fn(usize) -> Links>(
-    arena: &FlowArena,
-    gcl: &mut GCL,
+    flowtable: &FlowTable,
+    gcl: &mut GateCtrlList,
     get_links: &F,
     tsns: &Vec<usize>,
 ) -> Result<(), ()> {
     let mut tsn_ids = tsns.clone();
-    tsn_ids.sort_by(|&id1, &id2| cmp_flow(id1, id2, arena, get_links));
+    tsn_ids.sort_by(|&id1, &id2| cmp_flow(id1, id2, flowtable, get_links));
     for tsn in tsn_ids.into_iter() {
-        let spec = arena.tsn_spec(tsn).unwrap();
+        let spec = flowtable.tsn_spec(tsn).unwrap();
         let links = get_links(tsn);
         let mut all_offsets: Vec<Vec<u32>> = vec![];
         // NOTE 一個資料流的每個封包，在單一埠口上必需採用同一個佇列
@@ -173,7 +173,7 @@ pub fn schedule_fixed_og<F: Fn(usize) -> Links>(
         let k = get_frame_cnt(spec.size);
         let mut m = 0;
         while m < k {
-            let offsets = calculate_offsets(tsn, arena, &all_offsets, &links, &ro, gcl);
+            let offsets = calculate_offsets(tsn, flowtable, &all_offsets, &links, &ro, gcl);
             if offsets.len() == links.len() {
                 m += 1;
                 all_offsets.push(offsets);
@@ -229,13 +229,13 @@ pub fn schedule_fixed_og<F: Fn(usize) -> Links>(
 /// 回傳值為為一個陣列，若其長度小於路徑長，代表排一排爆開
 fn calculate_offsets(
     tsn: usize,
-    arena: &FlowArena,
+    flowtable: &FlowTable,
     all_offsets: &Vec<Vec<u32>>,
     links: &Vec<((usize, usize), f64)>,
     ro: &Vec<u8>,
-    gcl: &GCL,
+    gcl: &GateCtrlList,
 ) -> Vec<u32> {
-    let spec = arena.tsn_spec(tsn)
+    let spec = flowtable.tsn_spec(tsn)
         .expect("Failed to obtain TSN spec from AVB stream");
     let mut offsets = Vec::<u32>::with_capacity(links.len());
     let hyper_p = gcl.get_hyper_p();

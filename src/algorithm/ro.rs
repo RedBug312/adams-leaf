@@ -1,50 +1,52 @@
-use super::{Algorithm, algorithm::Eval};
-use crate::{component::flowtable::FlowArena, network::Network};
-use crate::component::NetworkWrapper;
-use crate::component::evaluator::evaluate_avb_latency_for_kth;
-use super::base::yens::YensAlgo;
 use crate::MAX_K;
+use crate::component::Decision;
+use crate::component::evaluator::evaluate_avb_latency_for_kth;
+use crate::component::FlowTable;
+use crate::network::Network;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
-use std::rc::Rc;
 use std::time::Instant;
+use super::base::yens::Yens;
+use super::Algorithm;
+use super::algorithm::Eval;
+
 
 const ALPHA_PORTION: f64 = 0.5;
 
 
 pub struct RO {
-    yens: Rc<YensAlgo>,
+    yens: Yens,
 }
 
 
 impl Algorithm for RO {
-    fn prepare(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena) {
-        for id in arena.inputs() {
-            let (src, dst) = arena.ends(id);
+    fn prepare(&mut self, decision: &mut Decision, flowtable: &FlowTable) {
+        for id in flowtable.inputs() {
+            let (src, dst) = flowtable.ends(id);
             let candidates = self.yens.k_shortest_paths(src, dst);
-            wrapper.candidates.push(candidates);
+            decision.candidates.push(candidates);
         }
     }
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
-    fn configure(&mut self, wrapper: &mut NetworkWrapper, arena: &FlowArena, network: &Network, deadline: Instant, evaluate: Eval) {
-        // self.grasp(wrapper, deadline);
+    fn configure(&mut self, decision: &mut Decision, flowtable: &FlowTable, network: &Network, deadline: Instant, evaluate: Eval) {
+        // self.grasp(decision, deadline);
         let mut rng = ChaChaRng::seed_from_u64(420);
         let mut iter_times = 0;
-        let mut min_cost = evaluate(wrapper);
+        let mut min_cost = evaluate(decision);
         while Instant::now() < deadline {
             iter_times += 1;
             // PHASE 1
-            let mut cur_wrapper = wrapper.clone();
-            for &avb in arena.avbs() {
-                let (src, dst) = arena.ends(avb);
+            let mut current = decision.clone();
+            for &avb in flowtable.avbs() {
+                let (src, dst) = flowtable.ends(avb);
                 let candidate_cnt = self.get_candidate_count(src, dst);
                 let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
                 let set = gen_n_distinct_outof_k(alpha, candidate_cnt, &mut rng);
-                let new_route = self.find_min_cost_route(wrapper, arena, network, avb, Some(set));
-                cur_wrapper.pick(avb, new_route);
+                let new_route = self.find_min_cost_route(decision, flowtable, network, avb, Some(set));
+                current.pick(avb, new_route);
             }
             // PHASE 2
-            let cost = evaluate(&mut cur_wrapper);
+            let cost = evaluate(&mut current);
             if cost.0 < min_cost.0 {
                 min_cost = cost;
                 // #[cfg(debug_assertions)]
@@ -53,7 +55,7 @@ impl Algorithm for RO {
 
             #[cfg(debug_assertions)]
             println!("start iteration #{}", iter_times);
-            // self.hill_climbing(wrapper, &mut rng, &deadline, &mut min_cost, cur_wrapper);
+            // self.hill_climbing(decision, &mut rng, &deadline, &mut min_cost, current);
 
             let mut iter_times_inner = 0;
             while Instant::now() < deadline {
@@ -62,14 +64,14 @@ impl Algorithm for RO {
                 }
 
                 let rand = rng
-                    .gen_range(0..arena.len());
+                    .gen_range(0..flowtable.len());
                 let target_id = rand.into();
-                if arena.avb_spec(target_id).is_none() {
+                if flowtable.avb_spec(target_id).is_none() {
                     continue;
                 }
 
-                let new_route = self.find_min_cost_route(wrapper, arena, network, target_id, None);
-                let old_route = wrapper
+                let new_route = self.find_min_cost_route(decision, flowtable, network, target_id, None);
+                let old_route = decision
                     .kth(target_id)
                     .unwrap();
 
@@ -78,11 +80,11 @@ impl Algorithm for RO {
                 }
 
                 // 實際更新下去，並計算成本
-                cur_wrapper.pick(target_id, new_route);
-                let cost = evaluate(&mut cur_wrapper);
+                current.pick(target_id, new_route);
+                let cost = evaluate(&mut current);
 
                 if cost.0 < min_cost.0 {
-                    *wrapper = cur_wrapper.clone();
+                    *decision = current.clone();
                     min_cost = cost.clone();
                     iter_times_inner = 0;
 
@@ -90,9 +92,9 @@ impl Algorithm for RO {
                     // println!("found min_cost = {:?}", cost);
                 } else {
                     // 恢復上一動
-                    cur_wrapper.pick(target_id, old_route);
+                    current.pick(target_id, old_route);
                     iter_times_inner += 1;
-                    if iter_times_inner == arena.len() {
+                    if iter_times_inner == flowtable.len() {
                         //  NOTE: 迭代次數上限與資料流數量掛勾
                         break;
                     }
@@ -111,17 +113,15 @@ impl Algorithm for RO {
 
 impl RO {
     pub fn new(network: &Network) -> Self {
-        let yens = YensAlgo::new(&network, MAX_K);
-        RO {
-            yens: Rc::new(yens),
-        }
+        let yens = Yens::new(&network, MAX_K);
+        RO { yens }
     }
     /// 若有給定候選路徑的子集合，就從中選。若無，則遍歷所有候選路徑
-    fn find_min_cost_route(&self, wrapper: &NetworkWrapper, arena: &FlowArena, network: &Network, id: usize, set: Option<Vec<usize>>) -> usize {
-        let (src, dst) = arena.ends(id);
+    fn find_min_cost_route(&self, decision: &Decision, flowtable: &FlowTable, network: &Network, id: usize, set: Option<Vec<usize>>) -> usize {
+        let (src, dst) = flowtable.ends(id);
         let (mut min_cost, mut best_k) = (std::f64::MAX, 0);
         let mut closure = |k: usize| {
-            let cost = evaluate_avb_latency_for_kth(wrapper, arena, network, id, k) as f64;
+            let cost = evaluate_avb_latency_for_kth(decision, flowtable, network, id, k) as f64;
             if cost < min_cost {
                 min_cost = cost;
                 best_k = k;

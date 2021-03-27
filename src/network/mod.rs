@@ -1,6 +1,4 @@
 mod graph;
-mod streamaware;
+mod network;
 
-pub use streamaware::StreamAwareGraph as Network;
-pub use graph::Graph;
-pub use graph::OnOffGraph;
+pub use network::Network;

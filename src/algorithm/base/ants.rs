@@ -52,7 +52,7 @@ pub enum ACOJudgeResult {
     KeepOn(f64),
 }
 
-pub struct ACO {
+pub struct AntColony {
     pub pheromone: Vec<[f64; MAX_K]>,
     pub k: usize,
     pub r: usize,
@@ -64,7 +64,7 @@ pub struct ACO {
     pub min_ph: f64,
 }
 
-impl ACO {
+impl AntColony {
     pub fn new(state_len: usize, k: usize, tao0: Option<f64>) -> Self {
         assert!(k <= MAX_K, "K值必需在 {} 以下", MAX_K);
         let tao0 = {
@@ -74,7 +74,7 @@ impl ACO {
                 TAO0
             }
         };
-        ACO {
+        AntColony {
             pheromone: (0..state_len).map(|_| [tao0; MAX_K]).collect(),
             tao0,
             k,

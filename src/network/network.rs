@@ -31,13 +31,13 @@ impl Edge {
 }
 
 #[derive(Clone, Default)]
-pub struct StreamAwareGraph {
+pub struct Network {
     pub nodes: Vec<Node>,
     pub edges: HashMap<(usize, usize), Edge>,
     pub end_devices: Vec<usize>,
 }
 
-impl StreamAwareGraph {
+impl Network {
     pub fn new() -> Self {
         Self { ..Default::default() }
     }

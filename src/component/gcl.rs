@@ -36,13 +36,13 @@ enum Entry {
 type Events = Vec<(u32, u32, usize)>;
 
 #[derive(Clone, Debug, Default)]
-pub struct GCL {
+pub struct GateCtrlList {
     hyper_p: u32,
     // TODO 這個資料結構有優化的空間
     events: HashMap<Entry, Events>,
     events_cache: HashMap<(usize, usize), Vec<(u32, u32)>>,
 }
-impl GCL {
+impl GateCtrlList {
     pub fn new(hyper_p: u32) -> Self {
         Self { hyper_p, ..Default::default() }
     }
