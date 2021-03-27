@@ -1,5 +1,5 @@
 use super::{NetworkWrapper, RoutingCost};
-use crate::network::{Network, MemorizingGraph};
+use crate::network::Network;
 use crate::component::{flowtable::*, GCL};
 
 
@@ -19,7 +19,7 @@ impl Evaluator {
         Evaluator { weights }
     }
     pub fn compute_avb_wcd(&self, wrapper: &NetworkWrapper, arena: &FlowArena, network: &Network, id: usize) -> u32 {
-        let kth = wrapper.flow_table.kth_next(id).unwrap();
+        let kth = wrapper.kth_next(id).unwrap();
         evaluate_avb_latency_for_kth(wrapper, arena, network, id, kth)
     }
     pub fn compute_single_avb_cost(&self, wrapper: &NetworkWrapper, latest: &NetworkWrapper, arena: &FlowArena, network: &Network, avb: usize) -> RoutingCost {
@@ -33,8 +33,8 @@ impl Evaluator {
             avb_fail_cnt += 1;
         }
         if is_rerouted(
-            wrapper.flow_table.kth_next(avb),
-            latest.flow_table.kth_prev(avb),
+            wrapper.kth_next(avb),
+            latest.kth(avb),
         ) {
             reroute_cnt += 1;
         }
@@ -52,8 +52,8 @@ impl Evaluator {
         let mut all_avb_wcd = 0.0;
         let mut all_reroute_cnt = 0;
         for &id in arena.tsns() {
-            let t = wrapper.flow_table.kth_next(id);
-            if is_rerouted(t, latest.flow_table.kth_prev(id)) {
+            let t = wrapper.kth_next(id);
+            if is_rerouted(t, latest.kth(id)) {
                 all_reroute_cnt += 1;
             }
         }
@@ -66,8 +66,8 @@ impl Evaluator {
                 // 逾時了！
                 all_avb_fail_cnt += 1;
             }
-            let t = wrapper.flow_table.kth_next(avb);
-            if is_rerouted(t, latest.flow_table.kth_prev(avb)) {
+            let t = wrapper.kth_next(avb);
+            if is_rerouted(t, latest.kth(avb)) {
                 all_reroute_cnt += 1;
             }
         }
@@ -83,10 +83,7 @@ impl Evaluator {
 }
 
 pub fn evaluate_avb_latency_for_kth(wrapper: &NetworkWrapper, arena: &FlowArena, network: &Network, id: usize, kth: usize) -> u32 {
-    let graph = &wrapper.graph;
-    let route = wrapper.get_kth_route(id, kth);
-    let gcl = &wrapper.gcl;
-    compute_avb_latency(network, graph, id, route, arena, gcl)
+    compute_avb_latency(wrapper, network, id, kth, arena)
 }
 
 fn is_rerouted(current: Option<usize>, latest: Option<usize>) -> bool {
@@ -102,14 +99,15 @@ fn is_rerouted(current: Option<usize>, latest: Option<usize>) -> bool {
 /// TODO: 改用 FlowArena?
 /// * `gcl` - 所有 TT 資料流的 Gate Control List
 pub fn compute_avb_latency(
+    wrapper: &NetworkWrapper,
     network: &Network,
-    g: &MemorizingGraph,
     id: usize,
-    route: &Vec<usize>,
+    kth: usize,
     arena: &FlowArena,
-    gcl: &GCL,
 ) -> u32 {
-    let overlap_flow_id = g.get_overlap_flows(route);
+    let route = wrapper.kth_route(id, kth);
+    let gcl = &wrapper.allocated_tsns;
+    let overlap_flow_id = wrapper.get_overlap_flows(route);
     let mut end_to_end_lanency = 0.0;
     for (i, (ends, bandwidth)) in network.get_links_id_bandwidth(route).into_iter().enumerate() {
         let wcd = wcd_on_single_link(id, bandwidth, arena, &overlap_flow_id[i]);

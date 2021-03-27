@@ -47,12 +47,12 @@ impl Algorithm for AdamsAnt {
         let config = Config::get();
         self.memory = vec![[1.0; MAX_K]; arena.len()];
         for &tsn in arena.tsns() {
-            if let Some(kth) = wrapper.flow_table.kth_prev(tsn) {
+            if let Some(kth) = wrapper.kth(tsn) {
                 self.memory[tsn][kth] = config.tsn_memory;
             }
         }
         for &avb in arena.avbs() {
-            if let Some(kth) = wrapper.flow_table.kth_prev(avb) {
+            if let Some(kth) = wrapper.kth(avb) {
                 self.memory[avb][kth] = config.avb_memory;
             }
         }
@@ -190,7 +190,7 @@ fn compute_aco_dist(
 
     for (id, &kth) in state.iter().enumerate() {
         // NOTE: 若發現和舊的資料一樣，這個 update_info 函式會自動把它忽略掉
-        cur_wrapper.flow_table.pick(id, kth);
+        cur_wrapper.pick(id, kth);
     }
 
     let cost = evaluate(&mut cur_wrapper);

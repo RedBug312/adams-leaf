@@ -1,16 +1,6 @@
 use std::ops::Range;
-
 use crate::utils::stream::{AVB, TSN};
 
-
-const KTH_DEFAULT: usize = 0;
-
-#[derive(Clone)]
-enum Choice {
-    Pending(usize),
-    Stay(usize),
-    Switch(usize, usize),
-}
 
 enum Either {
     TSN(usize, TSN),
@@ -23,11 +13,6 @@ pub struct FlowArena {
     tsns: Vec<usize>,
     avbs: Vec<usize>,
     inputs: Range<usize>,
-}
-
-#[derive(Clone, Default)]
-pub struct FlowTable {
-    choices: Vec<Choice>,
 }
 
 
@@ -83,74 +68,6 @@ impl FlowArena {
             self.streams.push(Either::AVB(len + idx, avb));
         }
         self.inputs = self.inputs.end..self.streams.len();
-    }
-}
-
-impl FlowTable {
-    pub fn new() -> Self {
-        FlowTable { ..Default::default() }
-    }
-    pub fn resize(&mut self, len: usize) {
-        self.choices.resize(len, Choice::Pending(KTH_DEFAULT));
-    }
-    pub fn confirm(&mut self) {
-        self.choices.iter_mut()
-            .for_each(|choice| choice.confirm());
-    }
-    pub fn pick(&mut self, id: usize, kth: usize) {
-        self.choices[id].pick(kth);
-    }
-    pub fn kth_prev(&self, id: usize) -> Option<usize> {
-        self.choices[id].kth_prev()
-    }
-    pub fn kth_next(&self, id: usize) -> Option<usize> {
-        self.choices[id].kth_next()
-    }
-    pub fn filter_pending<'a>(&'a self, source: &'a Vec<usize>)
-        -> impl Iterator<Item=usize> + 'a {
-        source.iter().cloned()
-            .filter(move |&id| matches!(self.choices[id],
-                    Choice::Pending(_))
-        )
-    }
-    pub fn filter_switch<'a>(&'a self, source: &'a Vec<usize>)
-        -> impl Iterator<Item=usize> + 'a {
-        source.iter().cloned()
-            .filter(move |&id| matches!(self.choices[id],
-                    Choice::Switch(prev, next) if prev != next)
-        )
-    }
-}
-
-
-impl Choice {
-    fn pick(&mut self, next: usize) {
-        *self = match self {
-            Choice::Pending(_)      => Choice::Pending(next),
-            Choice::Stay(prev)      => Choice::Switch(*prev, next),
-            Choice::Switch(prev, _) => Choice::Switch(*prev, next),
-        };
-    }
-    fn confirm(&mut self) {
-        *self = match self {
-            Choice::Pending(next)   => Choice::Stay(*next),
-            Choice::Stay(prev)      => Choice::Stay(*prev),
-            Choice::Switch(_, next) => Choice::Stay(*next),
-        };
-    }
-    fn kth_prev(&self) -> Option<usize> {
-        match self {
-            Choice::Pending(_)      => None,
-            Choice::Stay(prev)      => Some(*prev),
-            Choice::Switch(prev, _) => Some(*prev),
-        }
-    }
-    fn kth_next(&self) -> Option<usize> {
-        match self {
-            Choice::Pending(next)   => Some(*next),
-            Choice::Stay(prev)      => Some(*prev),
-            Choice::Switch(_, next) => Some(*next),
-        }
     }
 }
 

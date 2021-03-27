@@ -82,12 +82,12 @@ impl CNC {
         let network = &self.network;
         println!("TT Flows:");
         for &id in arena.tsns() {
-            let route = current.get_route(id);
+            let route = current.route(id);
             println!("flow id = FlowID({:?}), route = {:?}", id, route);
         }
         println!("AVB Flows:");
         for &id in arena.avbs() {
-            let route = current.get_route(id);
+            let route = current.route(id);
             let cost = self.evaluator.compute_single_avb_cost(current, latest, arena, network, id);
             println!(
                 "flow id = FlowID({:?}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",

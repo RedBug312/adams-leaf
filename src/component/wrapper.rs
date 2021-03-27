@@ -1,51 +1,159 @@
-use crate::network::MemorizingGraph;
+use std::collections::{HashMap, HashSet};
+use std::iter::FromIterator;
 use crate::network::Network;
-use crate::component::flowtable::FlowTable;
 use crate::component::GCL;
 
 
+const KTH_DEFAULT: usize = 0;
 type Route = Vec<usize>;
 
 
 /// 這個結構預期會被複製很多次，因此其中的每個元件都應儘可能想辦法降低複製成本
 #[derive(Clone)]
 pub struct NetworkWrapper {
-    pub flow_table: FlowTable,
-    pub gcl: GCL,
-    pub graph: MemorizingGraph,
+    choices: Vec<Choice>,
     pub candidates: Vec<Vec<Route>>,
+    pub allocated_tsns: GCL,
+    pub bypassing_avbs: HashMap<(usize, usize), HashSet<usize>>,
     pub tsn_fail: bool,
 }
 
+#[derive(Clone)]
+enum Choice {
+    Pending(usize),
+    Stay(usize),
+    Switch(usize, usize),
+}
+
+
 impl NetworkWrapper {
-    pub fn new(graph: &Network) -> Self
-    {
-        let memorizing = MemorizingGraph::new(graph);
+    pub fn new(graph: &Network) -> Self {
+        let bypassing_avbs = graph.edges.keys()
+            .map(|&ends| (ends, HashSet::new()))
+            .collect();
         NetworkWrapper {
-            flow_table: FlowTable::new(),
-            gcl: GCL::new(1),
-            graph: memorizing,
+            choices: vec![],
             candidates: vec![],
+            allocated_tsns: GCL::new(1),
+            bypassing_avbs,
             tsn_fail: false,
         }
     }
-    /// 插入新的資料流，同時會捨棄先前的新舊表，並創建另一份新舊表
+    pub fn kth(&self, stream: usize) -> Option<usize> {
+        self.choices[stream].kth()
+    }
+    pub fn kth_next(&self, stream: usize) -> Option<usize> {
+        self.choices[stream].kth_next()
+    }
+    pub fn kth_route(&self, stream: usize, kth: usize) -> &Route {
+        &self.candidates[stream][kth]
+    }
+    pub fn route(&self, stream: usize) -> &Route {
+        let kth = self.kth(stream).unwrap();
+        self.kth_route(stream, kth)
+    }
     pub fn resize(&mut self, len: usize) {
-        self.flow_table.resize(len);
+        let default = Choice::Pending(KTH_DEFAULT);
+        self.choices.resize(len, default);
     }
-    pub fn get_route(&self, flow_id: usize) -> &Route {
-        let kth = self.flow_table.kth_next(flow_id).unwrap();
-        let route = self.candidates[flow_id].get(kth).unwrap();
-        route
+    pub fn pick(&mut self, stream: usize, kth: usize) {
+        self.choices[stream].pick(kth);
     }
-    pub fn get_kth_route(&self, flow_id: usize, kth: usize) -> &Route {
-        let route = self.candidates[flow_id].get(kth).unwrap();
-        route
+    pub fn confirm(&mut self) {
+        self.choices.iter_mut()
+            .for_each(|choice| choice.confirm());
     }
-    pub fn get_flow_table(&self) -> &FlowTable {
-        &self.flow_table
+    pub fn filter_pending<'a>(&'a self, source: &'a Vec<usize>)
+        -> impl Iterator<Item=usize> + 'a {
+        source.iter().cloned()
+            .filter(move |&id| matches!(self.choices[id],
+                    Choice::Pending(_)))
+    }
+    pub fn filter_switch<'a>(&'a self, source: &'a Vec<usize>)
+        -> impl Iterator<Item=usize> + 'a {
+        source.iter().cloned()
+            .filter(move |&id| matches!(self.choices[id],
+                    Choice::Switch(prev, next) if prev != next))
     }
 }
+
+impl NetworkWrapper {
+    /// 確定一條資料流的路徑時，將該資料流的ID記憶在它經過的邊上，移除路徑時則將ID遺忘。
+    ///
+    /// __注意：此處兩個方向不視為同個邊！__
+    /// * `remember` - 布林值，記憶或是遺忘路徑
+    /// * `stream` - 要記憶或遺忘的資料流ID
+    /// * `route` - 該路徑(以節點組成)
+    pub fn insert_bypassing_avb_on_kth_route(&mut self, stream: usize, kth: usize) {
+        let route = self.kth_route(stream, kth).clone();
+        for ends in route.windows(2) {
+            let ends = (ends[0], ends[1]);
+            let set = self.bypassing_avbs.get_mut(&ends)
+                .expect("Failed to insert bypassing avb into an invalid edge");
+            set.insert(stream);
+        }
+    }
+    pub fn remove_bypassing_avb_on_kth_route(&mut self, stream: usize, kth: usize) {
+        let route = self.kth_route(stream, kth).clone();
+        for ends in route.windows(2) {
+            let ends = (ends[0], ends[1]);
+            let set = self.bypassing_avbs.get_mut(&ends)
+                .expect("Failed to remove bypassing avb from an invalid edge");
+            set.remove(&stream);
+        }
+    }
+    /// 把邊上記憶的資訊通通忘掉！
+    pub fn forget_all_flows(&mut self) {
+        self.bypassing_avbs = self.bypassing_avbs.keys()
+            .map(|&ends| (ends, HashSet::new()))
+            .collect();
+    }
+    /// 詢問一條路徑上所有共用過邊的資料流。針對路上每個邊都會回傳一個陣列，內含走了這個邊的資料流（空陣列代表無人走過）
+    ///
+    /// __注意：方向不同者不視為共用！__
+    pub fn get_overlap_flows(&self, route: &Vec<usize>) -> Vec<Vec<usize>> {
+        // TODO 回傳的 Vec<Vec> 有優化空間
+        let empty = HashSet::new();
+        route.windows(2)
+            .map(|ends| (ends[0], ends[1]))
+            .map(|ends| self.bypassing_avbs.get(&ends).unwrap_or(&empty))
+            .map(|set| Vec::from_iter(set.iter().cloned()))
+            .collect()
+    }
+}
+
+
+impl Choice {
+    fn kth(&self) -> Option<usize> {
+        match self {
+            Choice::Pending(_)      => None,
+            Choice::Stay(prev)      => Some(*prev),
+            Choice::Switch(prev, _) => Some(*prev),
+        }
+    }
+    fn kth_next(&self) -> Option<usize> {
+        match self {
+            Choice::Pending(next)   => Some(*next),
+            Choice::Stay(prev)      => Some(*prev),
+            Choice::Switch(_, next) => Some(*next),
+        }
+    }
+    fn pick(&mut self, next: usize) {
+        *self = match self {
+            Choice::Pending(_)      => Choice::Pending(next),
+            Choice::Stay(prev)      => Choice::Switch(*prev, next),
+            Choice::Switch(prev, _) => Choice::Switch(*prev, next),
+        };
+    }
+    fn confirm(&mut self) {
+        *self = match self {
+            Choice::Pending(next)   => Choice::Stay(*next),
+            Choice::Stay(prev)      => Choice::Stay(*prev),
+            Choice::Switch(_, next) => Choice::Stay(*next),
+        };
+    }
+}
+
 
 #[cfg(test)]
 mod test {
@@ -159,6 +267,45 @@ mod test {
         wrapper.flow_table.update_info(0.into(), 99);
         assert_eq!(&99, wrapper.flow_table.get_info(0.into()).unwrap());
         assert_eq!(&0, wrapper2.flow_table.get_info(0.into()).unwrap());
+    }
+    fn build_id_vec(v: Vec<usize>) -> Vec<usize> {
+        v.into_iter().map(|i| i.into()).collect()
+    }
+    #[test]
+    fn test_remember_forget_flow() -> Result<(), String> {
+        let mut g = Network::new();
+        g.add_host(Some(5));
+        g.add_edge((0, 1), 10.0)?;
+        g.add_edge((1, 2), 20.0)?;
+        g.add_edge((2, 3), 2.0)?;
+        g.add_edge((0, 3), 2.0)?;
+        g.add_edge((0, 4), 2.0)?;
+        g.add_edge((3, 4), 2.0)?;
+
+        let mut g = MemorizingGraph::new(g);
+
+        let mut ans: Vec<Vec<usize>> = vec![vec![], vec![], vec![]];
+        assert_eq!(ans, g.get_overlap_flows(&vec![0, 3, 2, 1]));
+
+        g.update_flowid_on_route(true, 0.into(), &vec![2, 3, 4]);
+        g.update_flowid_on_route(true, 1.into(), &vec![1, 0, 3, 4]);
+
+        assert_eq!(ans, g.get_overlap_flows(&vec![4, 3, 0, 1])); // 兩個方向不視為重疊
+
+        let mut ov_flows = g.get_overlap_flows(&vec![0, 3, 4]);
+        assert_eq!(build_id_vec(vec![1]), ov_flows[0]);
+        ov_flows[1].sort();
+        assert_eq!(build_id_vec(vec![0, 1]), ov_flows[1]);
+
+        g.update_flowid_on_route(false, 1.into(), &vec![1, 0, 3, 4]);
+        ans = vec![vec![], vec![0.into()]];
+        assert_eq!(ans, g.get_overlap_flows(&vec![0, 3, 4]));
+
+        g.forget_all_flows();
+        ans = vec![vec![], vec![]];
+        assert_eq!(ans, g.get_overlap_flows(&vec![0, 3, 4]));
+
+        Ok(())
     }
 }
 

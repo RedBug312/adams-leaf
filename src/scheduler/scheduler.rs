@@ -21,7 +21,7 @@ impl Scheduler {
     pub fn configure(&self, wrapper: &mut NetworkWrapper, arena: &FlowArena, network: &Network) {
         update_avb(wrapper, arena);
         update_tsn(wrapper, arena, network);
-        wrapper.flow_table.confirm();
+        wrapper.confirm();
     }
 }
 
@@ -30,25 +30,18 @@ fn update_avb(wrapper: &mut NetworkWrapper, arena: &FlowArena) {
     let avbs = arena.avbs();
     let mut updates = Vec::with_capacity(avbs.len());
 
-    updates.extend(wrapper.flow_table.filter_switch(avbs));
+    updates.extend(wrapper.filter_switch(avbs));
     for &id in updates.iter() {
-        let prev = wrapper.flow_table.kth_prev(id)
+        let kth = wrapper.kth(id)
             .expect("Failed to get prev kth with the given id");
-        // NOTE: 因為 wrapper.graph 與 wrapper.get_route 是平行所有權
-        let graph = unsafe { &mut (*(wrapper as *mut NetworkWrapper)).graph };
-        let route = wrapper.get_kth_route(id, prev);
-        graph.update_flowid_on_route(false, id, route);
+        wrapper.remove_bypassing_avb_on_kth_route(id, kth);
     }
 
-    let avbs = arena.avbs();
-    updates.extend(wrapper.flow_table.filter_pending(avbs));
+    updates.extend(wrapper.filter_pending(avbs));
     for &id in updates.iter() {
-        let next = wrapper.flow_table.kth_next(id)
+        let kth = wrapper.kth_next(id)
             .expect("Failed to get next kth with the given id");
-        // NOTE: 因為 wrapper.graph 與 wrapper.get_route 是平行所有權
-        let graph = unsafe { &mut (*(wrapper as *mut NetworkWrapper)).graph };
-        let route = wrapper.get_kth_route(id, next);
-        graph.update_flowid_on_route(true, id, route);
+        wrapper.insert_bypassing_avb_on_kth_route(id, kth);
     }
 }
 
@@ -57,17 +50,17 @@ fn update_tsn(wrapper: &mut NetworkWrapper, arena: &FlowArena, network: &Network
     let tsns = arena.tsns();
     let mut updates = Vec::with_capacity(tsns.len());
 
-    updates.extend(wrapper.flow_table.filter_switch(tsns));
+    updates.extend(wrapper.filter_switch(tsns));
     for &id in updates.iter() {
-        let prev = wrapper.flow_table.kth_prev(id)
+        let prev = wrapper.kth(id)
             .expect("Failed to get prev kth with the given id");
-        let route = wrapper.get_kth_route(id, prev);
+        let route = wrapper.kth_route(id, prev);
         let links = network
             .get_links_id_bandwidth(route)
             .iter()
             .map(|(ends, _)| *ends)
             .collect();
-        wrapper.gcl.delete_flow(&links, id);
+        wrapper.allocated_tsns.delete_flow(&links, id);
     }
 
     let _wrapper = wrapper as *const NetworkWrapper;
@@ -75,20 +68,20 @@ fn update_tsn(wrapper: &mut NetworkWrapper, arena: &FlowArena, network: &Network
     let closure = |id| {
         // NOTE: 因為 wrapper.flow_table.get 和 wrapper.get_route_func 和 wrapper.graph 與其它部份是平行所有權
         unsafe {
-            let kth = (*_wrapper).flow_table.kth_next(id).unwrap();
+            let kth = (*_wrapper).kth_next(id).unwrap();
             let route = (*_wrapper).candidates[id].get(kth).unwrap();
             network.get_links_id_bandwidth(route)
         }
     };
 
-    updates.extend(wrapper.flow_table.filter_pending(tsns));
+    updates.extend(wrapper.filter_pending(tsns));
     // FIXME: stream with choice switch(x, x) is scheduled again
-    let result = schedule_fixed_og(&arena, &mut wrapper.gcl, &closure, &updates);
+    let result = schedule_fixed_og(&arena, &mut wrapper.allocated_tsns, &closure, &updates);
     let result = match result {
         Ok(_) => Ok(false),
         Err(_) => {
-            wrapper.gcl.clear();
-            schedule_fixed_og(&arena, &mut wrapper.gcl, &closure, tsns)
+            wrapper.allocated_tsns.clear();
+            schedule_fixed_og(&arena, &mut wrapper.allocated_tsns, &closure, tsns)
                 .and(Ok(true))
         }
     };
