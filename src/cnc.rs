@@ -20,15 +20,15 @@ pub struct CNC {
 
 
 impl CNC {
-    pub fn new(name: &str, graph: Network) -> Self {
+    pub fn new(name: &str, graph: Network, seed: u64) -> Self {
         let config = Config::get();
         let mut weights = [config.w0, config.w1, config.w2, config.w3];
         if name == "ro" {
             weights[2] = 0.0;
         }
         let algorithm: AlgorithmEnum = match name {
-            "aco" => ACO::new(&graph).into(),
-            "ro"  => RO::new(&graph).into(),
+            "aco" => ACO::new(&graph, seed).into(),
+            "ro"  => RO::new(&graph, seed).into(),
             "spf" => SPF::new(&graph).into(),
             _     => panic!("Failed specify an unknown routing algorithm"),
         };

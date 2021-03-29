@@ -19,6 +19,9 @@ struct Arguments {
     /// path to configuration file
     #[argh(option, short='c', default="String::from(\"config.example.json\")")]
     config: String,
+    /// random seed for heuristic-based routing algorithm
+    #[argh(option, short='s', default="0")]
+    seed: u64,
 }
 
 fn main() {
@@ -30,7 +33,7 @@ fn main() {
     Config::load_file(&args.config)
         .expect("Failed to load config file");
 
-    let mut cnc = CNC::new(&args.algorithm, network);
+    let mut cnc = CNC::new(&args.algorithm, network, args.seed);
 
     cnc.add_streams(tsns1, avbs1);
     let elapsed = cnc.configure();
