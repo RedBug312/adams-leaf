@@ -16,6 +16,7 @@ const ALPHA_PORTION: f64 = 0.5;
 
 pub struct RO {
     yens: Yens,
+    seed: u64,
 }
 
 
@@ -30,7 +31,7 @@ impl Algorithm for RO {
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
     fn configure(&mut self, decision: &mut Decision, flowtable: &FlowTable, network: &Network, deadline: Instant, evaluate: Eval) {
         // self.grasp(decision, deadline);
-        let mut rng = ChaChaRng::seed_from_u64(420);
+        let mut rng = ChaChaRng::seed_from_u64(self.seed);
         let mut iter_times = 0;
         let mut min_cost = evaluate(decision);
         while Instant::now() < deadline {
@@ -112,9 +113,9 @@ impl Algorithm for RO {
 }
 
 impl RO {
-    pub fn new(network: &Network) -> Self {
+    pub fn new(network: &Network, seed: u64) -> Self {
         let yens = Yens::new(&network, MAX_K);
-        RO { yens }
+        RO { yens, seed }
     }
     /// 若有給定候選路徑的子集合，就從中選。若無，則遍歷所有候選路徑
     fn find_min_cost_route(&self, decision: &Decision, flowtable: &FlowTable, network: &Network, id: usize, set: Option<Vec<usize>>) -> usize {

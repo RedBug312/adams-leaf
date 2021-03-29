@@ -20,15 +20,16 @@ pub struct ACO {
     ants: AntColony,
     yens: Yens,
     memory: Vec<[f64; MAX_K]>,
+    seed: u64,
 }
 
 
 impl ACO {
-    pub fn new(network: &Network) -> Self {
+    pub fn new(network: &Network, seed: u64) -> Self {
         let ants = AntColony::new(0, MAX_K, None);
         let yens = Yens::new(&network, MAX_K);
         let memory = vec![];
-        ACO { ants, yens, memory }
+        ACO { ants, yens, memory, seed }
     }
     pub fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
         self.yens.count_shortest_paths(src, dst)
@@ -66,7 +67,7 @@ impl Algorithm for ACO {
 
         let visibility = &vis;
 
-        let mut rng = ChaChaRng::seed_from_u64(42);
+        let mut rng = ChaChaRng::seed_from_u64(self.seed);
         let mut best_state = WeightedState::new(std::f64::MAX, None);
         #[allow(unused_variables)]
         let mut epoch = 0;

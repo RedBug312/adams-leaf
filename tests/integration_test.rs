@@ -7,7 +7,7 @@ fn it_runs_aco() {
     let (tsns2, avbs2) = json::load_streams("exp_flow_reconf.json", 2);
     let network = json::load_network("exp_graph.json");
 
-    let mut cnc = CNC::new("aco", network);
+    let mut cnc = CNC::new("aco", network, 42);
 
     cnc.add_streams(tsns1, avbs1);
     let elapsed = cnc.configure();
@@ -24,7 +24,7 @@ fn it_runs_ro() {
     let (tsns2, avbs2) = json::load_streams("exp_flow_reconf.json", 2);
     let network = json::load_network("exp_graph.json");
 
-    let mut cnc = CNC::new("ro", network);
+    let mut cnc = CNC::new("ro", network, 420);
 
     cnc.add_streams(tsns1, avbs1);
     let elapsed = cnc.configure();
@@ -41,7 +41,7 @@ fn it_runs_spf() {
     let (tsns2, avbs2) = json::load_streams("exp_flow_reconf.json", 2);
     let network = json::load_network("exp_graph.json");
 
-    let mut cnc = CNC::new("spf", network);
+    let mut cnc = CNC::new("spf", network, 0);
 
     cnc.add_streams(tsns1, avbs1);
     let elapsed = cnc.configure();

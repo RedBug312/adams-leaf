@@ -10,7 +10,7 @@ build: $(OUT)
 
 .PHONY: start
 start: $(OUT)
-	make -C plot OUT=../$(OUT)
+	time make -C plot OUT=../$(OUT)
 
 .PHONY: check
 check:
@@ -19,7 +19,7 @@ check:
 
 .PHONY: profile
 profile: $(OUT)
-	time $(OUT) ro exp_graph.json exp_flow_heavy.json exp_flow_reconf.json 2
+	time $(OUT) ro exp_graph.json exp_flow_heavy.json exp_flow_reconf.json 2 -s 420
 	cloc src
 
 .PHONY: clean
