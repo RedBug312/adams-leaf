@@ -2,7 +2,6 @@ use crate::component::FlowTable;
 use crate::component::GateCtrlList;
 use crate::network::Network;
 use super::Decision;
-use super::RoutingCost;
 
 
 /// AVB 資料流最多可以佔用的資源百分比（模擬 Credit Base Shaper 的效果）
@@ -25,7 +24,7 @@ impl Evaluator {
         let kth = decision.kth_next(id).unwrap();
         evaluate_avb_latency_for_kth(decision, flowtable, network, id, kth)
     }
-    pub fn compute_single_avb_cost(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network, avb: usize) -> RoutingCost {
+    pub fn compute_single_avb_cost(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network, avb: usize) -> [f64; 4] {
         let spec = flowtable.avb_spec(avb)
             .expect("Failed to obtain AVB spec from TSN stream");
         let avb_wcd = self.compute_avb_wcd(decision, flowtable, network, avb) as f64 / spec.max_delay as f64;
@@ -41,16 +40,14 @@ impl Evaluator {
         ) {
             reroute_cnt += 1;
         }
-        RoutingCost {
-            tsn_schedule_fail: decision.tsn_fail,
-            avb_cnt: 1,
-            tsn_cnt: 0,
-            avb_fail_cnt,
-            avb_wcd,
-            reroute_overhead: reroute_cnt,
-        }
+        let mut objs = [0.0; 4];
+        objs[0] = decision.tsn_fail as u8 as f64;
+        objs[1] = avb_fail_cnt as f64;
+        objs[2] = reroute_cnt as f64;
+        objs[3] = avb_wcd;
+        objs
     }
-    pub fn compute_all_cost(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network) -> RoutingCost {
+    pub fn compute_all_cost(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network) -> [f64; 4] {
         let mut all_avb_fail_cnt = 0;
         let mut all_avb_wcd = 0.0;
         let mut all_reroute_cnt = 0;
@@ -74,14 +71,20 @@ impl Evaluator {
                 all_reroute_cnt += 1;
             }
         }
-        RoutingCost {
-            tsn_schedule_fail: decision.tsn_fail,
-            avb_cnt: flowtable.avbs().len(),
-            tsn_cnt: flowtable.tsns().len(),
-            avb_fail_cnt: all_avb_fail_cnt,
-            avb_wcd: all_avb_wcd,
-            reroute_overhead: all_reroute_cnt,
-        }
+        let mut objs = [0.0; 4];
+        objs[0] = decision.tsn_fail as u8 as f64;
+        objs[1] = all_avb_fail_cnt as f64 / flowtable.avbs().len() as f64;
+        objs[2] = all_reroute_cnt as f64 / flowtable.len() as f64;
+        objs[3] = all_avb_wcd / flowtable.avbs().len() as f64;
+        objs
+    }
+    pub fn evaluate_cost_objectives(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network) -> (f64, [f64; 4]) {
+        let objs = self.compute_all_cost(decision, latest, flowtable, network);
+        let cost = objs.iter()
+            .zip(self.weights.iter())
+            .map(|(x, y)| x * y)
+            .sum();
+        (cost, objs)
     }
 }
 

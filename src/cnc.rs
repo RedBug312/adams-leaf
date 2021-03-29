@@ -2,7 +2,6 @@ use crate::algorithm::{AlgorithmEnum, Algorithm, ACO, RO, SPF};
 use crate::component::Decision;
 use crate::component::Evaluator;
 use crate::component::FlowTable;
-use crate::component::RoutingCost;
 use crate::network::Network;
 use crate::scheduler::Scheduler;
 use crate::utils::config::Config;
@@ -25,7 +24,7 @@ impl CNC {
         let config = Config::get();
         let mut weights = [config.w0, config.w1, config.w2, config.w3];
         if name == "ro" {
-            weights[2] = 0f64;
+            weights[2] = 0.0;
         }
         let algorithm: AlgorithmEnum = match name {
             "aco" => ACO::new(&graph).into(),
@@ -56,12 +55,8 @@ impl CNC {
 
         let evaluate = |decision: &mut Decision| {
             scheduler.configure(decision, flowtable, network);  // where it's mutated
-            let objs = evaluator.compute_all_cost(decision, latest, flowtable, network).objectives();
-            let early_exit = objs[1] == 0f64 && Config::get().fast_stop;
-            let cost: f64 = objs.iter()
-                .zip(evaluator.weights.iter())
-                .map(|(x, y)| x * y)
-                .sum();
+            let (cost, objs) = evaluator.evaluate_cost_objectives(decision, latest, flowtable, network);
+            let early_exit = objs[1] == 0.0 && Config::get().fast_stop;
             (cost, early_exit)
         };
         let evaluate = Box::new(evaluate);
@@ -73,8 +68,6 @@ impl CNC {
         let elapsed = start.elapsed().as_micros();
 
         self.show_results(&current);
-        let cost = self.evaluator.compute_all_cost(&current, latest, flowtable, network);
-        RoutingCost::show_brief(vec![cost]);
         self.decision = current;
 
         elapsed
@@ -86,19 +79,18 @@ impl CNC {
         println!("TT Flows:");
         for &id in flowtable.tsns() {
             let route = current.route(id);
-            println!("flow id = FlowID({:?}), route = {:?}", id, route);
+            println!("flow id = FlowID({}), route = {:?}", id, route);
         }
         println!("AVB Flows:");
         for &id in flowtable.avbs() {
             let route = current.route(id);
-            let cost = self.evaluator.compute_single_avb_cost(current, latest, flowtable, network, id);
+            let objs = self.evaluator.compute_single_avb_cost(current, latest, flowtable, network, id);
             println!(
-                "flow id = FlowID({:?}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",
-                id, route, cost.avb_wcd, cost.reroute_overhead
+                "flow id = FlowID({}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",
+                id, route, objs[3], objs[2]
             );
         }
-        let all_cost = self.evaluator.compute_all_cost(current, latest, flowtable, network);
-        println!("the cost structure = {:?}", all_cost,);
-        println!("{}", all_cost.compute());
+        let (cost, objs) = self.evaluator.evaluate_cost_objectives(current, latest, flowtable, network);
+        println!("with cost {:.2} and each objective {:.2?}", cost, objs);
     }
 }

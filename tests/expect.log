@@ -48,12 +48,8 @@ flow id = FlowID(34), route = [9, 13, 5] avb wcd / max latency = 0.3, reroute = 
 flow id = FlowID(35), route = [3, 10, 11, 13, 8] avb wcd / max latency = 0.065, reroute = 0
 flow id = FlowID(36), route = [7, 13, 8] avb wcd / max latency = 0.056, reroute = 0
 flow id = FlowID(37), route = [9, 13, 10, 4] avb wcd / max latency = 0.248, reroute = 0
-the cost structure = RoutingCost { tsn_schedule_fail: false, avb_fail_cnt: 0, avb_wcd: 6.599, reroute_overhead: 0, avb_cnt: 30, tsn_cnt: 8 }
-0.21996666666666667
+with cost 0.22 and each objective [0.00, 0.00, 0.00, 0.22]
 --- #1 computing time: 3585 μs ---
-           #avb fail  #reroute   sum of wcd/deadline  total cost
-test #0    0          0          6.599                0.21996666666666667
-average:   0          0          6.599                0.21996666666666667
 ACO epoch = 1
 TT Flows:
 flow id = FlowID(0), route = [4, 10, 12, 13, 5]
@@ -115,12 +111,8 @@ flow id = FlowID(54), route = [6, 13, 12, 10, 0] avb wcd / max latency = 0.16, r
 flow id = FlowID(55), route = [3, 10, 13, 8] avb wcd / max latency = 0.2, reroute = 0
 flow id = FlowID(56), route = [7, 13, 11, 10, 0] avb wcd / max latency = 0.128, reroute = 0
 flow id = FlowID(57), route = [2, 10, 11, 13, 5] avb wcd / max latency = 0.71, reroute = 0
-the cost structure = RoutingCost { tsn_schedule_fail: false, avb_fail_cnt: 0, avb_wcd: 13.430999999999997, reroute_overhead: 9, avb_cnt: 44, tsn_cnt: 14 }
-0.46042241379310345
+with cost 0.46 and each objective [0.00, 0.00, 0.16, 0.31]
 --- #2 computing time: 31407 μs ---
-           #avb fail  #reroute   sum of wcd/deadline  total cost
-test #0    0          9          13.430999999999997   0.46042241379310345
-average:   0          9          13.430999999999997   0.46042241379310345
 
 ---- it_runs_ro stdout ----
 start iteration #1
@@ -164,12 +156,8 @@ flow id = FlowID(34), route = [9, 13, 5] avb wcd / max latency = 0.3, reroute = 
 flow id = FlowID(35), route = [3, 10, 13, 8] avb wcd / max latency = 0.295, reroute = 0
 flow id = FlowID(36), route = [7, 13, 8] avb wcd / max latency = 0.056, reroute = 0
 flow id = FlowID(37), route = [9, 13, 10, 4] avb wcd / max latency = 0.256, reroute = 0
-the cost structure = RoutingCost { tsn_schedule_fail: false, avb_fail_cnt: 0, avb_wcd: 7.8999999999999995, reroute_overhead: 0, avb_cnt: 30, tsn_cnt: 8 }
-0.2633333333333333
+with cost 0.26 and each objective [0.00, 0.00, 0.00, 0.26]
 --- #1 computing time: 2416 μs ---
-           #avb fail  #reroute   sum of wcd/deadline  total cost
-test #0    0          0          7.8999999999999995   0.2633333333333333
-average:   0          0          7.8999999999999995   0.2633333333333333
 start iteration #1
 1
 (4.814363636363637, false)
@@ -236,12 +224,8 @@ flow id = FlowID(54), route = [6, 13, 10, 0] avb wcd / max latency = 0.144, rero
 flow id = FlowID(55), route = [3, 10, 12, 13, 8] avb wcd / max latency = 0.09, reroute = 0
 flow id = FlowID(56), route = [7, 13, 10, 0] avb wcd / max latency = 0.128, reroute = 0
 flow id = FlowID(57), route = [2, 10, 11, 13, 5] avb wcd / max latency = 0.59, reroute = 0
-the cost structure = RoutingCost { tsn_schedule_fail: false, avb_fail_cnt: 1, avb_wcd: 13.565999999999999, reroute_overhead: 8, avb_cnt: 44, tsn_cnt: 14 }
-2.718976489028213
+with cost 2.58 and each objective [0.00, 0.02, 0.14, 0.31]
 --- #2 computing time: 100078 μs ---
-           #avb fail  #reroute   sum of wcd/deadline  total cost
-test #0    1          8          13.565999999999999   2.718976489028213
-average:   1          8          13.565999999999999   2.718976489028213
 
 ---- it_runs_spf stdout ----
 TT Flows:
@@ -284,12 +268,8 @@ flow id = FlowID(34), route = [9, 13, 5] avb wcd / max latency = 0.3, reroute = 
 flow id = FlowID(35), route = [3, 10, 13, 8] avb wcd / max latency = 0.295, reroute = 0
 flow id = FlowID(36), route = [7, 13, 8] avb wcd / max latency = 0.056, reroute = 0
 flow id = FlowID(37), route = [9, 13, 10, 4] avb wcd / max latency = 0.256, reroute = 0
-the cost structure = RoutingCost { tsn_schedule_fail: false, avb_fail_cnt: 0, avb_wcd: 7.8999999999999995, reroute_overhead: 0, avb_cnt: 30, tsn_cnt: 8 }
-0.2633333333333333
+with cost 0.26 and each objective [0.00, 0.00, 0.00, 0.26]
 --- #1 computing time: 1484 μs ---
-           #avb fail  #reroute   sum of wcd/deadline  total cost
-test #0    0          0          7.8999999999999995   0.2633333333333333
-average:   0          0          7.8999999999999995   0.2633333333333333
 TT Flows:
 flow id = FlowID(0), route = [4, 10, 13, 5]
 flow id = FlowID(1), route = [4, 10, 13, 5]
@@ -350,12 +330,8 @@ flow id = FlowID(54), route = [6, 13, 10, 0] avb wcd / max latency = 0.16, rerou
 flow id = FlowID(55), route = [3, 10, 13, 8] avb wcd / max latency = 0.595, reroute = 0
 flow id = FlowID(56), route = [7, 13, 10, 0] avb wcd / max latency = 0.144, reroute = 0
 flow id = FlowID(57), route = [2, 10, 13, 5] avb wcd / max latency = 1.08, reroute = 0
-the cost structure = RoutingCost { tsn_schedule_fail: false, avb_fail_cnt: 8, avb_wcd: 21.165999999999997, reroute_overhead: 0, avb_cnt: 44, tsn_cnt: 14 }
-18.66286363636364
+with cost 18.66 and each objective [0.00, 0.18, 0.00, 0.48]
 --- #2 computing time: 1294 μs ---
-           #avb fail  #reroute   sum of wcd/deadline  total cost
-test #0    8          0          21.165999999999997   18.66286363636364
-average:   8          0          21.165999999999997   18.66286363636364
 
 
 successes:
