@@ -10,7 +10,7 @@ build: $(OUT)
 
 .PHONY: start
 start: $(OUT)
-	make -C plot OUT=../$(OUT)
+	time make -C plot OUT=../$(OUT)
 
 .PHONY: check
 check:
