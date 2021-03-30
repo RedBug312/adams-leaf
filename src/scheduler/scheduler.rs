@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::cmp::{Ordering, max};
 use crate::component::FlowTable;
 use crate::component::Decision;
 use crate::network::Network;
@@ -6,7 +6,7 @@ use crate::utils::stream::TSN;
 use crate::MAX_QUEUE;
 
 
-const MTU: usize = 1500;
+const MTU: f64 = 1500.0;
 
 
 #[derive(Default)]
@@ -74,7 +74,6 @@ fn update_tsn(decision: &mut Decision, flowtable: &FlowTable, network: &Network)
     }
 
     updates.extend(decision.filter_pending(tsns));
-    // FIXME: stream with choice switch(x, x) is scheduled again
     let result = schedule_fixed_og(decision, flowtable, network, updates);
     let result = match result {
         Ok(_) => Ok(false),
@@ -87,16 +86,6 @@ fn update_tsn(decision: &mut Decision, flowtable: &FlowTable, network: &Network)
     };
 
     decision.tsn_fail = result.is_err();
-}
-
-/// 一個大小為 size 的資料流要切成幾個封包才夠？
-#[inline(always)]
-fn get_frame_cnt(size: usize) -> usize {
-    if size % MTU == 0 {
-        size / MTU
-    } else {
-        size / MTU + 1
-    }
 }
 
 /// 排序的標準：
@@ -116,7 +105,7 @@ fn compare_tsn(tsn1: usize, tsn2: usize,
 }
 
 /// 也可以當作離線排程算法來使用
-pub fn schedule_fixed_og(
+fn schedule_fixed_og(
     decision: &mut Decision,
     flowtable: &FlowTable,
     network: &Network,
@@ -128,7 +117,6 @@ pub fn schedule_fixed_og(
     );
     for tsn in tsns {
         let mut schedule = Schedule::new();
-        // NOTE 一個資料流的每個封包，在單一埠口上必需採用同一個佇列
         loop {
             if try_calculate_egress(&mut schedule, tsn, decision, flowtable, network).is_ok() {
                 allocate_scheduled_tsn(&schedule, tsn, decision, flowtable, network);
@@ -155,47 +143,34 @@ fn try_calculate_egress(schedule: &mut Schedule, tsn: usize,
     let spec = flowtable.tsn_spec(tsn).unwrap();
     let route = decision.route_next(tsn);
     let links = network.get_links_id_bandwidth(route);
-    let frame_count = get_frame_cnt(spec.size);
+    let frame_len = count_frames(spec);
     let gcl = &decision.allocated_tsns;
-    let mut m = 0;
-    let mut all_offsets: Vec<Vec<u32>> = vec![];
+    let hyperperiod = gcl.get_hyper_p();
+    let transmit_times = route.windows(2)
+        .map(|ends| network.duration_on(ends, MTU))
+        .map(|frac| frac.ceil() as u32)
+        .collect::<Vec<u32>>();
+
+    schedule.egress = vec![vec![std::u32::MAX; frame_len]; route.len() - 1];
+    let egress = &mut schedule.egress;
     let queue = schedule.queue;
-    // let mut ro: Vec<u8> = vec![0; links.len()];
 
-    while m < frame_count {
-        // let offsets = calculate_offsets(tsn, flowtable, &all_offsets, &links, &ro, gcl);
-
-        let mut offsets = Vec::<u32>::with_capacity(links.len());
-        let hyper_p = gcl.get_hyper_p();
-        for i in 0..links.len() {
-            let trans_time = (MTU as f64 / links[i].1).ceil() as u32;
-            let arrive_time = if i == 0 {
-                // 路徑起始
-                if all_offsets.len() == 0 {
-                    // 資料流的第一個封包
-                    spec.offset
-                } else {
-                    // #m-1 封包完整送出，且經過處理時間
-                    all_offsets[all_offsets.len() - 1][i] + trans_time
-                }
-            } else {
-                // #m 封包送達，且經過處理時間
-                let a = offsets[i - 1] + (MTU as f64 / links[i - 1].1).ceil() as u32;
-                if all_offsets.len() == 0 {
-                    a
-                } else {
-                    // #m-1 封包完整送出，且經過處理時間
-                    let b = all_offsets[all_offsets.len() - 1][i] + trans_time;
-                    if a > b {
-                        a
-                    } else {
-                        b
-                    }
-                }
+    for (r, _ends) in route.windows(2).enumerate() {
+        for f in 0..frame_len {
+            let transmit_time = transmit_times[r];
+            let prev_frame_done = match f {
+                0 => spec.offset,
+                _ => egress[r][f-1] + transmit_times[r],
             };
+            let prev_link_done = match r {
+                0 => spec.offset,
+                _ => egress[r-1][f] + transmit_times[r-1],
+            };
+            let arrive_time = max(prev_frame_done, prev_link_done);
+
             let mut cur_offset = arrive_time;
             let p = spec.period as usize;
-            for time_shift in (0..hyper_p).step_by(p) {
+            for time_shift in (0..hyperperiod).step_by(p) {
                 // 考慮 hyper period 中每種狀況
                 /*
                  * 1. 每個連結一個時間只能傳輸一個封包
@@ -206,52 +181,35 @@ fn try_calculate_egress(schedule: &mut Schedule, tsn: usize,
                 loop {
                     // NOTE 確認沒有其它封包在這個連線上傳輸
                     let option =
-                        gcl.get_next_empty_time(links[i].0, time_shift + cur_offset, trans_time);
+                        gcl.get_next_empty_time(links[r].0, time_shift + cur_offset, transmit_time);
                     if let Some(time) = option {
                         cur_offset = time - time_shift;
-                        if miss_deadline(cur_offset, trans_time, spec) {
-                            return Err(());
-                        }
+                        assert_within_deadline(cur_offset + transmit_time, spec)?;
                         continue;
                     }
                     // NOTE 確認傳輸到下個地方時，下個連線的佇列是空的（沒有其它的資料流）
-                    if i < links.len() - 1 {
+                    if r < links.len() - 1 {
                         // 還不到最後一個節點
                         let option = gcl.get_next_queue_empty_time(
-                            links[i + 1].0,
+                            links[r + 1].0,
                             queue,
-                            time_shift + (cur_offset + trans_time),
+                            time_shift + (cur_offset + transmit_time),
                         );
                         if let Some(time) = option {
                             cur_offset = time - time_shift;
-                            if miss_deadline(cur_offset, trans_time, spec) {
-                                return Err(());
-                            }
+                            assert_within_deadline(cur_offset + transmit_time, spec)?;
                             continue;
                         }
                     }
-                    if miss_deadline(cur_offset, trans_time, spec) {
-                        return Err(());
-                    }
+                    assert_within_deadline(cur_offset + transmit_time, spec)?;
                     break;
                 }
-                // QUESTION 是否要檢查 arrive_time ~ cur_offset+trans_time 這段時間中有沒有發生同個佇列被佔用的事件？
+                // QUESTION 是否要檢查 arrive_time ~ cur_offset+trans_time 這段時間中
+                // 有沒有發生同個佇列被佔用的事件？
             }
-            offsets.push(cur_offset);
-        }
-
-
-        if offsets.len() == links.len() {
-            m += 1;
-            all_offsets.push(offsets);
-        } else {
-            return Err(());
-            // m = 0;
-            // all_offsets.clear();
-            // assign_new_queues(&mut ro)?;
+            egress[r][f] = cur_offset;
         }
     }
-    schedule.egress = all_offsets;
     Ok(queue)
 }
 
@@ -260,32 +218,35 @@ fn allocate_scheduled_tsn(schedule: &Schedule, tsn: usize,
     // 把上面算好的結果塞進 GCL
     let spec = flowtable.tsn_spec(tsn).unwrap();
     let route = decision.route_next(tsn).clone();
-    let frame_count = get_frame_cnt(spec.size);
+    let frame_len = count_frames(spec);
     let gcl = &mut decision.allocated_tsns;
     let queue = schedule.queue;
     let egress = &schedule.egress;
+    let hyperperiod = gcl.get_hyper_p();
+    let transmit_times = route.windows(2)
+        .map(|ends| network.duration_on(ends, MTU))
+        .map(|frac| frac.ceil() as u32)
+        .collect::<Vec<u32>>();
 
     for (r, ends) in route.windows(2).enumerate() {
-        let link_id = (ends[0], ends[1]);
-        let hyper_period = gcl.get_hyper_p();
-        let transmit_time = network.duration_on(ends, MTU as f64).ceil() as u32;
-        // 考慮 hyper period 中每個狀況
-        for time_shift in (0..hyper_period).step_by(spec.period as usize) {
-            for f in 0..frame_count {
+        let ends = (ends[0], ends[1]);
+        for f in 0..frame_len {
+            // 考慮 hyper period 中每個狀況
+            for time_shift in (0..hyperperiod).step_by(spec.period as usize) {
                 // insert gate evt
                 gcl.insert_gate_evt(
-                    link_id,
+                    ends,
                     tsn,
                     queue,
-                    time_shift + egress[f][r],
-                    transmit_time,
+                    time_shift + egress[r][f],
+                    transmit_times[r],
                 );
                 // insert queue evt
                 if r == 0 { continue; }
-                let queue_evt_start = egress[f][r - 1]; // 前一個埠口一開始傳即視為開始佔用
-                let queue_evt_duration = egress[f][r] - queue_evt_start;
+                let queue_evt_start = egress[r-1][f]; // 前一個埠口一開始傳即視為開始佔用
+                let queue_evt_duration = egress[r][f] - queue_evt_start;
                 gcl.insert_queue_evt(
-                    link_id,
+                    ends,
                     tsn,
                     queue,
                     time_shift + queue_evt_start,
@@ -296,13 +257,15 @@ fn allocate_scheduled_tsn(schedule: &Schedule, tsn: usize,
     }
 }
 
+#[inline]
+fn count_frames(spec: &TSN) -> usize {
+    (spec.size as f64 / MTU).ceil() as usize
+}
 
-#[inline(always)]
-fn miss_deadline(cur_offset: u32, trans_time: u32, flow: &TSN) -> bool {
-    if cur_offset + trans_time >= flow.offset + flow.max_delay {
-        // 死線爆炸！
-        true
-    } else {
-        false
+
+fn assert_within_deadline(delay: u32, spec: &TSN) -> Result<u32, ()> {
+    match delay < spec.offset + spec.max_delay {
+        true  => Ok(spec.offset + spec.max_delay - delay),
+        false => Err(()),
     }
 }
