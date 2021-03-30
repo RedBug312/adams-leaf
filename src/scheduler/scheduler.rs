@@ -7,9 +7,13 @@ use crate::utils::stream::TSN;
 use crate::MAX_QUEUE;
 
 
-type Links = Vec<((usize, usize), f64)>;
 const MTU: usize = 1500;
 
+#[derive(Default)]
+pub struct Schedule {
+    pub egress: Vec<Vec<u32>>,  // egress[#hop][#frame]
+    pub queue: u8,
+}
 
 pub struct Scheduler {}
 
@@ -63,25 +67,15 @@ fn update_tsn(decision: &mut Decision, flowtable: &FlowTable, network: &Network)
         decision.allocated_tsns.delete_flow(&links, id);
     }
 
-    let _decision = decision as *const Decision;
-
-    let closure = |id| {
-        // NOTE: 因為 decision.flow_table.get 和 decision.get_route_func 和 decision.graph 與其它部份是平行所有權
-        unsafe {
-            let kth = (*_decision).kth_next(id).unwrap();
-            let route = (*_decision).candidates[id].get(kth).unwrap();
-            network.get_links_id_bandwidth(route)
-        }
-    };
-
     updates.extend(decision.filter_pending(tsns));
     // FIXME: stream with choice switch(x, x) is scheduled again
-    let result = schedule_fixed_og(&flowtable, &mut decision.allocated_tsns, &closure, &updates);
+    let result = schedule_fixed_og(decision, flowtable, network, updates);
     let result = match result {
         Ok(_) => Ok(false),
         Err(_) => {
             decision.allocated_tsns.clear();
-            schedule_fixed_og(&flowtable, &mut decision.allocated_tsns, &closure, tsns)
+            let updates = tsns.clone();  // reroute all tsns
+            schedule_fixed_og(decision, flowtable, network, updates)
                 .and(Ok(true))
         }
     };
@@ -103,33 +97,16 @@ fn get_frame_cnt(size: usize) -> usize {
 /// * `deadline` - 時間較緊的要排前面
 /// * `period` - 週期短的要排前面
 /// * `route length` - 路徑長的要排前面
-fn cmp_flow<F: Fn(usize) -> Links>(
-    tsn1: usize,
-    tsn2: usize,
-    flowtable: &FlowTable,
-    get_links: &F,
-) -> Ordering {
+fn compare_tsn(tsn1: usize, tsn2: usize,
+    decision: &Decision, flowtable: &FlowTable) -> Ordering {
     let spec1 = flowtable.tsn_spec(tsn1).unwrap();
     let spec2 = flowtable.tsn_spec(tsn2).unwrap();
-    if spec1.max_delay < spec2.max_delay {
-        Ordering::Less
-    } else if spec1.max_delay > spec2.max_delay {
-        Ordering::Greater
-    } else {
-        if spec1.period < spec2.period {
-            Ordering::Less
-        } else if spec1.period > spec2.period {
-            Ordering::Greater
-        } else {
-            let rlen_1 = get_links(tsn1).len();
-            let rlen_2 = get_links(tsn2).len();
-            if rlen_1 > rlen_2 {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            }
-        }
-    }
+    let routelen = |tsn: usize| {
+        decision.route_next(tsn).len()
+    };
+    spec1.max_delay.cmp(&spec2.max_delay)
+        .then(spec1.period.cmp(&spec2.period))
+        .then(routelen(tsn1).cmp(&routelen(tsn2)).reverse())
 }
 
 /// 動態計算 TT 資料流的 Gate Control List
@@ -156,23 +133,27 @@ fn cmp_flow<F: Fn(usize) -> Links>(
 // }
 
 /// 也可以當作離線排程算法來使用
-pub fn schedule_fixed_og<F: Fn(usize) -> Links>(
+pub fn schedule_fixed_og(
+    decision: &mut Decision,
     flowtable: &FlowTable,
-    gcl: &mut GateCtrlList,
-    get_links: &F,
-    tsns: &Vec<usize>,
+    network: &Network,
+    tsns: Vec<usize>,
 ) -> Result<(), ()> {
-    let mut tsn_ids = tsns.clone();
-    tsn_ids.sort_by(|&id1, &id2| cmp_flow(id1, id2, flowtable, get_links));
-    for tsn in tsn_ids.into_iter() {
+    let mut tsns = tsns;
+    tsns.sort_by(|&tsn1, &tsn2|
+        compare_tsn(tsn1, tsn2, decision, flowtable)
+    );
+    for tsn in tsns {
         let spec = flowtable.tsn_spec(tsn).unwrap();
-        let links = get_links(tsn);
-        let mut all_offsets: Vec<Vec<u32>> = vec![];
+        let route = decision.route_next(tsn);
+        let links = network.get_links_id_bandwidth(route);
         // NOTE 一個資料流的每個封包，在單一埠口上必需採用同一個佇列
+        let frame_count = get_frame_cnt(spec.size);
+        let mut all_offsets: Vec<Vec<u32>> = vec![];
         let mut ro: Vec<u8> = vec![0; links.len()];
-        let k = get_frame_cnt(spec.size);
         let mut m = 0;
-        while m < k {
+        let gcl = &mut decision.allocated_tsns;
+        while m < frame_count {
             let offsets = calculate_offsets(tsn, flowtable, &all_offsets, &links, &ro, gcl);
             if offsets.len() == links.len() {
                 m += 1;
@@ -183,47 +164,55 @@ pub fn schedule_fixed_og<F: Fn(usize) -> Links>(
                 assign_new_queues(&mut ro)?;
             }
         }
-
-        // 把上面算好的結果塞進 GCL
-        for i in 0..links.len() {
-            let link_id = links[i].0;
-            let queue_id = ro[i];
-            let trans_time = ((MTU as f64) / links[i].1).ceil() as u32;
-            // 考慮 hyper period 中每個狀況
-            let p = spec.period as usize;
-            for time_shift in (0..gcl.get_hyper_p()).step_by(p) {
-                for m in 0..k {
-                    // insert gate evt
-                    gcl.insert_gate_evt(
-                        link_id,
-                        tsn,
-                        queue_id,
-                        time_shift + all_offsets[m][i],
-                        trans_time,
-                    );
-                    // insert queue evt
-                    let queue_evt_start = if i == 0 {
-                        spec.offset
-                    } else {
-                        all_offsets[m][i - 1] // 前一個埠口一開始傳即視為開始佔用
-                    };
-                    /*println!("===link={} flow={} queue={} {} {}===",
-                    link_id, flow_id , queue_id, all_offsets[m][i], queue_evt_start); */
-                    let queue_evt_duration = all_offsets[m][i] - queue_evt_start;
-                    gcl.insert_queue_evt(
-                        link_id,
-                        tsn,
-                        queue_id,
-                        time_shift + queue_evt_start,
-                        queue_evt_duration,
-                    );
-                }
-            }
-        }
+        let schedule = Schedule {
+            egress: all_offsets,
+            queue: ro[0],
+        };
+        populate_into_gcl(decision, tsn, &schedule, flowtable, network);
     }
     Ok(())
 }
 
+fn populate_into_gcl(decision: &mut Decision, tsn: usize, schedule: &Schedule,
+    flowtable: &FlowTable, network: &Network) {
+    // 把上面算好的結果塞進 GCL
+    let spec = flowtable.tsn_spec(tsn).unwrap();
+    let route = decision.route_next(tsn).clone();
+    let frame_count = get_frame_cnt(spec.size);
+    let gcl = &mut decision.allocated_tsns;
+    let queue = schedule.queue;
+    let egress = &schedule.egress;
+
+    for (r, ends) in route.windows(2).enumerate() {
+        let link_id = (ends[0], ends[1]);
+        let hyper_period = gcl.get_hyper_p();
+        let transmit_time = network.duration_on(ends, MTU as f64).ceil() as u32;
+        // 考慮 hyper period 中每個狀況
+        for time_shift in (0..hyper_period).step_by(spec.period as usize) {
+            for f in 0..frame_count {
+                // insert gate evt
+                gcl.insert_gate_evt(
+                    link_id,
+                    tsn,
+                    queue,
+                    time_shift + egress[f][r],
+                    transmit_time,
+                );
+                // insert queue evt
+                if r == 0 { continue; }
+                let queue_evt_start = egress[f][r - 1]; // 前一個埠口一開始傳即視為開始佔用
+                let queue_evt_duration = egress[f][r] - queue_evt_start;
+                gcl.insert_queue_evt(
+                    link_id,
+                    tsn,
+                    queue,
+                    time_shift + queue_evt_start,
+                    queue_evt_duration,
+                );
+            }
+        }
+    }
+}
 
 
 /// 回傳值為為一個陣列，若其長度小於路徑長，代表排一排爆開
