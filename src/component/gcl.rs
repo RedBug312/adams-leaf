@@ -1,31 +1,7 @@
-use hashbrown::HashMap;
-
 use crate::MAX_QUEUE;
+use hashbrown::HashMap;
+use num::integer::lcm;
 
-fn gcd(a: u32, b: u32) -> u32 {
-    if a < b {
-        gcd(b, a)
-    } else if b == 0 {
-        a
-    } else {
-        gcd(b, a % b)
-    }
-}
-fn lcm(a: u32, b: u32) -> u32 {
-    let g = gcd(a, b);
-    (a / g) * b
-}
-
-#[cfg(test)]
-mod test {
-    use super::lcm;
-    #[test]
-    fn test_lcm() {
-        assert_eq!(36, lcm(4, 9));
-        assert_eq!(81, lcm(27, 81));
-        assert_eq!(84, lcm(12, 21));
-    }
-}
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 enum Entry {
@@ -37,24 +13,27 @@ type Events = Vec<(u32, u32, usize)>;
 
 #[derive(Clone, Debug, Default)]
 pub struct GateCtrlList {
-    hyper_p: u32,
+    hyperperiod: u32,
     // TODO 這個資料結構有優化的空間
     events: HashMap<Entry, Events>,
     events_cache: HashMap<(usize, usize), Vec<(u32, u32)>>,
 }
+
+
 impl GateCtrlList {
-    pub fn new(hyper_p: u32) -> Self {
-        Self { hyper_p, ..Default::default() }
+    pub fn new(hyperperiod: u32) -> Self {
+        Self { hyperperiod, ..Default::default() }
     }
-    pub fn update_hyper_p(&mut self, new_p: u32) {
-        self.hyper_p = lcm(self.hyper_p, new_p);
+    // XXX this function have never been called
+    pub fn update_hyperperiod(&mut self, new_p: u32) {
+        self.hyperperiod = lcm(self.hyperperiod, new_p);
     }
     pub fn clear(&mut self) {
         self.events = Default::default();
         self.events_cache = Default::default();
     }
-    pub fn get_hyper_p(&self) -> u32 {
-        self.hyper_p
+    pub fn hyperperiod(&self) -> u32 {
+        self.hyperperiod
     }
     /// 回傳 `link_id` 上所有閘門關閉事件。
     /// * `回傳值` - 一個陣列，其內容為 (事件開始時間, 事件持續時間);
@@ -185,7 +164,7 @@ impl GateCtrlList {
                 return (start + duration, false);
             }
         }
-        (self.hyper_p, true)
+        (self.hyperperiod, true)
     }
     /// 回傳 None 者，代表當前即是空的
     pub fn get_next_queue_empty_time(

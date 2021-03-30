@@ -145,7 +145,7 @@ fn try_calculate_egress(schedule: &mut Schedule, tsn: usize,
     let links = network.get_links_id_bandwidth(route);
     let frame_len = count_frames(spec);
     let gcl = &decision.allocated_tsns;
-    let hyperperiod = gcl.get_hyper_p();
+    let hyperperiod = gcl.hyperperiod();
     let transmit_times = route.windows(2)
         .map(|ends| network.duration_on(ends, MTU))
         .map(|frac| frac.ceil() as u32)
@@ -222,7 +222,7 @@ fn allocate_scheduled_tsn(schedule: &Schedule, tsn: usize,
     let gcl = &mut decision.allocated_tsns;
     let queue = schedule.queue;
     let egress = &schedule.egress;
-    let hyperperiod = gcl.get_hyper_p();
+    let hyperperiod = gcl.hyperperiod();
     let transmit_times = route.windows(2)
         .map(|ends| network.duration_on(ends, MTU))
         .map(|frac| frac.ceil() as u32)
