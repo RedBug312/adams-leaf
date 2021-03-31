@@ -154,18 +154,19 @@ fn wcd_on_single_link(
 fn tt_interfere_avb_single_link(ends: (usize, usize), wcd: f64, gcl: &GateCtrlList) -> u32 {
     let mut i_max = 0;
     let all_gce = gcl.get_gate_events(ends);
+    // println!("{:?}", all_gce);
     for mut j in 0..all_gce.len() {
         let (mut i_cur, mut rem) = (0, wcd as i32);
         while rem >= 0 {
-            let gce_ptr = all_gce[j];
-            i_cur += gce_ptr.1;
+            let gce_ptr = &all_gce[j];
+            i_cur += gce_ptr.end - gce_ptr.start;
             j += 1;
             if j == all_gce.len() {
                 // TODO 應該要循環？
                 break;
             }
-            let gce_ptr_next = all_gce[j];
-            rem -= gce_ptr_next.0 as i32 - (gce_ptr.0 + gce_ptr.1) as i32;
+            let gce_ptr_next = &all_gce[j];
+            rem -= gce_ptr_next.start as i32 - gce_ptr.end as i32;
         }
         i_max = std::cmp::max(i_max, i_cur);
     }

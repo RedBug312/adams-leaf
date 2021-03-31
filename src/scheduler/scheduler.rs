@@ -234,24 +234,14 @@ fn allocate_scheduled_tsn(schedule: &Schedule, tsn: usize,
             // 考慮 hyper period 中每個狀況
             for time_shift in (0..hyperperiod).step_by(spec.period as usize) {
                 // insert gate evt
-                gcl.insert_gate_evt(
-                    ends,
-                    tsn,
-                    queue,
-                    time_shift + egress[r][f],
-                    transmit_times[r],
-                );
+                let window = (time_shift + egress[r][f])
+                    ..(time_shift + egress[r][f] + transmit_times[r]);
+                gcl.insert_gate_evt(ends, tsn, window);
                 // insert queue evt
                 if r == 0 { continue; }
-                let queue_evt_start = egress[r-1][f]; // 前一個埠口一開始傳即視為開始佔用
-                let queue_evt_duration = egress[r][f] - queue_evt_start;
-                gcl.insert_queue_evt(
-                    ends,
-                    tsn,
-                    queue,
-                    time_shift + queue_evt_start,
-                    queue_evt_duration,
-                );
+                let window = (time_shift + egress[r-1][f])
+                    ..(time_shift + egress[r][f]);
+                gcl.insert_queue_evt(ends, queue, tsn, window);
             }
         }
     }
