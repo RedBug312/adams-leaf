@@ -150,6 +150,10 @@ fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
     interfere
 }
 
+// Sune Mølgaard Laursen, Paul Pop, and Wilfried Steiner. 2016. Routing optimization of AVB streams
+// in TSN networks. SIGBED Rev. 13, 4 (September 2016), 43–48.
+// DOI:https://doi.org/10.1145/3015037.3015044
+
 fn interfere_from_tsn(edge: &Edge, wcd: f64, gcl: &GateCtrlList) -> f64 {
     let mut i_max = 0;
     let all_gce = gcl.get_gate_events(edge.ends);
