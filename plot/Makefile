@@ -6,7 +6,7 @@ LOCK = .parallel.lock
 
 FOLD   := $(shell seq 7)
 MEMORY := $(shell seq 7)
-SEED   := $(shell seq 50)  # only need modify here to get #seeds higher
+SEED   := $(shell seq 20)  # only need modify here to get #seeds higher
 
 
 .PHONY: all

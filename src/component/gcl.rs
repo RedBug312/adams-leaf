@@ -1,31 +1,8 @@
-use hashbrown::HashMap;
-
 use crate::MAX_QUEUE;
+use hashbrown::HashMap;
+use num::integer::lcm;
+use std::ops::Range;
 
-fn gcd(a: u32, b: u32) -> u32 {
-    if a < b {
-        gcd(b, a)
-    } else if b == 0 {
-        a
-    } else {
-        gcd(b, a % b)
-    }
-}
-fn lcm(a: u32, b: u32) -> u32 {
-    let g = gcd(a, b);
-    (a / g) * b
-}
-
-#[cfg(test)]
-mod test {
-    use super::lcm;
-    #[test]
-    fn test_lcm() {
-        assert_eq!(36, lcm(4, 9));
-        assert_eq!(81, lcm(27, 81));
-        assert_eq!(84, lcm(12, 21));
-    }
-}
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 enum Entry {
@@ -33,52 +10,66 @@ enum Entry {
     Queue(usize, usize, u8),
 }
 
-type Events = Vec<(u32, u32, usize)>;
+#[derive(Clone, Debug, Default)]
+struct Event {
+    stream: usize,
+    window: Range<u32>,
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct GateCtrlList {
-    hyper_p: u32,
-    // TODO 這個資料結構有優化的空間
-    events: HashMap<Entry, Events>,
-    events_cache: HashMap<(usize, usize), Vec<(u32, u32)>>,
+    hyperperiod: u32,
+    events: HashMap<Entry, Vec<Event>>,
+    // FIXME there's penalty 62ms -> 69ms when change cache key type to Entry
+    events_cache: HashMap<(usize, usize), Vec<Range<u32>>>,
 }
+
+
 impl GateCtrlList {
-    pub fn new(hyper_p: u32) -> Self {
-        Self { hyper_p, ..Default::default() }
+    pub fn new(hyperperiod: u32) -> Self {
+        Self { hyperperiod, ..Default::default() }
     }
-    pub fn update_hyper_p(&mut self, new_p: u32) {
-        self.hyper_p = lcm(self.hyper_p, new_p);
+    // XXX this function have never been called
+    pub fn update_hyperperiod(&mut self, new_p: u32) {
+        self.hyperperiod = lcm(self.hyperperiod, new_p);
     }
     pub fn clear(&mut self) {
         self.events = Default::default();
         self.events_cache = Default::default();
     }
-    pub fn get_hyper_p(&self) -> u32 {
-        self.hyper_p
+    pub fn hyperperiod(&self) -> u32 {
+        self.hyperperiod
+    }
+    fn events(&self, entry: Entry) -> &Vec<Event> {
+        static EMPTY: Vec<Event> = vec![];
+        self.events.get(&entry)
+            .unwrap_or(&EMPTY)
+    }
+    fn events_mut(&mut self, entry: Entry) -> &mut Vec<Event> {
+        self.events.entry(entry)
+            .or_insert_with(|| vec![])
     }
     /// 回傳 `link_id` 上所有閘門關閉事件。
-    /// * `回傳值` - 一個陣列，其內容為 (事件開始時間, 事件持續時間);
-    pub fn get_gate_events(&self, ends: (usize, usize)) -> &Vec<(u32, u32)> {
+    /// * `回傳值` - 一個陣列，其內容為 (事件開始時間, 事件結束時間);
+    pub fn get_gate_events(&self, ends: (usize, usize)) -> &Vec<Range<u32>> {
         // assert!(self.gate_evt.len() > link_id, "GCL: 指定了超出範圍的邊");
         let cache = self.events_cache.get(&ends);
         if cache.is_none() {
             // 生成快速查找表
-            let mut lookup = Vec::<(u32, u32)>::new();
-            let empty = vec![];
+            let mut lookup = Vec::new();
             let port = Entry::Port(ends.0, ends.1);
-            let events = self.events.get(&port)
-                .unwrap_or(&empty);
+            let events = self.events(port);
             let len = events.len();
             if len > 0 {
-                let first_evt = self.events.get(&port).unwrap()[0];
-                let mut cur_evt = (first_evt.0, first_evt.1);
-                for &(start, duration, ..) in self.events.get(&port).unwrap()[1..len].iter() {
-                    if cur_evt.0 + cur_evt.1 == start {
+                let first_evt = &events[0];
+                let mut cur_evt = first_evt.window.clone();
+                for event in events[1..len].iter() {
+                    if cur_evt.end == event.window.start {
                         // 首尾相接
-                        cur_evt.1 += duration; // 把閘門事件延長
+                        cur_evt.end = event.window.end; // 把閘門事件延長
                     } else {
                         lookup.push(cur_evt);
-                        cur_evt = (start, duration);
+                        cur_evt = event.window.clone();
                     }
                 }
                 lookup.push(cur_evt);
@@ -94,20 +85,17 @@ impl GateCtrlList {
     pub fn insert_gate_evt(
         &mut self,
         ends: (usize, usize),
-        flow_id: usize,
-        _queue_id: u8,
-        start_time: u32,
-        duration: u32,
+        tsn: usize,
+        window: Range<u32>,
     ) {
         self.events_cache.remove(&ends);
         let port = Entry::Port(ends.0, ends.1);
-        let event = (start_time, duration, flow_id);
-        let evts = &mut self.events.entry(port)
-            .or_insert(Default::default());
-        match evts.binary_search(&event) {
+        let event = Event::new(tsn, window);
+        let evts = self.events_mut(port);
+        match evts.binary_search_by_key(&event.window.start, |e| e.window.start) {
             Ok(_) => panic!("插入重複的閘門事件: link={}, {:?}", ends.0, event),
             Err(pos) => {
-                if pos > 0 && evts[pos - 1].0 + evts[pos - 1].1 > start_time {
+                if pos > 0 && evts[pos - 1].window.end > event.window.start {
                     // 開始時間位於前一個事件中
                     panic!(
                         "插入重疊的閘門事件： link={}, {:?} v.s. {:?}",
@@ -124,28 +112,25 @@ impl GateCtrlList {
     pub fn insert_queue_evt(
         &mut self,
         ends: (usize, usize),
-        flow_id: usize,
-        queue_id: u8,
-        start_time: u32,
-        duration: u32,
+        que: u8,
+        tsn: usize,
+        window: Range<u32>,
     ) {
-        if duration == 0 {
-            return;
-        }
-        let event = (start_time, duration, flow_id);
-        let queue = Entry::Queue(ends.0, ends.1, queue_id);
-        let evts = &mut self.events.entry(queue)
-            .or_insert(Default::default());
-        match evts.binary_search(&event) {
+        if window.start == window.end { return; }
+        let event = Event::new(tsn, window);
+        let queue = Entry::Queue(ends.0, ends.1, que);
+        let evts = self.events_mut(queue);
+        match evts.binary_search_by_key(&event.tuple(), |e| e.tuple()) {
             // FIXME: 這個異常有機率發生，試著重現看看！
             Ok(_) => panic!(
                 "插入重複的佇列事件: link={}, queue={}, {:?}",
-                ends.0, queue_id, event
+                ends.0, que, event
             ),
             Err(pos) => {
-                if pos > 0 && evts[pos - 1].0 + evts[pos - 1].1 >= start_time {
+                if pos > 0 && evts[pos - 1].window.end >= event.window.start {
+                    // FIXME don't extend event, just panic
                     // 開始時間位於前一個事件中，則延伸前一個事件
-                    evts[pos - 1].1 = start_time + duration - evts[pos - 1].0;
+                    evts[pos - 1].window.end = event.window.end;
                 } else {
                     evts.insert(pos, event)
                 }
@@ -174,18 +159,16 @@ impl GateCtrlList {
     /// 回傳一組資料(usize, bool)，前者代表時間，後者代表該時間是閘門事件的開始還是結束（真代表開始）
     fn get_next_spot(&self, ends: (usize, usize), time: u32) -> (u32, bool) {
         // TODO 應該用二元搜索來優化?
-        let empty = vec![];
         let port = Entry::Port(ends.0, ends.1);
-        let evts = self.events.get(&port)
-            .unwrap_or(&empty);
-        for &(start, duration, ..) in evts {
-            if start > time {
-                return (start, true);
-            } else if start + duration > time {
-                return (start + duration, false);
+        let evts = self.events(port);
+        for event in evts {
+            if event.window.start > time {
+                return (event.window.start, true);
+            } else if event.window.end > time {
+                return (event.window.end, false);
             }
         }
-        (self.hyper_p, true)
+        (self.hyperperiod, true)
     }
     /// 回傳 None 者，代表當前即是空的
     pub fn get_next_queue_empty_time(
@@ -194,14 +177,12 @@ impl GateCtrlList {
         queue_id: u8,
         time: u32,
     ) -> Option<u32> {
-        let empty = vec![];
         let queue = Entry::Queue(ends.0, ends.1, queue_id);
-        let evts = &self.events.get(&queue)
-            .unwrap_or(&empty);
-        for &(start, duration, _) in evts.iter() {
-            if start <= time {
-                if start + duration > time {
-                    return Some(start + duration);
+        let evts = self.events(queue);
+        for event in evts {
+            if event.window.start <= time {
+                if event.window.end > time {
+                    return Some(event.window.end);
                 } else {
                     return None;
                 }
@@ -213,11 +194,10 @@ impl GateCtrlList {
         for &ends in links {
             self.events_cache.remove(&ends);
             let port = Entry::Port(ends.0, ends.1);
-            let gate_evt = &mut self.events.entry(port)
-                .or_insert(Default::default());
+            let gate_evt = self.events_mut(port);
             let mut i = 0;
             while i < gate_evt.len() {
-                if gate_evt[i].2 == flow_id {
+                if gate_evt[i].stream == flow_id {
                     gate_evt.remove(i);
                 } else {
                     i += 1;
@@ -225,11 +205,10 @@ impl GateCtrlList {
             }
             for queue_id in 0..MAX_QUEUE {
                 let queue = Entry::Queue(ends.0, ends.1, queue_id);
-                let queue_evt = &mut self.events.entry(queue)
-                    .or_insert(Default::default());
+                let queue_evt = self.events_mut(queue);
                 let mut i = 0;
                 while i < queue_evt.len() {
-                    if queue_evt[i].2 == flow_id {
+                    if queue_evt[i].stream == flow_id {
                         queue_evt.remove(i);
                     } else {
                         i += 1;
@@ -237,5 +216,14 @@ impl GateCtrlList {
                 }
             }
         }
+    }
+}
+
+impl Event {
+    fn new(stream: usize, window: Range<u32>) -> Self {
+        Event { stream, window }
+    }
+    fn tuple(&self) -> (u32, u32, usize) {
+        (self.window.start, self.window.end, self.stream)
     }
 }

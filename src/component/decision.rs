@@ -52,6 +52,10 @@ impl Decision {
         let kth = self.kth(stream).unwrap();
         self.kth_route(stream, kth)
     }
+    pub fn route_next(&self, stream: usize) -> &Route {
+        let kth_next = self.kth_next(stream).unwrap();
+        self.kth_route(stream, kth_next)
+    }
     pub fn resize(&mut self, len: usize) {
         let default = Choice::Pending(KTH_DEFAULT);
         self.choices.resize(len, default);
