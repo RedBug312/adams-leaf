@@ -14,9 +14,10 @@ type Events = Vec<(u32, u32, usize)>;
 #[derive(Clone, Debug, Default)]
 pub struct GateCtrlList {
     hyperperiod: u32,
-    // TODO 這個資料結構有優化的空間
     events: HashMap<Entry, Events>,
+    // FIXME cache must have key in (usize, usize), or there's penalty 62ms -> 69ms
     events_cache: HashMap<(usize, usize), Vec<(u32, u32)>>,
+    default: Events,
 }
 
 
@@ -35,6 +36,14 @@ impl GateCtrlList {
     pub fn hyperperiod(&self) -> u32 {
         self.hyperperiod
     }
+    fn events(&self, entry: Entry) -> &Events {
+        self.events.get(&entry)
+            .unwrap_or(&self.default)
+    }
+    fn events_mut(&mut self, entry: Entry) -> &mut Events {
+        self.events.entry(entry)
+            .or_insert_with(|| vec![])
+    }
     /// 回傳 `link_id` 上所有閘門關閉事件。
     /// * `回傳值` - 一個陣列，其內容為 (事件開始時間, 事件持續時間);
     pub fn get_gate_events(&self, ends: (usize, usize)) -> &Vec<(u32, u32)> {
@@ -42,16 +51,14 @@ impl GateCtrlList {
         let cache = self.events_cache.get(&ends);
         if cache.is_none() {
             // 生成快速查找表
-            let mut lookup = Vec::<(u32, u32)>::new();
-            let empty = vec![];
+            let mut lookup = Vec::new();
             let port = Entry::Port(ends.0, ends.1);
-            let events = self.events.get(&port)
-                .unwrap_or(&empty);
+            let events = self.events(port);
             let len = events.len();
             if len > 0 {
-                let first_evt = self.events.get(&port).unwrap()[0];
+                let first_evt = events[0];
                 let mut cur_evt = (first_evt.0, first_evt.1);
-                for &(start, duration, ..) in self.events.get(&port).unwrap()[1..len].iter() {
+                for &(start, duration, ..) in events[1..len].iter() {
                     if cur_evt.0 + cur_evt.1 == start {
                         // 首尾相接
                         cur_evt.1 += duration; // 把閘門事件延長
@@ -81,8 +88,7 @@ impl GateCtrlList {
         self.events_cache.remove(&ends);
         let port = Entry::Port(ends.0, ends.1);
         let event = (start_time, duration, flow_id);
-        let evts = &mut self.events.entry(port)
-            .or_insert(Default::default());
+        let evts = self.events_mut(port);
         match evts.binary_search(&event) {
             Ok(_) => panic!("插入重複的閘門事件: link={}, {:?}", ends.0, event),
             Err(pos) => {
@@ -113,8 +119,7 @@ impl GateCtrlList {
         }
         let event = (start_time, duration, flow_id);
         let queue = Entry::Queue(ends.0, ends.1, queue_id);
-        let evts = &mut self.events.entry(queue)
-            .or_insert(Default::default());
+        let evts = self.events_mut(queue);
         match evts.binary_search(&event) {
             // FIXME: 這個異常有機率發生，試著重現看看！
             Ok(_) => panic!(
@@ -153,10 +158,8 @@ impl GateCtrlList {
     /// 回傳一組資料(usize, bool)，前者代表時間，後者代表該時間是閘門事件的開始還是結束（真代表開始）
     fn get_next_spot(&self, ends: (usize, usize), time: u32) -> (u32, bool) {
         // TODO 應該用二元搜索來優化?
-        let empty = vec![];
         let port = Entry::Port(ends.0, ends.1);
-        let evts = self.events.get(&port)
-            .unwrap_or(&empty);
+        let evts = self.events(port);
         for &(start, duration, ..) in evts {
             if start > time {
                 return (start, true);
@@ -173,10 +176,8 @@ impl GateCtrlList {
         queue_id: u8,
         time: u32,
     ) -> Option<u32> {
-        let empty = vec![];
         let queue = Entry::Queue(ends.0, ends.1, queue_id);
-        let evts = &self.events.get(&queue)
-            .unwrap_or(&empty);
+        let evts = self.events(queue);
         for &(start, duration, _) in evts.iter() {
             if start <= time {
                 if start + duration > time {
@@ -192,8 +193,7 @@ impl GateCtrlList {
         for &ends in links {
             self.events_cache.remove(&ends);
             let port = Entry::Port(ends.0, ends.1);
-            let gate_evt = &mut self.events.entry(port)
-                .or_insert(Default::default());
+            let gate_evt = self.events_mut(port);
             let mut i = 0;
             while i < gate_evt.len() {
                 if gate_evt[i].2 == flow_id {
@@ -204,8 +204,7 @@ impl GateCtrlList {
             }
             for queue_id in 0..MAX_QUEUE {
                 let queue = Entry::Queue(ends.0, ends.1, queue_id);
-                let queue_evt = &mut self.events.entry(queue)
-                    .or_insert(Default::default());
+                let queue_evt = self.events_mut(queue);
                 let mut i = 0;
                 while i < queue_evt.len() {
                     if queue_evt[i].2 == flow_id {
