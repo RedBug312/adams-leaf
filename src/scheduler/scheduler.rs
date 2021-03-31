@@ -104,6 +104,10 @@ fn compare_tsn(tsn1: usize, tsn2: usize,
         .then(routelen(tsn1).cmp(&routelen(tsn2)).reverse())
 }
 
+// M. L. Raagaard, P. Pop, M. Gutiérrez and W. Steiner, "Runtime reconfiguration of time-sensitive
+// networking (TSN) schedules for Fog Computing," 2017 IEEE Fog World Congress (FWC), Santa Clara,
+// CA, USA, 2017, pp. 1-6, doi: 10.1109/FWC.2017.8368523.
+
 /// 也可以當作離線排程算法來使用
 fn schedule_fixed_og(
     decision: &mut Decision,
