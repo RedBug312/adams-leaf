@@ -1,6 +1,6 @@
 use crate::MAX_K;
 use crate::component::Decision;
-use crate::component::evaluator::evaluate_avb_latency_for_kth;
+use crate::component::evaluator::evaluate_avb_wcd_for_kth;
 use crate::component::FlowTable;
 use crate::network::Network;
 use crate::utils::config::Config;
@@ -165,7 +165,8 @@ fn compute_visibility(decision: &Decision, flowtable: &FlowTable, network: &Netw
     for &avb in flowtable.avbs() {
         let (src, dst) = flowtable.ends(avb);
         for kth in 0..algo.get_candidate_count(src, dst) {
-            vis[avb][kth] = 1.0 / evaluate_avb_latency_for_kth(decision, flowtable, network, avb, kth) as f64 * algo.memory[avb][kth];
+            let wcd = evaluate_avb_wcd_for_kth(avb, kth, decision, flowtable, network) as f64;
+            vis[avb][kth] = 1.0 / wcd * algo.memory[avb][kth];
         }
     }
     for &tsn in flowtable.tsns() {

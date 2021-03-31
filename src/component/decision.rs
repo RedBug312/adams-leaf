@@ -88,7 +88,7 @@ impl Decision {
     /// * `stream` - 要記憶或遺忘的資料流ID
     /// * `route` - 該路徑(以節點組成)
     pub fn insert_bypassing_avb_on_kth_route(&mut self, stream: usize, kth: usize) {
-        let route = self.kth_route(stream, kth).clone();
+        let route = &self.candidates[stream][kth];  // kth_route without clone
         for ends in route.windows(2) {
             let ends = (ends[0], ends[1]);
             let set = self.bypassing_avbs.get_mut(&ends)
@@ -97,19 +97,13 @@ impl Decision {
         }
     }
     pub fn remove_bypassing_avb_on_kth_route(&mut self, stream: usize, kth: usize) {
-        let route = self.kth_route(stream, kth).clone();
+        let route = &self.candidates[stream][kth];  // kth_route without clone
         for ends in route.windows(2) {
             let ends = (ends[0], ends[1]);
             let set = self.bypassing_avbs.get_mut(&ends)
                 .expect("Failed to remove bypassing avb from an invalid edge");
             set.remove(&stream);
         }
-    }
-    /// 把邊上記憶的資訊通通忘掉！
-    pub fn forget_all_flows(&mut self) {
-        self.bypassing_avbs = self.bypassing_avbs.keys()
-            .map(|&ends| (ends, HashSet::new()))
-            .collect();
     }
 }
 
