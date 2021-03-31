@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::iter::FromIterator;
 use crate::network::Network;
 use crate::component::GateCtrlList;
 
@@ -112,20 +111,7 @@ impl Decision {
             .map(|&ends| (ends, HashSet::new()))
             .collect();
     }
-    /// 詢問一條路徑上所有共用過邊的資料流。針對路上每個邊都會回傳一個陣列，內含走了這個邊的資料流（空陣列代表無人走過）
-    ///
-    /// __注意：方向不同者不視為共用！__
-    pub fn get_overlap_flows(&self, route: &Vec<usize>) -> Vec<Vec<usize>> {
-        // TODO 回傳的 Vec<Vec> 有優化空間
-        let empty = HashSet::new();
-        route.windows(2)
-            .map(|ends| (ends[0], ends[1]))
-            .map(|ends| self.bypassing_avbs.get(&ends).unwrap_or(&empty))
-            .map(|set| Vec::from_iter(set.iter().cloned()))
-            .collect()
-    }
 }
-
 
 impl Choice {
     fn kth(&self) -> Option<usize> {

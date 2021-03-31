@@ -113,10 +113,11 @@ pub fn compute_avb_latency(
 ) -> u32 {
     let route = decision.kth_route(id, kth);
     let gcl = &decision.allocated_tsns;
-    let overlap_flow_id = decision.get_overlap_flows(route);
     let mut end_to_end_lanency = 0.0;
-    for (i, (ends, bandwidth)) in network.get_links_id_bandwidth(route).into_iter().enumerate() {
-        let wcd = wcd_on_single_link(id, bandwidth, flowtable, &overlap_flow_id[i]);
+    for (ends, bandwidth) in network.get_links_id_bandwidth(route) {
+        let bypassing_avbs = decision.bypassing_avbs.get(&ends)
+            .map_or_else(|| vec![], |set| set.iter().cloned().collect());
+        let wcd = wcd_on_single_link(id, bandwidth, flowtable, bypassing_avbs);
         end_to_end_lanency += wcd + tt_interfere_avb_single_link(ends, wcd as f64, gcl) as f64;
     }
     end_to_end_lanency as u32
@@ -125,7 +126,7 @@ fn wcd_on_single_link(
     avb: usize,
     bandwidth: f64,
     flowtable: &FlowTable,
-    overlap_flow_id: &Vec<usize>,
+    overlap_flow_id: Vec<usize>,
 ) -> f64 {
     let spec = flowtable.avb_spec(avb)
         .expect("Failed to obtain AVB spec from TSN stream");
