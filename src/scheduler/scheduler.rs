@@ -1,4 +1,4 @@
-use std::cmp::{Ordering, max};
+use std::{cmp::{Ordering, max}, ops::Range};
 use crate::component::FlowTable;
 use crate::component::Decision;
 use crate::network::Network;
@@ -11,7 +11,7 @@ const MTU: f64 = 1500.0;
 
 #[derive(Default)]
 pub struct Schedule {
-    pub egress: Vec<Vec<u32>>,  // egress[#hop][#frame]
+    pub windows: Vec<Vec<Range<u32>>>,  // windows[#hop][#frame]
     pub queue: u8,
 }
 
@@ -113,8 +113,8 @@ fn schedule_fixed_og(
     for tsn in tsns {
         let mut schedule = Schedule::new();
         loop {
-            if try_calculate_egress(&mut schedule, tsn, decision, flowtable, network).is_ok() {
-                allocate_scheduled_tsn(&schedule, tsn, decision, flowtable, network);
+            if try_calculate_windows(&mut schedule, tsn, decision, flowtable, network).is_ok() {
+                allocate_scheduled_tsn(&schedule, tsn, decision, flowtable);
                 break;
             }
             if try_increment_queue(&mut schedule).is_err() {
@@ -133,7 +133,7 @@ fn try_increment_queue(schedule: &mut Schedule) -> Result<u8, ()> {
     }
 }
 
-fn try_calculate_egress(schedule: &mut Schedule, tsn: usize,
+fn try_calculate_windows(schedule: &mut Schedule, tsn: usize,
     decision: &Decision, flowtable: &FlowTable, network: &Network) -> Result<u8, ()> {
     let spec = flowtable.tsn_spec(tsn).unwrap();
     let route = decision.route_next(tsn);
@@ -141,25 +141,21 @@ fn try_calculate_egress(schedule: &mut Schedule, tsn: usize,
     let frame_len = count_frames(spec);
     let gcl = &decision.allocated_tsns;
     let hyperperiod = gcl.hyperperiod();
-    let transmit_times = route.windows(2)
-        .map(|ends| network.duration_on(ends, MTU))
-        .map(|frac| frac.ceil() as u32)
-        .collect::<Vec<u32>>();
 
-    schedule.egress = vec![vec![std::u32::MAX; frame_len]; route.len() - 1];
-    let egress = &mut schedule.egress;
+    schedule.windows = vec![vec![std::u32::MAX..std::u32::MAX; frame_len]; route.len() - 1];
+    let windows = &mut schedule.windows;
     let queue = schedule.queue;
 
-    for (r, _ends) in route.windows(2).enumerate() {
+    for (r, ends) in route.windows(2).enumerate() {
+        let transmit_time = network.duration_on(ends, MTU).ceil() as u32;
         for f in 0..frame_len {
-            let transmit_time = transmit_times[r];
             let prev_frame_done = match f {
                 0 => spec.offset,
-                _ => egress[r][f-1] + transmit_times[r],
+                _ => windows[r][f-1].end,
             };
             let prev_link_done = match r {
                 0 => spec.offset,
-                _ => egress[r-1][f] + transmit_times[r-1],
+                _ => windows[r-1][f].end,
             };
             let arrive_time = max(prev_frame_done, prev_link_done);
 
@@ -202,26 +198,22 @@ fn try_calculate_egress(schedule: &mut Schedule, tsn: usize,
                 // QUESTION 是否要檢查 arrive_time ~ cur_offset+trans_time 這段時間中
                 // 有沒有發生同個佇列被佔用的事件？
             }
-            egress[r][f] = cur_offset;
+            windows[r][f] = cur_offset..(cur_offset + transmit_time);
         }
     }
     Ok(queue)
 }
 
 fn allocate_scheduled_tsn(schedule: &Schedule, tsn: usize,
-    decision: &mut Decision, flowtable: &FlowTable, network: &Network) {
+    decision: &mut Decision, flowtable: &FlowTable) {
     // 把上面算好的結果塞進 GCL
     let spec = flowtable.tsn_spec(tsn).unwrap();
     let route = decision.route_next(tsn).clone();
     let frame_len = count_frames(spec);
     let gcl = &mut decision.allocated_tsns;
     let queue = schedule.queue;
-    let egress = &schedule.egress;
+    let windows = &schedule.windows;
     let hyperperiod = gcl.hyperperiod();
-    let transmit_times = route.windows(2)
-        .map(|ends| network.duration_on(ends, MTU))
-        .map(|frac| frac.ceil() as u32)
-        .collect::<Vec<u32>>();
 
     for (r, ends) in route.windows(2).enumerate() {
         let ends = (ends[0], ends[1]);
@@ -229,13 +221,13 @@ fn allocate_scheduled_tsn(schedule: &Schedule, tsn: usize,
             // 考慮 hyper period 中每個狀況
             for time_shift in (0..hyperperiod).step_by(spec.period as usize) {
                 // insert gate evt
-                let window = (time_shift + egress[r][f])
-                    ..(time_shift + egress[r][f] + transmit_times[r]);
+                let window = (time_shift + windows[r][f].start)
+                    ..(time_shift + windows[r][f].end);
                 gcl.insert_gate_evt(ends, tsn, window);
                 // insert queue evt
                 if r == 0 { continue; }
-                let window = (time_shift + egress[r-1][f])
-                    ..(time_shift + egress[r][f]);
+                let window = (time_shift + windows[r-1][f].start)
+                    ..(time_shift + windows[r][f].start);
                 gcl.insert_queue_evt(ends, queue, tsn, window);
             }
         }
