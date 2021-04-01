@@ -41,17 +41,15 @@ fn update_avb(decision: &mut Decision, flowtable: &FlowTable) {
     let mut updates = Vec::with_capacity(avbs.len());
 
     updates.extend(decision.filter_switch(avbs));
-    for &id in updates.iter() {
-        let kth = decision.kth(id)
-            .expect("Failed to get prev kth with the given id");
-        decision.remove_bypassing_avb_on_kth_route(id, kth);
+    for &avb in updates.iter() {
+        let kth = decision.kth(avb).unwrap();
+        decision.remove_traversed_avb(avb, kth);
     }
 
     updates.extend(decision.filter_pending(avbs));
-    for &id in updates.iter() {
-        let kth = decision.kth_next(id)
-            .expect("Failed to get next kth with the given id");
-        decision.insert_bypassing_avb_on_kth_route(id, kth);
+    for &avb in updates.iter() {
+        let kth = decision.kth_next(avb).unwrap();
+        decision.insert_traversed_avb(avb, kth);
     }
 }
 
@@ -61,16 +59,9 @@ fn update_tsn(decision: &mut Decision, flowtable: &FlowTable, network: &Network)
     let mut updates = Vec::with_capacity(tsns.len());
 
     updates.extend(decision.filter_switch(tsns));
-    for &id in updates.iter() {
-        let prev = decision.kth(id)
-            .expect("Failed to get prev kth with the given id");
-        let route = decision.kth_route(id, prev);
-        let links = network
-            .get_links_id_bandwidth(route)
-            .iter()
-            .map(|(ends, _)| *ends)
-            .collect();
-        decision.allocated_tsns.delete_flow(&links, id);
+    for &tsn in updates.iter() {
+        let kth = decision.kth(tsn).unwrap();
+        decision.remove_allocated_tsn(tsn, kth);
     }
 
     updates.extend(decision.filter_pending(tsns));

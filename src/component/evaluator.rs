@@ -96,12 +96,12 @@ pub fn evaluate_avb_wcd_for_kth(
     let mut end_to_end = 0.0;
     for ends in route.windows(2) {
         let edge = network.edge(ends);
-        let bypassing_avbs = decision.bypassing_avbs.get(&edge.ends)
+        let traversed_avbs = decision.traversed_avbs.get(&edge.ends)
             .map_or_else(|| vec![], |set| set.iter().cloned().collect());
         let mut per_hop = 0.0;
         per_hop += transmit_avb_itself(edge, avb, flowtable);
         per_hop += interfere_from_be(edge);
-        per_hop += interfere_from_avb(edge, avb, bypassing_avbs, flowtable);
+        per_hop += interfere_from_avb(edge, avb, traversed_avbs, flowtable);
         per_hop += interfere_from_tsn(edge, per_hop, gcl);
         end_to_end += per_hop;
     }

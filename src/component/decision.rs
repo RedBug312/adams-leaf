@@ -13,7 +13,7 @@ pub struct Decision {
     choices: Vec<Choice>,
     pub candidates: Vec<Vec<Route>>,
     pub allocated_tsns: GateCtrlList,
-    pub bypassing_avbs: HashMap<(usize, usize), HashSet<usize>>,
+    pub traversed_avbs: HashMap<(usize, usize), HashSet<usize>>,
     pub tsn_fail: bool,
 }
 
@@ -27,14 +27,14 @@ enum Choice {
 
 impl Decision {
     pub fn new(graph: &Network) -> Self {
-        let bypassing_avbs = graph.edges.keys()
+        let traversed_avbs = graph.edges.keys()
             .map(|&ends| (ends, HashSet::new()))
             .collect();
         Decision {
             choices: vec![],
             candidates: vec![],
             allocated_tsns: GateCtrlList::new(1),
-            bypassing_avbs,
+            traversed_avbs,
             tsn_fail: false,
         }
     }
@@ -81,28 +81,30 @@ impl Decision {
 }
 
 impl Decision {
-    /// 確定一條資料流的路徑時，將該資料流的ID記憶在它經過的邊上，移除路徑時則將ID遺忘。
-    ///
-    /// __注意：此處兩個方向不視為同個邊！__
-    /// * `remember` - 布林值，記憶或是遺忘路徑
-    /// * `stream` - 要記憶或遺忘的資料流ID
-    /// * `route` - 該路徑(以節點組成)
-    pub fn insert_bypassing_avb_on_kth_route(&mut self, stream: usize, kth: usize) {
-        let route = &self.candidates[stream][kth];  // kth_route without clone
+    pub fn remove_traversed_avb(&mut self, avb: usize, kth: usize) {
+        let route = &self.candidates[avb][kth];  // kth_route without clone
         for ends in route.windows(2) {
             let ends = (ends[0], ends[1]);
-            let set = self.bypassing_avbs.get_mut(&ends)
-                .expect("Failed to insert bypassing avb into an invalid edge");
-            set.insert(stream);
+            let set = self.traversed_avbs.get_mut(&ends)
+                .expect("Failed to remove traversed avb from an invalid edge");
+            set.remove(&avb);
         }
     }
-    pub fn remove_bypassing_avb_on_kth_route(&mut self, stream: usize, kth: usize) {
-        let route = &self.candidates[stream][kth];  // kth_route without clone
+    pub fn insert_traversed_avb(&mut self, avb: usize, kth: usize) {
+        let route = &self.candidates[avb][kth];  // kth_route without clone
         for ends in route.windows(2) {
             let ends = (ends[0], ends[1]);
-            let set = self.bypassing_avbs.get_mut(&ends)
-                .expect("Failed to remove bypassing avb from an invalid edge");
-            set.remove(&stream);
+            let set = self.traversed_avbs.get_mut(&ends)
+                .expect("Failed to insert traversed avb into an invalid edge");
+            set.insert(avb);
+        }
+    }
+    pub fn remove_allocated_tsn(&mut self, tsn: usize, kth: usize) {
+        let gcl = &mut self.allocated_tsns;
+        let route = &self.candidates[tsn][kth];  // kth_route without clone
+        for ends in route.windows(2) {
+            let ends = (ends[0], ends[1]);
+            gcl.remove(&ends, tsn);
         }
     }
 }

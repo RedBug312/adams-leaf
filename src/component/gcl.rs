@@ -190,29 +190,27 @@ impl GateCtrlList {
         }
         None
     }
-    pub fn delete_flow(&mut self, links: &Vec<(usize, usize)>, flow_id: usize) {
-        for &ends in links {
-            self.events_cache.remove(&ends);
-            let port = Entry::Port(ends.0, ends.1);
-            let gate_evt = self.events_mut(port);
+    pub fn remove(&mut self, ends: &(usize, usize), tsn: usize) {
+        self.events_cache.remove(&ends);
+        let port = Entry::Port(ends.0, ends.1);
+        let gate_evt = self.events_mut(port);
+        let mut i = 0;
+        while i < gate_evt.len() {
+            if gate_evt[i].stream == tsn {
+                gate_evt.remove(i);
+            } else {
+                i += 1;
+            }
+        }
+        for queue_id in 0..MAX_QUEUE {
+            let queue = Entry::Queue(ends.0, ends.1, queue_id);
+            let queue_evt = self.events_mut(queue);
             let mut i = 0;
-            while i < gate_evt.len() {
-                if gate_evt[i].stream == flow_id {
-                    gate_evt.remove(i);
+            while i < queue_evt.len() {
+                if queue_evt[i].stream == tsn {
+                    queue_evt.remove(i);
                 } else {
                     i += 1;
-                }
-            }
-            for queue_id in 0..MAX_QUEUE {
-                let queue = Entry::Queue(ends.0, ends.1, queue_id);
-                let queue_evt = self.events_mut(queue);
-                let mut i = 0;
-                while i < queue_evt.len() {
-                    if queue_evt[i].stream == flow_id {
-                        queue_evt.remove(i);
-                    } else {
-                        i += 1;
-                    }
                 }
             }
         }
