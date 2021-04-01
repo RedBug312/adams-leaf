@@ -1,6 +1,8 @@
-use crate::{component::FlowTable, network::Edge};
+use crate::component::FlowTable;
 use crate::component::GateCtrlList;
+use crate::network::Edge;
 use crate::network::Network;
+use std::cmp::max;
 use super::Decision;
 
 
@@ -20,66 +22,49 @@ impl Evaluator {
     pub fn new(weights: [f64; 4]) -> Self {
         Evaluator { weights }
     }
-    pub fn compute_avb_wcd(&self, decision: &Decision, flowtable: &FlowTable, network: &Network, id: usize) -> u32 {
+    pub fn evaluate_avb_wcd(&self, decision: &Decision, flowtable: &FlowTable, network: &Network, id: usize) -> u32 {
         let kth = decision.kth_next(id).unwrap();
         evaluate_avb_wcd_for_kth(id, kth, decision, flowtable, network)
     }
-    pub fn compute_single_avb_cost(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network, avb: usize) -> [f64; 4] {
-        let spec = flowtable.avb_spec(avb)
-            .expect("Failed to obtain AVB spec from TSN stream");
-        let avb_wcd = self.compute_avb_wcd(decision, flowtable, network, avb) as f64 / spec.max_delay as f64;
-        let mut avb_fail_cnt = 0;
-        let mut reroute_cnt = 0;
-        if avb_wcd >= 1.0 {
-            // 逾時了！
-            avb_fail_cnt += 1;
-        }
-        if is_rerouted(
-            decision.kth_next(avb),
-            latest.kth(avb),
-        ) {
-            reroute_cnt += 1;
-        }
+    pub fn evaluate_avb_objectives(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network, avb: usize) -> [f64; 4] {
+        let latest = latest.kth(avb);
+        let current = decision.kth_next(avb);
+        let wcd = self.evaluate_avb_wcd(decision, flowtable, network, avb);
+        let max = flowtable.avb_spec(avb).unwrap().max_delay;
+
         let mut objs = [0.0; 4];
         objs[0] = decision.tsn_fail as u8 as f64;
-        objs[1] = avb_fail_cnt as f64;
-        objs[2] = reroute_cnt as f64;
-        objs[3] = avb_wcd;
+        objs[1] = (wcd > max) as usize as f64;
+        objs[2] = is_rerouted(current, latest) as usize as f64;
+        objs[3] = wcd as f64 / max as f64;
         objs
     }
-    pub fn compute_all_cost(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network) -> [f64; 4] {
-        let mut all_avb_fail_cnt = 0;
-        let mut all_avb_wcd = 0.0;
-        let mut all_reroute_cnt = 0;
-        for &id in flowtable.tsns() {
-            let t = decision.kth_next(id);
-            if is_rerouted(t, latest.kth(id)) {
-                all_reroute_cnt += 1;
-            }
+    pub fn evaluate_objectives(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network) -> [f64; 4] {
+        let mut all_rerouted_count = 0;
+        let mut avb_failed_count = 0;
+        let mut avb_normed_wcd_sum = 0.0;
+
+        for either in 0..flowtable.len() {
+            let latest = latest.kth(either);
+            let current = decision.kth_next(either);
+            all_rerouted_count += is_rerouted(current, latest) as usize;
         }
         for &avb in flowtable.avbs() {
-            let spec = flowtable.avb_spec(avb)
-                .expect("Failed to obtain AVB spec from TSN stream");
-            let wcd = self.compute_avb_wcd(decision, flowtable, network, avb);
-            all_avb_wcd += wcd as f64 / spec.max_delay as f64;
-            if wcd > spec.max_delay {
-                // 逾時了！
-                all_avb_fail_cnt += 1;
-            }
-            let t = decision.kth_next(avb);
-            if is_rerouted(t, latest.kth(avb)) {
-                all_reroute_cnt += 1;
-            }
+            let wcd = self.evaluate_avb_wcd(decision, flowtable, network, avb);
+            let max = flowtable.avb_spec(avb).unwrap().max_delay;
+            avb_failed_count += (wcd > max) as usize;
+            avb_normed_wcd_sum += wcd as f64 / max as f64;
         }
+
         let mut objs = [0.0; 4];
         objs[0] = decision.tsn_fail as u8 as f64;
-        objs[1] = all_avb_fail_cnt as f64 / flowtable.avbs().len() as f64;
-        objs[2] = all_reroute_cnt as f64 / flowtable.len() as f64;
-        objs[3] = all_avb_wcd / flowtable.avbs().len() as f64;
+        objs[1] = avb_failed_count as f64 / flowtable.avbs().len() as f64;
+        objs[2] = all_rerouted_count as f64 / flowtable.len() as f64;
+        objs[3] = avb_normed_wcd_sum / flowtable.avbs().len() as f64;
         objs
     }
     pub fn evaluate_cost_objectives(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network) -> (f64, [f64; 4]) {
-        let objs = self.compute_all_cost(decision, latest, flowtable, network);
+        let objs = self.evaluate_objectives(decision, latest, flowtable, network);
         let cost = objs.iter()
             .zip(self.weights.iter())
             .map(|(x, y)| x * y)
@@ -118,8 +103,6 @@ pub fn evaluate_avb_wcd_for_kth(
         per_hop += interfere_from_be(edge);
         per_hop += interfere_from_avb(edge, avb, bypassing_avbs, flowtable);
         per_hop += interfere_from_tsn(edge, per_hop, gcl);
-        // per_hop += wcd_on_single_link(avb, edge.bandwidth, flowtable, bypassing_avbs);
-        // per_hop += tt_interfere_avb_single_link(edge.ends, per_hop, gcl) as f64;
         end_to_end += per_hop;
     }
     end_to_end as u32
@@ -155,25 +138,26 @@ fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
 // DOI:https://doi.org/10.1145/3015037.3015044
 
 fn interfere_from_tsn(edge: &Edge, wcd: f64, gcl: &GateCtrlList) -> f64 {
-    let mut i_max = 0;
-    let all_gce = gcl.get_gate_events(edge.ends);
-    // println!("{:?}", all_gce);
-    for mut j in 0..all_gce.len() {
-        let (mut i_cur, mut rem) = (0, wcd as i32);
-        while rem >= 0 {
-            let gce_ptr = &all_gce[j];
-            i_cur += gce_ptr.end - gce_ptr.start;
+    let mut max_interfere = 0;
+    let events = gcl.get_gate_events(edge.ends);
+    for i in 0..events.len() {
+        let mut interfere = 0;
+        let mut remained = wcd as i32;
+        let mut j = i;
+        while remained >= 0 {
+            let curr = &events[j];
+            interfere += curr.end - curr.start;
             j += 1;
-            if j == all_gce.len() {
+            if j == events.len() {
                 // TODO 應該要循環？
                 break;
             }
-            let gce_ptr_next = &all_gce[j];
-            rem -= gce_ptr_next.start as i32 - gce_ptr.end as i32;
+            let next = &events[j];
+            remained -= next.start as i32 - curr.end as i32;
         }
-        i_max = std::cmp::max(i_max, i_cur);
+        max_interfere = max(max_interfere, interfere);
     }
-    i_max as f64
+    max_interfere as f64
 }
 
 
