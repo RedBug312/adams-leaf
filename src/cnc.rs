@@ -84,7 +84,7 @@ impl CNC {
         println!("AVB Flows:");
         for &id in flowtable.avbs() {
             let route = current.route(id);
-            let objs = self.evaluator.compute_single_avb_cost(current, latest, flowtable, network, id);
+            let objs = self.evaluator.evaluate_avb_objectives(current, latest, flowtable, network, id);
             println!(
                 "flow id = FlowID({}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",
                 id, route, objs[3], objs[2]

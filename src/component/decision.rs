@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::iter::FromIterator;
 use crate::network::Network;
 use crate::component::GateCtrlList;
 
@@ -89,7 +88,7 @@ impl Decision {
     /// * `stream` - 要記憶或遺忘的資料流ID
     /// * `route` - 該路徑(以節點組成)
     pub fn insert_bypassing_avb_on_kth_route(&mut self, stream: usize, kth: usize) {
-        let route = self.kth_route(stream, kth).clone();
+        let route = &self.candidates[stream][kth];  // kth_route without clone
         for ends in route.windows(2) {
             let ends = (ends[0], ends[1]);
             let set = self.bypassing_avbs.get_mut(&ends)
@@ -98,7 +97,7 @@ impl Decision {
         }
     }
     pub fn remove_bypassing_avb_on_kth_route(&mut self, stream: usize, kth: usize) {
-        let route = self.kth_route(stream, kth).clone();
+        let route = &self.candidates[stream][kth];  // kth_route without clone
         for ends in route.windows(2) {
             let ends = (ends[0], ends[1]);
             let set = self.bypassing_avbs.get_mut(&ends)
@@ -106,26 +105,7 @@ impl Decision {
             set.remove(&stream);
         }
     }
-    /// 把邊上記憶的資訊通通忘掉！
-    pub fn forget_all_flows(&mut self) {
-        self.bypassing_avbs = self.bypassing_avbs.keys()
-            .map(|&ends| (ends, HashSet::new()))
-            .collect();
-    }
-    /// 詢問一條路徑上所有共用過邊的資料流。針對路上每個邊都會回傳一個陣列，內含走了這個邊的資料流（空陣列代表無人走過）
-    ///
-    /// __注意：方向不同者不視為共用！__
-    pub fn get_overlap_flows(&self, route: &Vec<usize>) -> Vec<Vec<usize>> {
-        // TODO 回傳的 Vec<Vec> 有優化空間
-        let empty = HashSet::new();
-        route.windows(2)
-            .map(|ends| (ends[0], ends[1]))
-            .map(|ends| self.bypassing_avbs.get(&ends).unwrap_or(&empty))
-            .map(|set| Vec::from_iter(set.iter().cloned()))
-            .collect()
-    }
 }
-
 
 impl Choice {
     fn kth(&self) -> Option<usize> {

@@ -1,6 +1,6 @@
 use crate::MAX_K;
 use crate::component::Decision;
-use crate::component::evaluator::evaluate_avb_latency_for_kth;
+use crate::component::evaluator::evaluate_avb_wcd_for_kth;
 use crate::component::FlowTable;
 use crate::network::Network;
 use rand::{Rng, SeedableRng};
@@ -121,11 +121,11 @@ impl RO {
     fn find_min_cost_route(&self, decision: &Decision, flowtable: &FlowTable, network: &Network, id: usize, set: Option<Vec<usize>>) -> usize {
         let (src, dst) = flowtable.ends(id);
         let (mut min_cost, mut best_k) = (std::f64::MAX, 0);
-        let mut closure = |k: usize| {
-            let cost = evaluate_avb_latency_for_kth(decision, flowtable, network, id, k) as f64;
-            if cost < min_cost {
-                min_cost = cost;
-                best_k = k;
+        let mut closure = |kth: usize| {
+            let wcd = evaluate_avb_wcd_for_kth(id, kth, decision, flowtable, network) as f64;
+            if wcd < min_cost {
+                min_cost = wcd;
+                best_k = kth;
             }
         };
         if let Some(vec) = set {

@@ -1,6 +1,8 @@
 use crate::component::FlowTable;
 use crate::component::GateCtrlList;
+use crate::network::Edge;
 use crate::network::Network;
+use std::cmp::max;
 use super::Decision;
 
 
@@ -20,66 +22,49 @@ impl Evaluator {
     pub fn new(weights: [f64; 4]) -> Self {
         Evaluator { weights }
     }
-    pub fn compute_avb_wcd(&self, decision: &Decision, flowtable: &FlowTable, network: &Network, id: usize) -> u32 {
+    pub fn evaluate_avb_wcd(&self, decision: &Decision, flowtable: &FlowTable, network: &Network, id: usize) -> u32 {
         let kth = decision.kth_next(id).unwrap();
-        evaluate_avb_latency_for_kth(decision, flowtable, network, id, kth)
+        evaluate_avb_wcd_for_kth(id, kth, decision, flowtable, network)
     }
-    pub fn compute_single_avb_cost(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network, avb: usize) -> [f64; 4] {
-        let spec = flowtable.avb_spec(avb)
-            .expect("Failed to obtain AVB spec from TSN stream");
-        let avb_wcd = self.compute_avb_wcd(decision, flowtable, network, avb) as f64 / spec.max_delay as f64;
-        let mut avb_fail_cnt = 0;
-        let mut reroute_cnt = 0;
-        if avb_wcd >= 1.0 {
-            // 逾時了！
-            avb_fail_cnt += 1;
-        }
-        if is_rerouted(
-            decision.kth_next(avb),
-            latest.kth(avb),
-        ) {
-            reroute_cnt += 1;
-        }
+    pub fn evaluate_avb_objectives(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network, avb: usize) -> [f64; 4] {
+        let latest = latest.kth(avb);
+        let current = decision.kth_next(avb);
+        let wcd = self.evaluate_avb_wcd(decision, flowtable, network, avb);
+        let max = flowtable.avb_spec(avb).unwrap().max_delay;
+
         let mut objs = [0.0; 4];
         objs[0] = decision.tsn_fail as u8 as f64;
-        objs[1] = avb_fail_cnt as f64;
-        objs[2] = reroute_cnt as f64;
-        objs[3] = avb_wcd;
+        objs[1] = (wcd > max) as usize as f64;
+        objs[2] = is_rerouted(current, latest) as usize as f64;
+        objs[3] = wcd as f64 / max as f64;
         objs
     }
-    pub fn compute_all_cost(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network) -> [f64; 4] {
-        let mut all_avb_fail_cnt = 0;
-        let mut all_avb_wcd = 0.0;
-        let mut all_reroute_cnt = 0;
-        for &id in flowtable.tsns() {
-            let t = decision.kth_next(id);
-            if is_rerouted(t, latest.kth(id)) {
-                all_reroute_cnt += 1;
-            }
+    pub fn evaluate_objectives(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network) -> [f64; 4] {
+        let mut all_rerouted_count = 0;
+        let mut avb_failed_count = 0;
+        let mut avb_normed_wcd_sum = 0.0;
+
+        for either in 0..flowtable.len() {
+            let latest = latest.kth(either);
+            let current = decision.kth_next(either);
+            all_rerouted_count += is_rerouted(current, latest) as usize;
         }
         for &avb in flowtable.avbs() {
-            let spec = flowtable.avb_spec(avb)
-                .expect("Failed to obtain AVB spec from TSN stream");
-            let wcd = self.compute_avb_wcd(decision, flowtable, network, avb);
-            all_avb_wcd += wcd as f64 / spec.max_delay as f64;
-            if wcd > spec.max_delay {
-                // 逾時了！
-                all_avb_fail_cnt += 1;
-            }
-            let t = decision.kth_next(avb);
-            if is_rerouted(t, latest.kth(avb)) {
-                all_reroute_cnt += 1;
-            }
+            let wcd = self.evaluate_avb_wcd(decision, flowtable, network, avb);
+            let max = flowtable.avb_spec(avb).unwrap().max_delay;
+            avb_failed_count += (wcd > max) as usize;
+            avb_normed_wcd_sum += wcd as f64 / max as f64;
         }
+
         let mut objs = [0.0; 4];
         objs[0] = decision.tsn_fail as u8 as f64;
-        objs[1] = all_avb_fail_cnt as f64 / flowtable.avbs().len() as f64;
-        objs[2] = all_reroute_cnt as f64 / flowtable.len() as f64;
-        objs[3] = all_avb_wcd / flowtable.avbs().len() as f64;
+        objs[1] = avb_failed_count as f64 / flowtable.avbs().len() as f64;
+        objs[2] = all_rerouted_count as f64 / flowtable.len() as f64;
+        objs[3] = avb_normed_wcd_sum / flowtable.avbs().len() as f64;
         objs
     }
     pub fn evaluate_cost_objectives(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network) -> (f64, [f64; 4]) {
-        let objs = self.compute_all_cost(decision, latest, flowtable, network);
+        let objs = self.evaluate_objectives(decision, latest, flowtable, network);
         let cost = objs.iter()
             .zip(self.weights.iter())
             .map(|(x, y)| x * y)
@@ -88,14 +73,9 @@ impl Evaluator {
     }
 }
 
-pub fn evaluate_avb_latency_for_kth(decision: &Decision, flowtable: &FlowTable, network: &Network, id: usize, kth: usize) -> u32 {
-    compute_avb_latency(decision, network, id, kth, flowtable)
-}
-
 fn is_rerouted(current: Option<usize>, latest: Option<usize>) -> bool {
     latest.is_some() && current != latest
 }
-
 
 /// 計算 AVB 資料流的端對端延遲（包含 TT、BE 及其它 AVB 所造成的延遲）
 /// * `g` - 全局網路拓撲，每條邊上記錄其承載哪些資料流
@@ -104,74 +84,82 @@ fn is_rerouted(current: Option<usize>, latest: Option<usize>) -> bool {
 /// * `flow_table` - 資料流表。需注意的是，這裡僅用了資料流本身的資料，而未使用其隨附資訊
 /// TODO: 改用 FlowTable?
 /// * `gcl` - 所有 TT 資料流的 Gate Control List
-pub fn compute_avb_latency(
-    decision: &Decision,
-    network: &Network,
-    id: usize,
-    kth: usize,
-    flowtable: &FlowTable,
-) -> u32 {
-    let route = decision.kth_route(id, kth);
-    let gcl = &decision.allocated_tsns;
-    let overlap_flow_id = decision.get_overlap_flows(route);
-    let mut end_to_end_lanency = 0.0;
-    for (i, (ends, bandwidth)) in network.get_links_id_bandwidth(route).into_iter().enumerate() {
-        let wcd = wcd_on_single_link(id, bandwidth, flowtable, &overlap_flow_id[i]);
-        end_to_end_lanency += wcd + tt_interfere_avb_single_link(ends, wcd as f64, gcl) as f64;
-    }
-    end_to_end_lanency as u32
-}
-fn wcd_on_single_link(
+pub fn evaluate_avb_wcd_for_kth(
     avb: usize,
-    bandwidth: f64,
+    kth: usize,
+    decision: &Decision,
     flowtable: &FlowTable,
-    overlap_flow_id: &Vec<usize>,
-) -> f64 {
-    let spec = flowtable.avb_spec(avb)
-        .expect("Failed to obtain AVB spec from TSN stream");
-    let mut wcd = 0.0;
-    // MAX None AVB
-    wcd += MAX_BE_SIZE / bandwidth;
-    // AVB 資料流最多只能佔用這樣的頻寬
-    let bandwidth = MAX_AVB_SETTING * bandwidth;
-    // On link
-    wcd += spec.size as f64 / bandwidth;
-    // Ohter AVB
-    for &other_avb in overlap_flow_id.iter() {
-        if other_avb != avb {
-            let other_spec = flowtable.avb_spec(other_avb)
-                .expect("Failed to obtain AVB spec from TSN stream");
-            // 自己是 B 類或別人是 A 類，就有機會要等……換句話說，只有自己是 A 而別人是 B 不用等
-            let self_type = spec.avb_type;
-            let other_type = other_spec.avb_type;
-            if self_type == 'B' || other_type == 'A' {
-                wcd += other_spec.size as f64 / bandwidth;
-            }
+    network: &Network,
+) -> u32 {
+    let route = decision.kth_route(avb, kth);
+    let gcl = &decision.allocated_tsns;
+    let mut end_to_end = 0.0;
+    for ends in route.windows(2) {
+        let edge = network.edge(ends);
+        let bypassing_avbs = decision.bypassing_avbs.get(&edge.ends)
+            .map_or_else(|| vec![], |set| set.iter().cloned().collect());
+        let mut per_hop = 0.0;
+        per_hop += transmit_avb_itself(edge, avb, flowtable);
+        per_hop += interfere_from_be(edge);
+        per_hop += interfere_from_avb(edge, avb, bypassing_avbs, flowtable);
+        per_hop += interfere_from_tsn(edge, per_hop, gcl);
+        end_to_end += per_hop;
+    }
+    end_to_end as u32
+}
+
+fn transmit_avb_itself(edge: &Edge, avb: usize, flowtable: &FlowTable) -> f64 {
+    let bandwidth = MAX_AVB_SETTING * edge.bandwidth;
+    let spec = flowtable.avb_spec(avb).unwrap();
+    spec.size as f64 / bandwidth
+}
+
+fn interfere_from_be(edge: &Edge) -> f64 {
+    MAX_BE_SIZE / edge.bandwidth
+}
+
+fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
+    flowtable: &FlowTable) -> f64 {
+    let mut interfere = 0.0;
+    let bandwidth = MAX_AVB_SETTING * edge.bandwidth;
+    let spec = flowtable.avb_spec(avb).unwrap();
+    for other in others {
+        if avb == other { continue; }
+        let other_spec = flowtable.avb_spec(other).unwrap();
+        if spec.avb_type == 'B' || other_spec.avb_type == 'A' {
+            interfere += other_spec.size as f64 / bandwidth;
         }
     }
-    wcd
+    interfere
 }
-fn tt_interfere_avb_single_link(ends: (usize, usize), wcd: f64, gcl: &GateCtrlList) -> u32 {
-    let mut i_max = 0;
-    let all_gce = gcl.get_gate_events(ends);
-    // println!("{:?}", all_gce);
-    for mut j in 0..all_gce.len() {
-        let (mut i_cur, mut rem) = (0, wcd as i32);
-        while rem >= 0 {
-            let gce_ptr = &all_gce[j];
-            i_cur += gce_ptr.end - gce_ptr.start;
+
+// Sune Mølgaard Laursen, Paul Pop, and Wilfried Steiner. 2016. Routing optimization of AVB streams
+// in TSN networks. SIGBED Rev. 13, 4 (September 2016), 43–48.
+// DOI:https://doi.org/10.1145/3015037.3015044
+
+fn interfere_from_tsn(edge: &Edge, wcd: f64, gcl: &GateCtrlList) -> f64 {
+    let mut max_interfere = 0;
+    let events = gcl.get_gate_events(edge.ends);
+    for i in 0..events.len() {
+        let mut interfere = 0;
+        let mut remained = wcd as i32;
+        let mut j = i;
+        while remained >= 0 {
+            let curr = &events[j];
+            interfere += curr.end - curr.start;
             j += 1;
-            if j == all_gce.len() {
+            if j == events.len() {
                 // TODO 應該要循環？
                 break;
             }
-            let gce_ptr_next = &all_gce[j];
-            rem -= gce_ptr_next.start as i32 - gce_ptr.end as i32;
+            let next = &events[j];
+            remained -= next.start as i32 - curr.end as i32;
         }
-        i_max = std::cmp::max(i_max, i_cur);
+        max_interfere = max(max_interfere, interfere);
     }
-    return i_max;
+    max_interfere as f64
 }
+
 
 #[cfg(test)]
 mod test {
