@@ -1,10 +1,11 @@
-use std::{cmp::{Ordering, max}, rc::{Rc, Weak}};
-use std::ops::Range;
-use crate::component::FlowTable;
+use crate::MAX_QUEUE;
 use crate::component::Decision;
+use crate::component::FlowTable;
 use crate::network::Network;
 use crate::utils::stream::TSN;
-use crate::MAX_QUEUE;
+use std::cmp::{Ordering, max};
+use std::ops::Range;
+use std::rc::{Rc, Weak};
 
 
 const MTU: f64 = 1500.0;
@@ -12,8 +13,8 @@ const MTU: f64 = 1500.0;
 
 #[derive(Default)]
 struct Schedule {
-    pub windows: Vec<Vec<Range<u32>>>,  // windows[#hop][#frame]
-    pub queue: u8,
+    windows: Vec<Vec<Range<u32>>>,  // windows[#hop][#frame]
+    queue: u8,
 }
 
 impl Schedule {
