@@ -6,16 +6,17 @@ use crate::network::Network;
 use crate::scheduler::Scheduler;
 use crate::utils::config::Config;
 use crate::utils::stream::{TSN, AVB};
-use std::time::{Duration, Instant};
+use std::{rc::Weak, time::{Duration, Instant}};
+use std::rc::Rc;
 
 
 pub struct CNC {
     algorithm: AlgorithmEnum,
     scheduler: Scheduler,
     evaluator: Evaluator,
-    flowtable: FlowTable,
+    flowtable: Rc<FlowTable>,
     decision: Decision,
-    network: Network,
+    network: Rc<Network>,
 }
 
 
@@ -32,16 +33,22 @@ impl CNC {
             "spf" => SPF::new(&graph).into(),
             _     => panic!("Failed specify an unknown routing algorithm"),
         };
-        let scheduler = Scheduler::new();
         let evaluator = Evaluator::new(weights);
-        let flowtable = FlowTable::new();
+        let flowtable = Rc::new(FlowTable::new());
         let decision = Decision::new(&graph);
-        let network = graph;
+        let network = Rc::new(graph);
+        let mut scheduler = Scheduler::new();
+        *scheduler.flowtable_mut() = Rc::downgrade(&flowtable);
+        *scheduler.network_mut() = Rc::downgrade(&network);
         Self { algorithm, scheduler, evaluator, decision, flowtable, network }
     }
     pub fn add_streams(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
-        self.flowtable.append(tsns, avbs);
+        *self.scheduler.flowtable_mut() = Weak::new();
+        let flowtable = Rc::get_mut(&mut self.flowtable);
+        debug_assert!(flowtable.is_some());  // ensure everyone drops their ownerships
+        flowtable.unwrap().append(tsns, avbs);
         self.decision.resize(self.flowtable.len());
+        *self.scheduler.flowtable_mut() = Rc::downgrade(&self.flowtable);
     }
     pub fn configure(&mut self) -> u128 {
         let scheduler = &self.scheduler;
@@ -54,7 +61,7 @@ impl CNC {
         let mut current = latest.clone();
 
         let evaluate = |decision: &mut Decision| {
-            scheduler.configure(decision, flowtable, network);  // where it's mutated
+            scheduler.configure(decision);  // where it's mutated
             let (cost, objs) = evaluator.evaluate_cost_objectives(decision, latest, flowtable, network);
             let early_exit = objs[1] == 0.0 && Config::get().fast_stop;
             (cost, early_exit)
@@ -63,7 +70,7 @@ impl CNC {
 
         let start = Instant::now();
         self.algorithm.prepare(&mut current, flowtable);
-        self.scheduler.configure(&mut current, flowtable, network);  // should not schedule before routing
+        self.scheduler.configure(&mut current);  // should not schedule before routing
         self.algorithm.configure(&mut current, flowtable, network, start + limit, evaluate);
         let elapsed = start.elapsed().as_micros();
 
