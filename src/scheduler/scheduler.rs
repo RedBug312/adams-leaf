@@ -1,4 +1,5 @@
-use std::{cmp::{Ordering, max}, ops::Range};
+use std::cmp::{Ordering, max};
+use std::ops::Range;
 use crate::component::FlowTable;
 use crate::component::Decision;
 use crate::network::Network;
@@ -10,7 +11,7 @@ const MTU: f64 = 1500.0;
 
 
 #[derive(Default)]
-pub struct Schedule {
+struct Schedule {
     pub windows: Vec<Vec<Range<u32>>>,  // windows[#hop][#frame]
     pub queue: u8,
 }
@@ -29,53 +30,50 @@ impl Scheduler {
         Scheduler {}
     }
     pub fn configure(&self, decision: &mut Decision, flowtable: &FlowTable, network: &Network) {
-        update_avb(decision, flowtable);
-        update_tsn(decision, flowtable, network);
+        configure_avbs(decision, flowtable);
+        configure_tsns(decision, flowtable, network);
         decision.confirm();
     }
 }
 
 /// 更新 AVB 資料流表與圖上資訊
-fn update_avb(decision: &mut Decision, flowtable: &FlowTable) {
+fn configure_avbs(decision: &mut Decision, flowtable: &FlowTable) {
     let avbs = flowtable.avbs();
-    let mut updates = Vec::with_capacity(avbs.len());
+    let mut targets = Vec::with_capacity(avbs.len());
 
-    updates.extend(decision.filter_switch(avbs));
-    for &avb in updates.iter() {
+    targets.extend(decision.filter_switch(avbs));
+    for &avb in targets.iter() {
         let kth = decision.kth(avb).unwrap();
-        decision.remove_traversed_avb(avb, kth);
+        remove_traversed_avb(decision, avb, kth);
     }
 
-    updates.extend(decision.filter_pending(avbs));
-    for &avb in updates.iter() {
+    targets.extend(decision.filter_pending(avbs));
+    for &avb in targets.iter() {
         let kth = decision.kth_next(avb).unwrap();
-        decision.insert_traversed_avb(avb, kth);
+        insert_traversed_avb(decision, avb, kth);
     }
 }
 
 /// 更新 TSN 資料流表與 GCL
-fn update_tsn(decision: &mut Decision, flowtable: &FlowTable, network: &Network) {
+fn configure_tsns(decision: &mut Decision, flowtable: &FlowTable, network: &Network) {
     let tsns = flowtable.tsns();
-    let mut updates = Vec::with_capacity(tsns.len());
+    let mut targets = Vec::with_capacity(tsns.len());
 
-    updates.extend(decision.filter_switch(tsns));
-    for &tsn in updates.iter() {
+    targets.extend(decision.filter_switch(tsns));
+    for &tsn in targets.iter() {
         let kth = decision.kth(tsn).unwrap();
-        decision.remove_allocated_tsn(tsn, kth);
+        remove_allocated_tsn(decision, tsn, kth);
     }
 
-    updates.extend(decision.filter_pending(tsns));
-    let result = schedule_fixed_og(decision, flowtable, network, updates);
-    let result = match result {
-        Ok(_) => Ok(false),
-        Err(_) => {
-            decision.allocated_tsns.clear();
-            let updates = tsns.clone();  // reroute all tsns
-            schedule_fixed_og(decision, flowtable, network, updates)
-                .and(Ok(true))
-        }
-    };
+    targets.extend(decision.filter_pending(tsns));
+    let result = try_schedule_tsns(decision, flowtable, network, targets);
+    decision.tsn_fail = result.is_err();
 
+    if !decision.tsn_fail { return; }
+
+    decision.allocated_tsns.clear();
+    targets = tsns.clone();
+    let result = try_schedule_tsns(decision, flowtable, network, targets);
     decision.tsn_fail = result.is_err();
 }
 
@@ -100,7 +98,7 @@ fn compare_tsn(tsn1: usize, tsn2: usize,
 // CA, USA, 2017, pp. 1-6, doi: 10.1109/FWC.2017.8368523.
 
 /// 也可以當作離線排程算法來使用
-fn schedule_fixed_og(
+fn try_schedule_tsns(
     decision: &mut Decision,
     flowtable: &FlowTable,
     network: &Network,
@@ -112,9 +110,11 @@ fn schedule_fixed_og(
     );
     for tsn in tsns {
         let mut schedule = Schedule::new();
+        let kth = decision.kth_next(tsn).unwrap();
+        let period = flowtable.tsn_spec(tsn).unwrap().period;
         loop {
             if try_calculate_windows(&mut schedule, tsn, decision, flowtable, network).is_ok() {
-                allocate_scheduled_tsn(&schedule, tsn, decision, flowtable);
+                insert_allocated_tsn(decision, tsn, kth, schedule, period);
                 break;
             }
             if try_increment_queue(&mut schedule).is_err() {
@@ -204,45 +204,64 @@ fn try_calculate_windows(schedule: &mut Schedule, tsn: usize,
     Ok(queue)
 }
 
-fn allocate_scheduled_tsn(schedule: &Schedule, tsn: usize,
-    decision: &mut Decision, flowtable: &FlowTable) {
-    // 把上面算好的結果塞進 GCL
-    let spec = flowtable.tsn_spec(tsn).unwrap();
-    let route = decision.route_next(tsn).clone();
-    let frame_len = count_frames(spec);
-    let gcl = &mut decision.allocated_tsns;
-    let queue = schedule.queue;
-    let windows = &schedule.windows;
-    let hyperperiod = gcl.hyperperiod();
-
-    for (r, ends) in route.windows(2).enumerate() {
-        let ends = (ends[0], ends[1]);
-        for f in 0..frame_len {
-            // 考慮 hyper period 中每個狀況
-            for time_shift in (0..hyperperiod).step_by(spec.period as usize) {
-                // insert gate evt
-                let window = (time_shift + windows[r][f].start)
-                    ..(time_shift + windows[r][f].end);
-                gcl.insert_gate_evt(ends, tsn, window);
-                // insert queue evt
-                if r == 0 { continue; }
-                let window = (time_shift + windows[r-1][f].start)
-                    ..(time_shift + windows[r][f].start);
-                gcl.insert_queue_evt(ends, queue, tsn, window);
-            }
-        }
-    }
-}
-
 #[inline]
 fn count_frames(spec: &TSN) -> usize {
     (spec.size as f64 / MTU).ceil() as usize
 }
 
-
 fn assert_within_deadline(delay: u32, spec: &TSN) -> Result<u32, ()> {
     match delay < spec.offset + spec.max_delay {
         true  => Ok(spec.offset + spec.max_delay - delay),
         false => Err(()),
+    }
+}
+
+fn remove_traversed_avb(decision: &mut Decision, avb: usize, kth: usize) {
+    let route = &decision.candidates[avb][kth];  // kth_route without clone
+    for ends in route.windows(2) {
+        let ends = (ends[0], ends[1]);
+        let set = decision.traversed_avbs.get_mut(&ends)
+            .expect("Failed to remove traversed avb from an invalid edge");
+        set.remove(&avb);
+    }
+}
+
+fn insert_traversed_avb(decision: &mut Decision, avb: usize, kth: usize) {
+    let route = &decision.candidates[avb][kth];  // kth_route without clone
+    for ends in route.windows(2) {
+        let ends = (ends[0], ends[1]);
+        let set = decision.traversed_avbs.get_mut(&ends)
+            .expect("Failed to insert traversed avb into an invalid edge");
+        set.insert(avb);
+    }
+}
+
+fn remove_allocated_tsn(decision: &mut Decision, tsn: usize, kth: usize) {
+    let gcl = &mut decision.allocated_tsns;
+    let route = &decision.candidates[tsn][kth];  // kth_route without clone
+    for ends in route.windows(2) {
+        let ends = (ends[0], ends[1]);
+        gcl.remove(&ends, tsn);
+    }
+}
+
+fn insert_allocated_tsn(decision: &mut Decision, tsn: usize, kth: usize, schedule: Schedule, period: u32) {
+    let gcl = &mut decision.allocated_tsns;
+    let hyperperiod = gcl.hyperperiod();
+    let windows = schedule.windows;
+    let route = &decision.candidates[tsn][kth];  // kth_route without clone
+    for (r, ends) in route.windows(2).enumerate() {
+        let ends = (ends[0], ends[1]);
+        for f in 0..windows[r].len() {
+            for timeshift in (0..hyperperiod).step_by(period as usize) {
+                let window = (timeshift + windows[r][f].start)
+                    ..(timeshift + windows[r][f].end);
+                gcl.insert_gate_evt(ends, tsn, window);
+                if r == 0 { continue; }
+                let window = (timeshift + windows[r-1][f].start)
+                    ..(timeshift + windows[r][f].start);
+                gcl.insert_queue_evt(ends, schedule.queue, tsn, window);
+            }
+        }
     }
 }

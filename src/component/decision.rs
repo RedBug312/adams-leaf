@@ -80,35 +80,6 @@ impl Decision {
     }
 }
 
-impl Decision {
-    pub fn remove_traversed_avb(&mut self, avb: usize, kth: usize) {
-        let route = &self.candidates[avb][kth];  // kth_route without clone
-        for ends in route.windows(2) {
-            let ends = (ends[0], ends[1]);
-            let set = self.traversed_avbs.get_mut(&ends)
-                .expect("Failed to remove traversed avb from an invalid edge");
-            set.remove(&avb);
-        }
-    }
-    pub fn insert_traversed_avb(&mut self, avb: usize, kth: usize) {
-        let route = &self.candidates[avb][kth];  // kth_route without clone
-        for ends in route.windows(2) {
-            let ends = (ends[0], ends[1]);
-            let set = self.traversed_avbs.get_mut(&ends)
-                .expect("Failed to insert traversed avb into an invalid edge");
-            set.insert(avb);
-        }
-    }
-    pub fn remove_allocated_tsn(&mut self, tsn: usize, kth: usize) {
-        let gcl = &mut self.allocated_tsns;
-        let route = &self.candidates[tsn][kth];  // kth_route without clone
-        for ends in route.windows(2) {
-            let ends = (ends[0], ends[1]);
-            gcl.remove(&ends, tsn);
-        }
-    }
-}
-
 impl Choice {
     fn kth(&self) -> Option<usize> {
         match self {
