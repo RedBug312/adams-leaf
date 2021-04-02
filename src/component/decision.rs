@@ -119,7 +119,7 @@ mod tests {
     use crate::utils::json;
     use crate::utils::stream::TSN;
 
-    fn init() -> CNC {
+    fn setup() -> CNC {
         let network = json::load_network("test_graph.json");
         let tsns = vec![
             TSN::new(0, 4, 100, 100, 100, 0),
@@ -127,15 +127,16 @@ mod tests {
             TSN::new(1, 2, 100, 200, 200, 0),
         ];
         let avbs = vec![];
-        let mut cnc = CNC::new("aco", network, 0);
+        let config = json::load_config("config.example.json");
+        let mut cnc = CNC::new("aco", network, 0, config);
         cnc.add_streams(tsns, avbs);
         cnc.algorithm.prepare(&mut cnc.decision, &cnc.flowtable);
         cnc
     }
 
     #[test]
-    fn test_pick_kth() {
-        let mut cnc = init();
+    fn it_picks_kth() {
+        let mut cnc = setup();
         let decision = &mut cnc.decision;
         decision.pick(1, 1);
 
@@ -149,8 +150,8 @@ mod tests {
     }
 
     #[test]
-    fn test_confirm_decision() {
-        let mut cnc = init();
+    fn it_confirms_decision() {
+        let mut cnc = setup();
         let decision = &mut cnc.decision;
         decision.pick(1, 1);
         decision.confirm();

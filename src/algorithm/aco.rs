@@ -19,20 +19,22 @@ pub struct ACO {
     yens: Yens,
     memory: Vec<[f64; MAX_K]>,
     seed: u64,
+    config: Config,
 }
 
 
 impl ACO {
-    pub fn new(network: &Network, seed: u64) -> Self {
+    pub fn new(network: &Network, seed: u64, config: Config) -> Self {
         let ants = AntColony::new(0, MAX_K, None);
         let yens = Yens::new(&network, MAX_K);
         let memory = vec![];
-        ACO { ants, yens, memory, seed }
+        ACO { ants, yens, memory, seed, config }
     }
     pub fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
         self.yens.count_shortest_paths(src, dst)
     }
-    fn compute_visibility(&self, decision: &Decision, flowtable: &FlowTable, toolbox: &Toolbox) -> Vec<[f64; MAX_K]> {
+    fn compute_visibility(&self, decision: &Decision, flowtable: &FlowTable,
+                          toolbox: &Toolbox) -> Vec<[f64; MAX_K]> {
         // TODO 好好設計能見度函式！
         // 目前：路徑長的倒數
         let len = flowtable.len();
@@ -63,17 +65,16 @@ impl Algorithm for ACO {
             decision.candidates.push(candidates);
         }
         // before initial scheduler configure
-        let config = Config::get();
         self.ants.extend_state_len(flowtable.len());
         self.memory = vec![[1.0; MAX_K]; flowtable.len()];
         for &tsn in flowtable.tsns() {
             if let Some(kth) = decision.kth(tsn) {
-                self.memory[tsn][kth] = config.tsn_memory;
+                self.memory[tsn][kth] = self.config.tsn_memory;
             }
         }
         for &avb in flowtable.avbs() {
             if let Some(kth) = decision.kth(avb) {
-                self.memory[avb][kth] = config.avb_memory;
+                self.memory[avb][kth] = self.config.avb_memory;
             }
         }
     }

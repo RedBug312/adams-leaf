@@ -16,24 +16,25 @@ pub struct CNC {
     pub decision: Decision,
     #[allow(dead_code)]
     pub network: Rc<Network>,
+    pub config: Config,
 }
 
 pub struct Toolbox<'a> {
     scheduler: &'a Scheduler,
     evaluator: &'a Evaluator,
     latest: &'a Decision,
+    config: &'a Config,
 }
 
 
 impl CNC {
-    pub fn new(name: &str, graph: Network, seed: u64) -> Self {
-        let config = Config::get();
+    pub fn new(name: &str, graph: Network, seed: u64, config: Config) -> Self {
         let mut weights = [config.w0, config.w1, config.w2, config.w3];
         if name == "ro" {
             weights[2] = 0.0;
         }
         let algorithm: AlgorithmEnum = match name {
-            "aco" => ACO::new(&graph, seed).into(),
+            "aco" => ACO::new(&graph, seed, config.clone()).into(),
             "ro"  => RO::new(&graph, seed).into(),
             "spf" => SPF::new(&graph).into(),
             _     => panic!("Failed specify an unknown routing algorithm"),
@@ -47,7 +48,7 @@ impl CNC {
         let mut evaluator = Evaluator::new(weights);
         *evaluator.flowtable_mut() = Rc::downgrade(&flowtable);
         *evaluator.network_mut() = Rc::downgrade(&network);
-        Self { algorithm, scheduler, evaluator, decision, flowtable, network }
+        Self { algorithm, scheduler, evaluator, decision, flowtable, network, config }
     }
     pub fn add_streams(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
         *self.scheduler.flowtable_mut() = Weak::new();
@@ -65,14 +66,15 @@ impl CNC {
         let evaluator = &self.evaluator;
         let flowtable = &self.flowtable;
         let latest = &self.decision;
+        let config = &self.config;
 
-        let timeout = Duration::from_micros(Config::get().t_limit as u64);
+        let timeout = Duration::from_micros(config.t_limit as u64);
         let mut current = latest.clone();
 
         let start = Instant::now();
         self.algorithm.prepare(&mut current, flowtable);
         self.scheduler.configure(&mut current);  // should not schedule before routing
-        let toolbox = Toolbox::pack(scheduler, evaluator, latest);
+        let toolbox = Toolbox::pack(scheduler, evaluator, latest, config);
         self.algorithm.configure(&mut current, flowtable, start + timeout, toolbox);
         let elapsed = start.elapsed().as_micros();
 
@@ -104,8 +106,9 @@ impl CNC {
 }
 
 impl<'a> Toolbox<'a> {
-    pub fn pack(scheduler: &'a Scheduler, evaluator: &'a Evaluator, latest: &'a Decision) -> Self {
-        Toolbox { scheduler, evaluator, latest }
+    pub fn pack(scheduler: &'a Scheduler, evaluator: &'a Evaluator,
+                latest: &'a Decision, config: &'a Config) -> Self {
+        Toolbox { scheduler, evaluator, latest, config }
     }
     pub fn evaluate_wcd(&'a self, avb: usize, kth: usize, decision: &Decision) -> u32 {
         self.evaluator.evaluate_avb_wcd_for_kth(avb, kth, decision)
@@ -113,7 +116,7 @@ impl<'a> Toolbox<'a> {
     pub fn evaluate_cost(&'a self, decision: &mut Decision) -> (f64, bool) {
         self.scheduler.configure(decision);  // where it's mutated
         let (cost, objs) = self.evaluator.evaluate_cost_objectives(decision, self.latest);
-        let early_exit = objs[1] == 0.0 && Config::get().fast_stop;
+        let early_exit = objs[1] == 0.0 && self.config.fast_stop;
         (cost, early_exit)
     }
 }

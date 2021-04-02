@@ -1,5 +1,4 @@
 use adams_leaf::utils::json;
-use adams_leaf::utils::config::Config;
 use adams_leaf::cnc::CNC;
 use argh::FromArgs;
 
@@ -30,10 +29,9 @@ fn main() {
     let network = json::load_network(&args.network);
     let (tsns1, avbs1) = json::load_streams(&args.backgrounds, 1);
     let (tsns2, avbs2) = json::load_streams(&args.inputs, args.fold);
-    Config::load_file(&args.config)
-        .expect("Failed to load config file");
+    let config = json::load_config(&args.config);
 
-    let mut cnc = CNC::new(&args.algorithm, network, args.seed);
+    let mut cnc = CNC::new(&args.algorithm, network, args.seed, config);
 
     cnc.add_streams(tsns1, avbs1);
     let elapsed = cnc.configure();
