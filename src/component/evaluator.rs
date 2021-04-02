@@ -134,6 +134,10 @@ fn interfere_from_be(edge: &Edge) -> f64 {
     MAX_BE_SIZE / edge.bandwidth
 }
 
+// FIXME incomplete implemnetation
+// "IEEE Standard for Local and metropolitan area networks--Audio Video Bridging (AVB) Systems," in
+// IEEE Std 802.1BA-2011, pp.1-45, 30 Sept. 2011, doi: 10.1109/IEEESTD.2011.6032690.
+
 fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
     flowtable: &FlowTable) -> f64 {
     let mut interfere = 0.0;
@@ -149,6 +153,7 @@ fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
     interfere
 }
 
+// FIXME incomplete implemnetation
 // Sune Mølgaard Laursen, Paul Pop, and Wilfried Steiner. 2016. Routing optimization of AVB streams
 // in TSN networks. SIGBED Rev. 13, 4 (September 2016), 43–48.
 // DOI:https://doi.org/10.1145/3015037.3015044
