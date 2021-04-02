@@ -3,6 +3,7 @@ use crate::component::GateCtrlList;
 use crate::network::Edge;
 use crate::network::Network;
 use std::cmp::max;
+use std::rc::{Rc, Weak};
 use super::Decision;
 
 
@@ -14,22 +15,37 @@ const MAX_BE_SIZE: f64 = 1500.0;
 
 #[derive(Default)]
 pub struct Evaluator {
-    pub weights: [f64; 4],
+    flowtable: Weak<FlowTable>,
+    network: Weak<Network>,
+    weights: [f64; 4],
 }
 
 
 impl Evaluator {
     pub fn new(weights: [f64; 4]) -> Self {
-        Evaluator { weights }
+        Evaluator { weights, ..Default::default() }
     }
-    pub fn evaluate_avb_wcd(&self, decision: &Decision, flowtable: &FlowTable, network: &Network, id: usize) -> u32 {
-        let kth = decision.kth_next(id).unwrap();
-        evaluate_avb_wcd_for_kth(id, kth, decision, flowtable, network)
+    pub fn flowtable(&self) -> Rc<FlowTable> {
+        self.flowtable.upgrade().unwrap()
     }
-    pub fn evaluate_avb_objectives(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network, avb: usize) -> [f64; 4] {
+    pub fn flowtable_mut(&mut self) -> &mut Weak<FlowTable> {
+        &mut self.flowtable
+    }
+    pub fn network(&self) -> Rc<Network> {
+        self.network.upgrade().unwrap()
+    }
+    pub fn network_mut(&mut self) -> &mut Weak<Network> {
+        &mut self.network
+    }
+    pub fn evaluate_avb_wcd(&self, avb: usize, decision: &Decision) -> u32 {
+        let kth = decision.kth_next(avb).unwrap();
+        self.evaluate_avb_wcd_for_kth(avb, kth, decision)
+    }
+    pub fn evaluate_avb_objectives(&self, avb: usize, decision: &Decision, latest: &Decision) -> [f64; 4] {
+        let flowtable = self.flowtable();
         let latest = latest.kth(avb);
         let current = decision.kth_next(avb);
-        let wcd = self.evaluate_avb_wcd(decision, flowtable, network, avb);
+        let wcd = self.evaluate_avb_wcd(avb, decision);
         let max = flowtable.avb_spec(avb).unwrap().max_delay;
 
         let mut objs = [0.0; 4];
@@ -39,7 +55,9 @@ impl Evaluator {
         objs[3] = wcd as f64 / max as f64;
         objs
     }
-    pub fn evaluate_objectives(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network) -> [f64; 4] {
+    pub fn evaluate_objectives(&self, decision: &Decision, latest: &Decision)
+        -> [f64; 4] {
+        let flowtable = self.flowtable();
         let mut all_rerouted_count = 0;
         let mut avb_failed_count = 0;
         let mut avb_normed_wcd_sum = 0.0;
@@ -50,7 +68,7 @@ impl Evaluator {
             all_rerouted_count += is_rerouted(current, latest) as usize;
         }
         for &avb in flowtable.avbs() {
-            let wcd = self.evaluate_avb_wcd(decision, flowtable, network, avb);
+            let wcd = self.evaluate_avb_wcd(avb, decision);
             let max = flowtable.avb_spec(avb).unwrap().max_delay;
             avb_failed_count += (wcd > max) as usize;
             avb_normed_wcd_sum += wcd as f64 / max as f64;
@@ -63,49 +81,47 @@ impl Evaluator {
         objs[3] = avb_normed_wcd_sum / flowtable.avbs().len() as f64;
         objs
     }
-    pub fn evaluate_cost_objectives(&self, decision: &Decision, latest: &Decision, flowtable: &FlowTable, network: &Network) -> (f64, [f64; 4]) {
-        let objs = self.evaluate_objectives(decision, latest, flowtable, network);
+    pub fn evaluate_cost_objectives(&self, decision: &Decision, latest: &Decision)
+        -> (f64, [f64; 4]) {
+        let objs = self.evaluate_objectives(decision, latest);
         let cost = objs.iter()
             .zip(self.weights.iter())
             .map(|(x, y)| x * y)
             .sum();
         (cost, objs)
     }
+
+    /// 計算 AVB 資料流的端對端延遲（包含 TT、BE 及其它 AVB 所造成的延遲）
+    /// * `g` - 全局網路拓撲，每條邊上記錄其承載哪些資料流
+    /// * `flow` - 該 AVB 資料流的詳細資訊
+    /// * `route` - 該 AVB 資料流的路徑
+    /// * `flow_table` - 資料流表。需注意的是，這裡僅用了資料流本身的資料，而未使用其隨附資訊
+    /// TODO: 改用 FlowTable?
+    /// * `gcl` - 所有 TT 資料流的 Gate Control List
+    pub fn evaluate_avb_wcd_for_kth(&self, avb: usize, kth: usize, decision: &Decision) -> u32 {
+        let flowtable = self.flowtable();
+        let network = self.network();
+        let route = decision.kth_route(avb, kth);
+        let gcl = &decision.allocated_tsns;
+        let mut end_to_end = 0.0;
+        for ends in route.windows(2) {
+            let edge = network.edge(ends);
+            let traversed_avbs = decision.traversed_avbs.get(&edge.ends)
+                .map_or_else(|| vec![], |set| set.iter().cloned().collect());
+            let mut per_hop = 0.0;
+            per_hop += transmit_avb_itself(edge, avb, &flowtable);
+            per_hop += interfere_from_be(edge);
+            per_hop += interfere_from_avb(edge, avb, traversed_avbs, &flowtable);
+            per_hop += interfere_from_tsn(edge, per_hop, gcl);
+            end_to_end += per_hop;
+        }
+        end_to_end as u32
+    }
 }
 
+#[inline]
 fn is_rerouted(current: Option<usize>, latest: Option<usize>) -> bool {
     latest.is_some() && current != latest
-}
-
-/// 計算 AVB 資料流的端對端延遲（包含 TT、BE 及其它 AVB 所造成的延遲）
-/// * `g` - 全局網路拓撲，每條邊上記錄其承載哪些資料流
-/// * `flow` - 該 AVB 資料流的詳細資訊
-/// * `route` - 該 AVB 資料流的路徑
-/// * `flow_table` - 資料流表。需注意的是，這裡僅用了資料流本身的資料，而未使用其隨附資訊
-/// TODO: 改用 FlowTable?
-/// * `gcl` - 所有 TT 資料流的 Gate Control List
-pub fn evaluate_avb_wcd_for_kth(
-    avb: usize,
-    kth: usize,
-    decision: &Decision,
-    flowtable: &FlowTable,
-    network: &Network,
-) -> u32 {
-    let route = decision.kth_route(avb, kth);
-    let gcl = &decision.allocated_tsns;
-    let mut end_to_end = 0.0;
-    for ends in route.windows(2) {
-        let edge = network.edge(ends);
-        let traversed_avbs = decision.traversed_avbs.get(&edge.ends)
-            .map_or_else(|| vec![], |set| set.iter().cloned().collect());
-        let mut per_hop = 0.0;
-        per_hop += transmit_avb_itself(edge, avb, flowtable);
-        per_hop += interfere_from_be(edge);
-        per_hop += interfere_from_avb(edge, avb, traversed_avbs, flowtable);
-        per_hop += interfere_from_tsn(edge, per_hop, gcl);
-        end_to_end += per_hop;
-    }
-    end_to_end as u32
 }
 
 fn transmit_avb_itself(edge: &Edge, avb: usize, flowtable: &FlowTable) -> f64 {

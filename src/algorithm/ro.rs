@@ -1,6 +1,5 @@
-use crate::MAX_K;
+use crate::{MAX_K, cnc::Toolbox};
 use crate::component::Decision;
-use crate::component::evaluator::evaluate_avb_wcd_for_kth;
 use crate::component::FlowTable;
 use crate::network::Network;
 use rand::{Rng, SeedableRng};
@@ -8,7 +7,6 @@ use rand_chacha::ChaChaRng;
 use std::time::Instant;
 use super::base::yens::Yens;
 use super::Algorithm;
-use super::algorithm::Eval;
 
 
 const ALPHA_PORTION: f64 = 0.5;
@@ -29,11 +27,11 @@ impl Algorithm for RO {
         }
     }
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
-    fn configure(&mut self, decision: &mut Decision, flowtable: &FlowTable, network: &Network, deadline: Instant, evaluate: Eval) {
+    fn configure(&mut self, decision: &mut Decision, flowtable: &FlowTable, deadline: Instant, toolbox: Toolbox) {
         // self.grasp(decision, deadline);
         let mut rng = ChaChaRng::seed_from_u64(self.seed);
         let mut iter_times = 0;
-        let mut min_cost = evaluate(decision);
+        let mut min_cost = toolbox.evaluate_cost(decision);
         while Instant::now() < deadline {
             iter_times += 1;
             // PHASE 1
@@ -43,11 +41,11 @@ impl Algorithm for RO {
                 let candidate_cnt = self.get_candidate_count(src, dst);
                 let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
                 let set = gen_n_distinct_outof_k(alpha, candidate_cnt, &mut rng);
-                let new_route = self.find_min_cost_route(decision, flowtable, network, avb, Some(set));
+                let new_route = self.find_min_cost_route(decision, avb, Some(set), &flowtable, &toolbox);
                 current.pick(avb, new_route);
             }
             // PHASE 2
-            let cost = evaluate(&mut current);
+            let cost = toolbox.evaluate_cost(&mut current);
             if cost.0 < min_cost.0 {
                 min_cost = cost;
                 // #[cfg(debug_assertions)]
@@ -71,7 +69,7 @@ impl Algorithm for RO {
                     continue;
                 }
 
-                let new_route = self.find_min_cost_route(decision, flowtable, network, target_id, None);
+                let new_route = self.find_min_cost_route(decision, target_id, None, &flowtable, &toolbox);
                 let old_route = decision
                     .kth(target_id)
                     .unwrap();
@@ -82,7 +80,7 @@ impl Algorithm for RO {
 
                 // 實際更新下去，並計算成本
                 current.pick(target_id, new_route);
-                let cost = evaluate(&mut current);
+                let cost = toolbox.evaluate_cost(&mut current);
 
                 if cost.0 < min_cost.0 {
                     *decision = current.clone();
@@ -118,11 +116,11 @@ impl RO {
         RO { yens, seed }
     }
     /// 若有給定候選路徑的子集合，就從中選。若無，則遍歷所有候選路徑
-    fn find_min_cost_route(&self, decision: &Decision, flowtable: &FlowTable, network: &Network, id: usize, set: Option<Vec<usize>>) -> usize {
+    fn find_min_cost_route(&self, decision: &Decision, id: usize, set: Option<Vec<usize>>, flowtable: &FlowTable, toolbox: &Toolbox) -> usize {
         let (src, dst) = flowtable.ends(id);
         let (mut min_cost, mut best_k) = (std::f64::MAX, 0);
         let mut closure = |kth: usize| {
-            let wcd = evaluate_avb_wcd_for_kth(id, kth, decision, flowtable, network) as f64;
+            let wcd = toolbox.evaluate_wcd(id, kth, decision) as f64;
             if wcd < min_cost {
                 min_cost = wcd;
                 best_k = kth;
