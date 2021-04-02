@@ -54,16 +54,3 @@ fn repeated<T: Clone>(vec: Vec<T>, mul: u32) -> Vec<T> {
     let length = vec.len() * mul as usize;
     vec.iter().cloned().cycle().take(length).collect()
 }
-
-
-#[cfg(test)]
-mod test {
-    use super::repeated;
-    #[test]
-    fn test_repeated() {
-        let vec = vec!["vector", "of", "string"];
-        assert_eq!(repeated(vec.clone(), 0).len(), 0);
-        assert_eq!(repeated(vec.clone(), 1).len(), 3);
-        assert_eq!(repeated(vec.clone(), 3).len(), 9);
-    }
-}

@@ -24,17 +24,17 @@ impl Yens {
     pub fn compute(&mut self, graph: &Network, k: usize) {
         self.k = k;
         self.dijkstra.compute(graph);
-        // compute_once on all end devices pair takes 20 sec on test case
+        // compute_pair on all end devices pair takes 20 sec on test case
         for (&src, &dst) in graph.end_devices.iter().tuple_combinations() {
-            self.compute_once(graph, src, dst, 10);
-            self.compute_once(graph, dst, src, 10);
+            self.compute_pair(graph, src, dst, 10);
+            self.compute_pair(graph, dst, src, 10);
         }
     }
-    pub fn compute_once(&mut self, graph: &Network, src: usize, dst: usize, k: usize) {
+    pub fn compute_pair(&mut self, graph: &Network, src: usize, dst: usize, k: usize) {
         if self.path.contains_key(&(src, dst)) { return }
         debug_assert!(src != dst);
 
-        self.dijkstra.compute_once(graph, src);
+        self.dijkstra.compute_pair(graph, src);
         // TODO dump panic message for not connected
         let shortest = self.dijkstra.shortest_path(src, dst).unwrap();
         let mut list_a = vec![shortest];
@@ -63,7 +63,7 @@ impl Yens {
 
                 let mut dijkstra = Dijkstra::default();
                 dijkstra.ignore(ignored_nodes, ignored_edges);
-                dijkstra.compute_once(graph, spur_node);
+                dijkstra.compute_pair(graph, spur_node);
 
                 match dijkstra.shortest_path(spur_node, dst) {
                     Some(spur_path) => {
@@ -102,29 +102,29 @@ impl Yens {
 
 
 #[cfg(test)]
-mod test {
+mod tests {
     use crate::network::Network;
     use itertools::Itertools;
     use super::Yens;
     #[test]
     #[ignore]
-    fn test_yens_compute_once() {
-        let mut graph = Network::default();
-        graph.add_nodes(6, 93);  // 0..=5 + 99, 6..=98
-        graph.add_nodes(1, 0);
-        graph.add_edges(vec![
+    fn it_runs_yens_on_pairs() {
+        let mut network = Network::default();
+        network.add_nodes(6, 93);  // 0..=5 + 99, 6..=98
+        network.add_nodes(1, 0);
+        network.add_edges(vec![
             (0, 1, 10.0), (1, 2, 20.0), (0, 2, 02.0), (1, 4, 10.0),
             (1, 3, 15.0), (2, 3, 10.0), (2, 4, 10.0)
         ]);
         let more_edges = (4..100).tuple_combinations()
             .map(|(src, dst)| (src, dst, src as f64 * dst as f64))
             .collect();
-        graph.add_edges(more_edges);
+        network.add_edges(more_edges);
 
         let mut yens = Yens::default();
-        yens.compute_once(&graph, 0, 2, 10);
-        yens.compute_once(&graph, 0, 5, 10);
-        yens.compute_once(&graph, 0, 99, 10);
+        yens.compute_pair(&network, 0, 2, 10);
+        yens.compute_pair(&network, 0, 5, 10);
+        yens.compute_pair(&network, 0, 99, 10);
         let yens_kth = |src, dst, kth| yens.kth_shortest_path(src, dst, kth);
 
         assert_eq!(yens.count_shortest_paths(0, 2), 4);

@@ -183,7 +183,7 @@ fn interfere_from_tsn(edge: &Edge, wcd: f64, gcl: &GateCtrlList) -> f64 {
 
 
 #[cfg(test)]
-mod test {
+mod tests {
     use crate::algorithm::Algorithm;
     use crate::cnc::CNC;
     use crate::network::Network;
