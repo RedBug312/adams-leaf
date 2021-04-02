@@ -1,13 +1,11 @@
-use crate::algorithm::{AlgorithmEnum, Algorithm, ACO, RO, SPF};
-use crate::component::Decision;
-use crate::component::Evaluator;
-use crate::component::FlowTable;
+use crate::algorithm::{ACO, Algorithm, AlgorithmEnum, RO, SPF};
+use crate::component::{Decision, Evaluator, FlowTable};
 use crate::network::Network;
 use crate::scheduler::Scheduler;
 use crate::utils::config::Config;
 use crate::utils::stream::{TSN, AVB};
-use std::{rc::Weak, time::{Duration, Instant}};
-use std::rc::Rc;
+use std::time::{Duration, Instant};
+use std::rc::{Rc, Weak};
 
 
 pub struct CNC {
@@ -16,7 +14,14 @@ pub struct CNC {
     evaluator: Evaluator,
     flowtable: Rc<FlowTable>,
     decision: Decision,
+    #[allow(dead_code)]
     network: Rc<Network>,
+}
+
+pub struct Toolbox<'a> {
+    scheduler: &'a Scheduler,
+    evaluator: &'a Evaluator,
+    latest: &'a Decision,
 }
 
 
@@ -59,24 +64,16 @@ impl CNC {
         let scheduler = &self.scheduler;
         let evaluator = &self.evaluator;
         let flowtable = &self.flowtable;
-        let network = &self.network;
         let latest = &self.decision;
 
-        let limit = Duration::from_micros(Config::get().t_limit as u64);
+        let timeout = Duration::from_micros(Config::get().t_limit as u64);
         let mut current = latest.clone();
-
-        let evaluate = |decision: &mut Decision| {
-            scheduler.configure(decision);  // where it's mutated
-            let (cost, objs) = evaluator.evaluate_cost_objectives(decision, latest);
-            let early_exit = objs[1] == 0.0 && Config::get().fast_stop;
-            (cost, early_exit)
-        };
-        let evaluate = Box::new(evaluate);
 
         let start = Instant::now();
         self.algorithm.prepare(&mut current, flowtable);
         self.scheduler.configure(&mut current);  // should not schedule before routing
-        self.algorithm.configure(&mut current, flowtable, network, start + limit, evaluate);
+        let toolbox = Toolbox::pack(scheduler, evaluator, latest);
+        self.algorithm.configure(&mut current, flowtable, start + timeout, toolbox);
         let elapsed = start.elapsed().as_micros();
 
         self.show_results(&current);
@@ -103,5 +100,20 @@ impl CNC {
         }
         let (cost, objs) = self.evaluator.evaluate_cost_objectives(current, latest);
         println!("with cost {:.2} and each objective {:.2?}", cost, objs);
+    }
+}
+
+impl<'a> Toolbox<'a> {
+    pub fn pack(scheduler: &'a Scheduler, evaluator: &'a Evaluator, latest: &'a Decision) -> Self {
+        Toolbox { scheduler, evaluator, latest }
+    }
+    pub fn evaluate_wcd(&'a self, avb: usize, kth: usize, decision: &Decision) -> u32 {
+        self.evaluator.evaluate_avb_wcd_for_kth(avb, kth, decision)
+    }
+    pub fn evaluate_cost(&'a self, decision: &mut Decision) -> (f64, bool) {
+        self.scheduler.configure(decision);  // where it's mutated
+        let (cost, objs) = self.evaluator.evaluate_cost_objectives(decision, self.latest);
+        let early_exit = objs[1] == 0.0 && Config::get().fast_stop;
+        (cost, early_exit)
     }
 }

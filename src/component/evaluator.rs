@@ -38,10 +38,8 @@ impl Evaluator {
         &mut self.network
     }
     pub fn evaluate_avb_wcd(&self, avb: usize, decision: &Decision) -> u32 {
-        let flowtable = self.flowtable();
-        let network = self.network();
         let kth = decision.kth_next(avb).unwrap();
-        evaluate_avb_wcd_for_kth(avb, kth, decision, &flowtable, &network)
+        self.evaluate_avb_wcd_for_kth(avb, kth, decision)
     }
     pub fn evaluate_avb_objectives(&self, avb: usize, decision: &Decision, latest: &Decision) -> [f64; 4] {
         let flowtable = self.flowtable();
@@ -92,42 +90,38 @@ impl Evaluator {
             .sum();
         (cost, objs)
     }
+
+    /// 計算 AVB 資料流的端對端延遲（包含 TT、BE 及其它 AVB 所造成的延遲）
+    /// * `g` - 全局網路拓撲，每條邊上記錄其承載哪些資料流
+    /// * `flow` - 該 AVB 資料流的詳細資訊
+    /// * `route` - 該 AVB 資料流的路徑
+    /// * `flow_table` - 資料流表。需注意的是，這裡僅用了資料流本身的資料，而未使用其隨附資訊
+    /// TODO: 改用 FlowTable?
+    /// * `gcl` - 所有 TT 資料流的 Gate Control List
+    pub fn evaluate_avb_wcd_for_kth(&self, avb: usize, kth: usize, decision: &Decision) -> u32 {
+        let flowtable = self.flowtable();
+        let network = self.network();
+        let route = decision.kth_route(avb, kth);
+        let gcl = &decision.allocated_tsns;
+        let mut end_to_end = 0.0;
+        for ends in route.windows(2) {
+            let edge = network.edge(ends);
+            let traversed_avbs = decision.traversed_avbs.get(&edge.ends)
+                .map_or_else(|| vec![], |set| set.iter().cloned().collect());
+            let mut per_hop = 0.0;
+            per_hop += transmit_avb_itself(edge, avb, &flowtable);
+            per_hop += interfere_from_be(edge);
+            per_hop += interfere_from_avb(edge, avb, traversed_avbs, &flowtable);
+            per_hop += interfere_from_tsn(edge, per_hop, gcl);
+            end_to_end += per_hop;
+        }
+        end_to_end as u32
+    }
 }
 
 #[inline]
 fn is_rerouted(current: Option<usize>, latest: Option<usize>) -> bool {
     latest.is_some() && current != latest
-}
-
-/// 計算 AVB 資料流的端對端延遲（包含 TT、BE 及其它 AVB 所造成的延遲）
-/// * `g` - 全局網路拓撲，每條邊上記錄其承載哪些資料流
-/// * `flow` - 該 AVB 資料流的詳細資訊
-/// * `route` - 該 AVB 資料流的路徑
-/// * `flow_table` - 資料流表。需注意的是，這裡僅用了資料流本身的資料，而未使用其隨附資訊
-/// TODO: 改用 FlowTable?
-/// * `gcl` - 所有 TT 資料流的 Gate Control List
-pub fn evaluate_avb_wcd_for_kth(
-    avb: usize,
-    kth: usize,
-    decision: &Decision,
-    flowtable: &FlowTable,
-    network: &Network,
-) -> u32 {
-    let route = decision.kth_route(avb, kth);
-    let gcl = &decision.allocated_tsns;
-    let mut end_to_end = 0.0;
-    for ends in route.windows(2) {
-        let edge = network.edge(ends);
-        let traversed_avbs = decision.traversed_avbs.get(&edge.ends)
-            .map_or_else(|| vec![], |set| set.iter().cloned().collect());
-        let mut per_hop = 0.0;
-        per_hop += transmit_avb_itself(edge, avb, flowtable);
-        per_hop += interfere_from_be(edge);
-        per_hop += interfere_from_avb(edge, avb, traversed_avbs, flowtable);
-        per_hop += interfere_from_tsn(edge, per_hop, gcl);
-        end_to_end += per_hop;
-    }
-    end_to_end as u32
 }
 
 fn transmit_avb_itself(edge: &Edge, avb: usize, flowtable: &FlowTable) -> f64 {

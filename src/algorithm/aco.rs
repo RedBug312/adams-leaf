@@ -1,6 +1,5 @@
-use crate::MAX_K;
+use crate::{MAX_K, cnc::Toolbox};
 use crate::component::Decision;
-use crate::component::evaluator::evaluate_avb_wcd_for_kth;
 use crate::component::FlowTable;
 use crate::network::Network;
 use crate::utils::config::Config;
@@ -9,7 +8,6 @@ use rand_chacha::ChaChaRng;
 use std::collections::BinaryHeap;
 use std::time::Instant;
 use super::Algorithm;
-use super::algorithm::Eval;
 use super::base::ants::AntColony;
 use super::base::ants::ACOJudgeResult;
 use super::base::ants::WeightedState;
@@ -34,6 +32,27 @@ impl ACO {
     pub fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
         self.yens.count_shortest_paths(src, dst)
     }
+    fn compute_visibility(&self, decision: &Decision, flowtable: &FlowTable, toolbox: &Toolbox) -> Vec<[f64; MAX_K]> {
+        // TODO 好好設計能見度函式！
+        // 目前：路徑長的倒數
+        let len = flowtable.len();
+        let mut vis = vec![[0.0; MAX_K]; len];
+        for &avb in flowtable.avbs() {
+            let (src, dst) = flowtable.ends(avb);
+            for kth in 0..self.get_candidate_count(src, dst) {
+                let wcd = toolbox.evaluate_wcd(avb, kth, decision) as f64;
+                vis[avb][kth] = 1.0 / wcd * self.memory[avb][kth];
+            }
+        }
+        for &tsn in flowtable.tsns() {
+            let (src, dst) = flowtable.ends(tsn);
+            for kth in 0..self.get_candidate_count(src, dst) {
+                let route = self.yens.kth_shortest_path(src, dst, kth).unwrap();
+                vis[tsn][kth] = 1.0 / route.len() as f64 * self.memory[tsn][kth];
+            }
+        }
+        vis
+    }
 }
 
 impl Algorithm for ACO {
@@ -45,6 +64,7 @@ impl Algorithm for ACO {
         }
         // before initial scheduler configure
         let config = Config::get();
+        self.ants.extend_state_len(flowtable.len());
         self.memory = vec![[1.0; MAX_K]; flowtable.len()];
         for &tsn in flowtable.tsns() {
             if let Some(kth) = decision.kth(tsn) {
@@ -57,11 +77,10 @@ impl Algorithm for ACO {
             }
         }
     }
-    fn configure(&mut self, decision: &mut Decision, flowtable: &FlowTable, network: &Network, deadline: Instant, evaluate: Eval) {
-        self.ants.extend_state_len(flowtable.len());
+    fn configure(&mut self, decision: &mut Decision, flowtable: &FlowTable, deadline: Instant, toolbox: Toolbox) {
 
-        let vis = compute_visibility(decision, flowtable, network, self);
-        let cost = evaluate(decision);
+        let vis = self.compute_visibility(decision, flowtable, &toolbox);
+        let cost = toolbox.evaluate_cost(decision);
 
         let mut best_dist = distance(cost.0);
 
@@ -87,7 +106,7 @@ impl Algorithm for ACO {
                     // TODO online pharamon update
                 }
 
-                let cost = compute_aco_dist(decision, &cur_state, &mut best_dist, &evaluate);
+                let cost = compute_aco_dist(decision, &cur_state, &mut best_dist, &toolbox);
                 let dist = distance(cost.0);
                 let judge = if cost.1 {
                     // 找到可行解，且為快速終止模式
@@ -156,35 +175,12 @@ fn select_cluster(visibility: &[f64; MAX_K], pheromone: &[f64; MAX_K], k: usize,
     }
 }
 
-
-fn compute_visibility(decision: &Decision, flowtable: &FlowTable, network: &Network, algo: &ACO) -> Vec<[f64; MAX_K]> {
-    // TODO 好好設計能見度函式！
-    // 目前：路徑長的倒數
-    let len = flowtable.len();
-    let mut vis = vec![[0.0; MAX_K]; len];
-    for &avb in flowtable.avbs() {
-        let (src, dst) = flowtable.ends(avb);
-        for kth in 0..algo.get_candidate_count(src, dst) {
-            let wcd = evaluate_avb_wcd_for_kth(avb, kth, decision, flowtable, network) as f64;
-            vis[avb][kth] = 1.0 / wcd * algo.memory[avb][kth];
-        }
-    }
-    for &tsn in flowtable.tsns() {
-        let (src, dst) = flowtable.ends(tsn);
-        for kth in 0..algo.get_candidate_count(src, dst) {
-            let route = algo.yens.kth_shortest_path(src, dst, kth).unwrap();
-            vis[tsn][kth] = 1.0 / route.len() as f64 * algo.memory[tsn][kth];
-        }
-    }
-    vis
-}
-
 /// 本函式不只會計算距離，如果看見最佳解，還會把該解的網路包裝器記錄回 decision 參數
 fn compute_aco_dist(
     decision: &mut Decision,
     state: &Vec<usize>,
     best_dist: &mut f64,
-    evaluate: &Eval,
+    toolbox: &Toolbox,
 ) -> (f64, bool) {
     let mut current = decision.clone();
 
@@ -193,7 +189,7 @@ fn compute_aco_dist(
         current.pick(id, kth);
     }
 
-    let cost = evaluate(&mut current);
+    let cost = toolbox.evaluate_cost(&mut current);
     let dist = distance(cost.0);
 
     if cost.1 {

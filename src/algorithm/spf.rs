@@ -1,9 +1,8 @@
-use crate::component::Decision;
+use crate::{cnc::Toolbox, component::Decision};
 use crate::component::FlowTable;
 use crate::network::Network;
 use std::time::Instant;
 use super::base::yens::Yens;
-use super::algorithm::Eval;
 use super::Algorithm;
 
 
@@ -19,7 +18,7 @@ impl Algorithm for SPF {
             .map(|ends| self.yens.k_shortest_paths(ends.0, ends.1));
         decision.candidates.extend(input_candidates);
     }
-    fn configure(&mut self, _decision: &mut Decision, _flowtable: &FlowTable, _network: &Network, _deadline: Instant, _evaluate: Eval) {
+    fn configure(&mut self, _decision: &mut Decision, _flowtable: &FlowTable, _deadline: Instant, _toolbox: Toolbox) {
     }
 }
 
