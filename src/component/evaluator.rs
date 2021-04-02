@@ -51,7 +51,7 @@ impl Evaluator {
         let mut objs = [0.0; 4];
         objs[0] = decision.tsn_fail as u8 as f64;
         objs[1] = (wcd > max) as usize as f64;
-        objs[2] = is_rerouted(current, latest) as usize as f64;
+        objs[2] = is_rerouted(latest, current) as usize as f64;
         objs[3] = wcd as f64 / max as f64;
         objs
     }
@@ -65,7 +65,7 @@ impl Evaluator {
         for either in 0..flowtable.len() {
             let latest = latest.kth(either);
             let current = decision.kth_next(either);
-            all_rerouted_count += is_rerouted(current, latest) as usize;
+            all_rerouted_count += is_rerouted(latest, current) as usize;
         }
         for &avb in flowtable.avbs() {
             let wcd = self.evaluate_avb_wcd(avb, decision);
@@ -120,7 +120,7 @@ impl Evaluator {
 }
 
 #[inline]
-fn is_rerouted(current: Option<usize>, latest: Option<usize>) -> bool {
+fn is_rerouted(latest: Option<usize>, current: Option<usize>) -> bool {
     latest.is_some() && current != latest
 }
 
@@ -184,196 +184,64 @@ fn interfere_from_tsn(edge: &Edge, wcd: f64, gcl: &GateCtrlList) -> f64 {
 
 #[cfg(test)]
 mod test {
-    // use super::*;
-    // use crate::network::*;
+    use crate::algorithm::Algorithm;
+    use crate::cnc::CNC;
+    use crate::network::Network;
+    use crate::utils::json;
+    use crate::utils::stream::AVB;
+    use super::*;
 
-    // fn init_settings() -> (MemorizingGraph, Vec<AVBFlow>, FlowTable<usize>, GCL) {
-    //     use crate::flow::data::{AVBClass, AVBData};
-    //     let mut g = StreamAwareGraph::new();
-    //     g.add_host(Some(3));
-    //     g.add_edge((0, 1), 100.0).unwrap();
-    //     g.add_edge((1, 2), 100.0).unwrap();
-    //     let flows = vec![
-    //         AVBFlow {
-    //             id: 0.into(),
-    //             src: 0,
-    //             dst: 2,
-    //             size: 75,
-    //             period: 10000,
-    //             max_delay: 200,
-    //             spec_data: AVBData {
-    //                 avb_class: AVBClass::A,
-    //             },
-    //         },
-    //         AVBFlow {
-    //             id: 0.into(),
-    //             src: 0,
-    //             dst: 2,
-    //             size: 150,
-    //             period: 10000,
-    //             max_delay: 200,
-    //             spec_data: AVBData {
-    //                 avb_class: AVBClass::A,
-    //             },
-    //         },
-    //         AVBFlow {
-    //             id: 0.into(),
-    //             src: 0,
-    //             dst: 2,
-    //             size: 75,
-    //             period: 10000,
-    //             max_delay: 200,
-    //             spec_data: AVBData {
-    //                 avb_class: AVBClass::B,
-    //             },
-    //         },
-    //     ];
-    //     let flow_table = FlowTable::new();
-    //     let gcl = GCL::new(10, g.get_edge_cnt());
-    //     (MemorizingGraph::new(g), flows, flow_table, gcl)
-    // }
-    // fn build_flowid_vec(v: Vec<usize>) -> Vec<usize> {
-    //     v.into_iter().map(|i| i.into()).collect()
-    // }
-    // #[test]
-    // fn test_single_link_avb() {
-    //     let (_, flows, mut route_table, _) = init_settings();
+    fn setup() -> CNC {
+        let mut network = Network::new();
+        network.add_nodes(3, 0);
+        network.add_edges(vec![(0, 1, 100.0), (1, 2, 100.0)]);
+        let tsns = vec![];
+        let avbs = vec![
+            AVB::new(0, 2, 075, 10000, 200, 'A'),
+            AVB::new(0, 2, 150, 10000, 200, 'A'),
+            AVB::new(0, 2, 075, 10000, 200, 'B'),
+        ];
+        let config = json::load_config("config.example.json");
+        let mut cnc = CNC::new("aco", network, 0, config);
+        cnc.add_streams(tsns, avbs);
+        cnc.algorithm.prepare(&mut cnc.decision, &cnc.flowtable);
+        cnc
+    }
 
-    //     route_table.insert(vec![], flows, 0);
+    #[test]
+    fn it_determines_if_rerouted() {
+        assert_eq!(is_rerouted(None, None), false);
+        assert_eq!(is_rerouted(None, Some(1)), false);
+        assert_eq!(is_rerouted(Some(1), Some(1)), false);
+        assert_eq!(is_rerouted(Some(1), Some(2)), true);
+    }
 
-    //     assert_eq!(
-    //         wcd_on_single_link(
-    //             route_table.get_avb(0.into()).unwrap(),
-    //             100.0,
-    //             &route_table,
-    //             &build_flowid_vec(vec![0, 2])
-    //         ),
-    //         (MAX_BE_SIZE / 100.0 + 1.0)
-    //     );
-    //     assert_eq!(
-    //         wcd_on_single_link(
-    //             route_table.get_avb(0.into()).unwrap(),
-    //             100.0,
-    //             &route_table,
-    //             &build_flowid_vec(vec![1, 0, 2])
-    //         ),
-    //         (MAX_BE_SIZE / 100.0 + 1.0 + 2.0)
-    //     );
-    //     assert_eq!(
-    //         wcd_on_single_link(
-    //             route_table.get_avb(1.into()).unwrap(),
-    //             100.0,
-    //             &route_table,
-    //             &build_flowid_vec(vec![1, 0, 2])
-    //         ),
-    //         (MAX_BE_SIZE / 100.0 + 1.0 + 2.0)
-    //     );
+    #[test]
+    fn it_evaluates_avb_interfere() {
+        let cnc = setup();
+        let edge = cnc.network.edge(&[0, 1]);
+        let flowtable = &cnc.flowtable;
+        let mut decision = cnc.decision.clone();
+        cnc.scheduler.configure(&mut decision);
+        assert_eq!(interfere_from_avb(&edge, 0, vec![0, 1, 2], flowtable), 2.0);
+        assert_eq!(interfere_from_avb(&edge, 1, vec![0, 1, 2], flowtable), 1.0);
+        assert_eq!(interfere_from_avb(&edge, 2, vec![0, 1, 2], flowtable), 3.0);
+    }
 
-    //     assert_eq!(
-    //         wcd_on_single_link(
-    //             route_table.get_avb(2.into()).unwrap(),
-    //             100.0,
-    //             &route_table,
-    //             &build_flowid_vec(vec![1, 0, 2])
-    //         ),
-    //         (MAX_BE_SIZE / 100.0 + 1.0 + 2.0 + 1.0)
-    //     );
-    // }
-    // #[test]
-    // fn test_endtoend_avb_without_gcl() {
-    //     let (mut g, flows, mut flow_table, gcl) = init_settings();
-    //     flow_table.insert(vec![], vec![flows[0].clone()], 0);
-    //     g.update_flowid_on_route(true, 0.into(), &vec![0, 1, 2]);
-    //     assert_eq!(
-    //         compute_avb_latency(&g, &flows[0], &vec![0, 1, 2], &flow_table, &gcl),
-    //         ((MAX_BE_SIZE / 100.0 + 1.0) * 2.0) as u32
-    //     );
-
-    //     flow_table.insert(vec![], vec![flows[1].clone()], 0);
-    //     g.update_flowid_on_route(true, 1.into(), &vec![0, 1, 2]);
-    //     assert_eq!(
-    //         compute_avb_latency(&g, &flows[0], &vec![0, 1, 2], &flow_table, &gcl),
-    //         ((MAX_BE_SIZE / 100.0 + 1.0 + 2.0) * 2.0) as u32
-    //     );
-    // }
-    // #[test]
-    // fn test_endtoend_avb_with_gcl() {
-    //     // 其實已經接近整合測試了 @@
-    //     let (mut g, flows, mut flow_table, mut gcl) = init_settings();
-
-    //     flow_table.insert(vec![], vec![flows[0].clone()], 0);
-    //     g.update_flowid_on_route(true, 0.into(), &vec![0, 1, 2]);
-    //     flow_table.insert(vec![], vec![flows[1].clone()], 0);
-    //     g.update_flowid_on_route(true, 1.into(), &vec![0, 1, 2]);
-
-    //     gcl.insert_gate_evt(0, 99.into(), 0, 0, 10);
-    //     assert_eq!(
-    //         compute_avb_latency(
-    //             &g,
-    //             flow_table.get_avb(0.into()).unwrap(),
-    //             &vec![0, 1, 2],
-    //             &flow_table,
-    //             &gcl
-    //         ),
-    //         ((MAX_BE_SIZE / 100.0 + 1.0 + 2.0) * 2.0 + 10.0) as u32
-    //     );
-
-    //     gcl.insert_gate_evt(0, 99.into(), 0, 15, 5);
-    //     assert_eq!(
-    //         compute_avb_latency(
-    //             &g,
-    //             flow_table.get_avb(0.into()).unwrap(),
-    //             &vec![0, 1, 2],
-    //             &flow_table,
-    //             &gcl
-    //         ),
-    //         ((MAX_BE_SIZE / 100.0 + 1.0 + 2.0) * 2.0 + 15.0) as u32
-    //     );
-
-    //     gcl.insert_gate_evt(2, 99.into(), 0, 100, 100);
-    //     // 雖然這個關閉事件跟前面兩個不可能同時發生，但為了計算快速，還是假裝全部都發生了
-    //     assert_eq!(
-    //         compute_avb_latency(
-    //             &g,
-    //             flow_table.get_avb(0.into()).unwrap(),
-    //             &vec![0, 1, 2],
-    //             &flow_table,
-    //             &gcl
-    //         ),
-    //         ((MAX_BE_SIZE / 100.0 + 1.0 + 2.0) * 2.0 + 115.0) as u32
-    //     );
-    //     assert_eq!(
-    //         compute_avb_latency(
-    //             &g,
-    //             flow_table.get_avb(1.into()).unwrap(),
-    //             &vec![0, 1, 2],
-    //             &flow_table,
-    //             &gcl
-    //         ),
-    //         ((MAX_BE_SIZE / 100.0 + 2.0 + 1.0) * 2.0 + 115.0) as u32
-    //     );
-
-    //     gcl.insert_gate_evt(0, 99.into(), 0, 100, 100);
-    //     // 這個事件與同個埠口上的前兩個事件不可能同時發生，選比較久的（即這個事件）
-    //     assert_eq!(
-    //         compute_avb_latency(
-    //             &g,
-    //             flow_table.get_avb(0.into()).unwrap(),
-    //             &vec![0, 1, 2],
-    //             &flow_table,
-    //             &gcl
-    //         ),
-    //         ((MAX_BE_SIZE / 100.0 + 1.0 + 2.0) * 2.0 + 200.0) as u32
-    //     );
-    //     assert_eq!(
-    //         compute_avb_latency(
-    //             &g,
-    //             flow_table.get_avb(1.into()).unwrap(),
-    //             &vec![0, 1, 2],
-    //             &flow_table,
-    //             &gcl
-    //         ),
-    //         ((MAX_BE_SIZE / 100.0 + 2.0 + 1.0) * 2.0 + 200.0) as u32
-    //     );
-    // }
+    #[test]
+    fn it_evaluates_tsn_interfere() {
+        let cnc = setup();
+        let edge = cnc.network.edge(&[0, 1]);
+        let mut decision = cnc.decision.clone();
+        cnc.scheduler.configure(&mut decision);
+        // GCL: 3 - - - - 4 - 5 5 -
+        let mut gcl = GateCtrlList::new(10);
+        gcl.insert_gate_evt(edge.ends, 3, 0..1);
+        gcl.insert_gate_evt(edge.ends, 4, 5..6);
+        gcl.insert_gate_evt(edge.ends, 5, 7..9);
+        println!("{:?}", gcl);
+        assert_eq!(interfere_from_tsn(&edge, 1.0, &gcl), 3.0);  // should be 2.0
+        assert_eq!(interfere_from_tsn(&edge, 2.0, &gcl), 3.0);  // should be 3.0
+        assert_eq!(interfere_from_tsn(&edge, 3.0, &gcl), 3.0);  // should be 4.0
+    }
 }

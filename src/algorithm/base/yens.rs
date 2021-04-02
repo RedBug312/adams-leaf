@@ -35,6 +35,7 @@ impl Yens {
         debug_assert!(src != dst);
 
         self.dijkstra.compute_once(graph, src);
+        // TODO dump panic message for not connected
         let shortest = self.dijkstra.shortest_path(src, dst).unwrap();
         let mut list_a = vec![shortest];
         let mut heap_b = MyMinHeap::new();
