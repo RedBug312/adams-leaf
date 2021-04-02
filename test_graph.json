@@ -1,6 +1,6 @@
 {
-    "host_cnt": 0,
-    "switch_cnt": 6,
+    "host_cnt": 6,
+    "switch_cnt": 0,
     "edges": [
         [0, 1, 100.0],
         [0, 5, 100.0],

@@ -278,3 +278,40 @@ fn insert_allocated_tsn(decision: &mut Decision, tsn: usize, kth: usize, schedul
         }
     }
 }
+
+    // #[test]
+    // fn test_remember_forget_flow() -> Result<(), String> {
+    //     let mut g = Network::new();
+    //     g.add_host(Some(5));
+    //     g.add_edge((0, 1), 10.0)?;
+    //     g.add_edge((1, 2), 20.0)?;
+    //     g.add_edge((2, 3), 2.0)?;
+    //     g.add_edge((0, 3), 2.0)?;
+    //     g.add_edge((0, 4), 2.0)?;
+    //     g.add_edge((3, 4), 2.0)?;
+
+    //     let mut g = MemorizingGraph::new(g);
+
+    //     let mut ans: Vec<Vec<usize>> = vec![vec![], vec![], vec![]];
+    //     assert_eq!(ans, g.get_overlap_flows(&vec![0, 3, 2, 1]));
+
+    //     g.update_flowid_on_route(true, 0.into(), &vec![2, 3, 4]);
+    //     g.update_flowid_on_route(true, 1.into(), &vec![1, 0, 3, 4]);
+
+    //     assert_eq!(ans, g.get_overlap_flows(&vec![4, 3, 0, 1])); // 兩個方向不視為重疊
+
+    //     let mut ov_flows = g.get_overlap_flows(&vec![0, 3, 4]);
+    //     assert_eq!(build_id_vec(vec![1]), ov_flows[0]);
+    //     ov_flows[1].sort();
+    //     assert_eq!(build_id_vec(vec![0, 1]), ov_flows[1]);
+
+    //     g.update_flowid_on_route(false, 1.into(), &vec![1, 0, 3, 4]);
+    //     ans = vec![vec![], vec![0.into()]];
+    //     assert_eq!(ans, g.get_overlap_flows(&vec![0, 3, 4]));
+
+    //     g.forget_all_flows();
+    //     ans = vec![vec![], vec![]];
+    //     assert_eq!(ans, g.get_overlap_flows(&vec![0, 3, 4]));
+
+    //     Ok(())
+    // }

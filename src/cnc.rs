@@ -9,13 +9,13 @@ use std::rc::{Rc, Weak};
 
 
 pub struct CNC {
-    algorithm: AlgorithmEnum,
-    scheduler: Scheduler,
-    evaluator: Evaluator,
-    flowtable: Rc<FlowTable>,
-    decision: Decision,
+    pub algorithm: AlgorithmEnum,
+    pub scheduler: Scheduler,
+    pub evaluator: Evaluator,
+    pub flowtable: Rc<FlowTable>,
+    pub decision: Decision,
     #[allow(dead_code)]
-    network: Rc<Network>,
+    pub network: Rc<Network>,
 }
 
 pub struct Toolbox<'a> {
