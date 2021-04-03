@@ -2,17 +2,17 @@ use std::iter;
 use hashbrown::HashMap;
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Device {
     EndDevice,
     Bridge,
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Node {
     pub device: Device,
     pub neighbors: Vec<usize>,
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Edge {
     pub ends: (usize, usize),
     pub bandwidth: f64,
@@ -30,7 +30,7 @@ impl Edge {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Network {
     pub nodes: Vec<Node>,
     pub edges: HashMap<(usize, usize), Edge>,

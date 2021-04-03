@@ -3,7 +3,7 @@ OUT = target/release/adams_leaf
 
 
 .PHONY: all
-all: check profile
+all: check
 
 .PHONY: build
 build: $(OUT)
@@ -13,12 +13,11 @@ start: $(OUT)
 	time make -C plot OUT=../$(OUT)
 
 .PHONY: check
-check:
-	cargo test --test integration_test -- --show-output --test-threads=1 > tests/result.log
+check: $(OUT)
+	RUST_BACKTRACE=1 cargo test --lib
+	RUST_BACKTRACE=1 cargo test --test integration_test \
+		-- --show-output --test-threads=1 > tests/result.log
 	diff -I time -I finished --color tests/expect.log tests/result.log
-
-.PHONY: profile
-profile: $(OUT)
 	time $(OUT) ro exp_graph.json exp_flow_heavy.json exp_flow_reconf.json 2 -s 420
 	cloc src
 

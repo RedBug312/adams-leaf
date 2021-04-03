@@ -19,10 +19,10 @@ pub struct Dijkstra {
 impl Dijkstra {
     pub fn compute(&mut self, graph: &Network) {
         for &root in graph.end_devices.iter() {
-            self.compute_once(graph, root);
+            self.compute_pair(graph, root);
         }
     }
-    pub fn compute_once(&mut self, graph: &Network, r: usize) {
+    pub fn compute_pair(&mut self, graph: &Network, r: usize) {
         if self.dist.contains_key(&(r, r)) { return }
         let mut heap = MyMinHeap::new();
         let mut seen = HashMap::new();
@@ -81,34 +81,36 @@ impl Dijkstra {
 
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::Dijkstra;
     use crate::network::Network;
     #[test]
-    fn test_dijkstra_case1() {
-        let mut graph = Network::default();
-        graph.add_nodes(3, 0);
-        graph.add_edges(vec![
+    fn it_runs_dijkstra_on_case1() {
+        let mut network = Network::default();
+        network.add_nodes(3, 0);
+        network.add_edges(vec![
             (0, 1, 10.0), (0, 1, 10.0), (1, 2, 20.0), (0, 2, 02.0),
         ]);
         let mut dijkstra = Dijkstra::default();
-        dijkstra.compute(&graph);
-        assert_eq!(dijkstra.shortest_path(0, 2), Some(vec![0, 1, 2]));
+        dijkstra.compute(&network);
+        let dijk = |src, dst| dijkstra.shortest_path(src, dst);
+        assert_eq!(dijk(0, 2), Some(vec![0, 1, 2]));
     }
     #[test]
-    fn test_dijkstra_case2() {
-        let mut graph = Network::default();
-        graph.add_nodes(6, 0);
-        graph.add_edges(vec![
+    fn it_runs_dijkstra_on_case2() {
+        let mut network = Network::default();
+        network.add_nodes(6, 0);
+        network.add_edges(vec![
             (0, 1, 10.0), (1, 2, 20.0), (0, 2, 02.0), (1, 3, 10.0),
             (0, 3, 03.0), (3, 4, 03.0),
         ]);
         let mut dijkstra = Dijkstra::default();
-        dijkstra.compute(&graph);
-        assert_eq!(dijkstra.shortest_path(0, 4), Some(vec![0, 1, 3, 4]));
-        assert_eq!(dijkstra.shortest_path(2, 4), Some(vec![2, 1, 3, 4]));
-        assert_eq!(dijkstra.shortest_path(3, 3), Some(vec![3]));
-        assert_eq!(dijkstra.shortest_path(0, 5), None);
+        dijkstra.compute(&network);
+        let dijk = |src, dst| dijkstra.shortest_path(src, dst);
+        assert_eq!(dijk(0, 4), Some(vec![0, 1, 3, 4]));
+        assert_eq!(dijk(2, 4), Some(vec![2, 1, 3, 4]));
+        assert_eq!(dijk(3, 3), Some(vec![3]));
+        assert_eq!(dijk(0, 5), None);
     }
 }
 

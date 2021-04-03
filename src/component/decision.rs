@@ -113,156 +113,55 @@ impl Choice {
 
 
 #[cfg(test)]
-mod test {
-    use super::*;
-    use crate::flow::{data::TSNData, TSNFlow};
-    use crate::read_topo_from_file;
-    use std::collections::HashMap;
+mod tests {
+    use crate::algorithm::Algorithm;
+    use crate::cnc::CNC;
+    use crate::utils::json;
+    use crate::utils::stream::TSN;
 
-    struct Env(HashMap<(usize, usize), Vec<Route>>);
-    impl Env {
-        pub fn new() -> Self {
-            let mut map = HashMap::new();
-            map.insert((0, 4), vec![vec![0, 4], vec![0, 5, 4]]);
-            map.insert((1, 2), vec![vec![1, 0, 4, 2]]);
-            Env(map)
-        }
-        pub fn get_route(&self, src: usize, dst: usize, i: usize) -> *const Route {
-            &self.0.get(&(src, dst)).unwrap()[i]
-        }
-    }
-
-    fn init() -> (NetworkWrapper<usize>, Vec<TSNFlow>) {
-        let graph = read_topo_from_file("test_graph.json");
-        let env = Env::new();
-        let wrapper = NetworkWrapper::new(graph, move |flow, k: &usize| match flow {
-            FlowEnum::AVB(flow) => env.get_route(flow.src, flow.dst, *k),
-            FlowEnum::TSN(flow) => env.get_route(flow.src, flow.dst, *k),
-        });
-        let flows = vec![
-            TSNFlow {
-                id: 0.into(),
-                src: 0,
-                dst: 4,
-                size: 100,
-                period: 100,
-                max_delay: 100,
-                spec_data: TSNData { offset: 0 },
-            },
-            TSNFlow {
-                id: 0.into(),
-                src: 0,
-                dst: 4,
-                size: 100,
-                period: 150,
-                max_delay: 150,
-                spec_data: TSNData { offset: 0 },
-            },
-            TSNFlow {
-                id: 0.into(),
-                src: 1,
-                dst: 2,
-                size: 100,
-                period: 200,
-                max_delay: 200,
-                spec_data: TSNData { offset: 0 },
-            },
+    fn setup() -> CNC {
+        let network = json::load_network("test_graph.json");
+        let tsns = vec![
+            TSN::new(0, 4, 100, 100, 100, 0),
+            TSN::new(0, 4, 100, 150, 150, 0),
+            TSN::new(1, 2, 100, 200, 200, 0),
         ];
-        (wrapper, flows)
+        let avbs = vec![];
+        let config = json::load_config("config.example.json");
+        let mut cnc = CNC::new("aco", network, 0, config);
+        cnc.add_streams(tsns, avbs);
+        cnc.algorithm.prepare(&mut cnc.decision, &cnc.flowtable);
+        cnc
     }
 
     #[test]
-    fn test_insert_get_route() {
-        let (mut wrapper, flows) = init();
-        wrapper.insert(flows.clone(), vec![], 0);
+    fn it_picks_kth() {
+        let mut cnc = setup();
+        let decision = &mut cnc.decision;
+        decision.pick(1, 1);
 
-        wrapper.flow_table.update_info(1.into(), 1);
+        assert_eq!(decision.kth(0), None);
+        assert_eq!(decision.kth(1), None);
+        assert_eq!(decision.kth(2), None);
 
-        assert_eq!(&vec![0, 4], wrapper.get_route(0.into()));
-        assert_eq!(&vec![0, 5, 4], wrapper.get_route(1.into()));
-        assert_eq!(&vec![1, 0, 4, 2], wrapper.get_route(2.into()));
-        let old_new = wrapper
-            .old_new_table
-            .as_ref()
-            .unwrap()
-            .get_info(1.into())
-            .unwrap();
-        assert_eq!(&OldNew::New, old_new);
-
-        wrapper.insert(flows.clone(), vec![], 0);
-        assert_eq!(&vec![0, 4], wrapper.get_route(3.into()));
-        assert_eq!(&vec![0, 4], wrapper.get_route(4.into()));
-        assert_eq!(&vec![1, 0, 4, 2], wrapper.get_route(5.into()));
-        let old_new = wrapper
-            .old_new_table
-            .as_ref()
-            .unwrap()
-            .get_info(1.into())
-            .unwrap();
-        assert_eq!(&OldNew::Old(1), old_new);
-        let old_new = wrapper
-            .old_new_table
-            .as_ref()
-            .unwrap()
-            .get_info(3.into())
-            .unwrap();
-        assert_eq!(&OldNew::New, old_new);
+        assert_eq!(decision.kth_next(0), Some(0));
+        assert_eq!(decision.kth_next(1), Some(1));
+        assert_eq!(decision.kth_next(2), Some(0));
     }
+
     #[test]
-    #[should_panic]
-    fn test_clone_and_insert_should_panic() {
-        let (mut wrapper, flows) = init();
-        wrapper.insert(flows.clone(), vec![], 0);
-        let mut wrapper2 = wrapper.clone();
-        wrapper2.insert(flows.clone(), vec![], 0);
-    }
-    #[test]
-    fn test_clone() {
-        let (mut wrapper, flows) = init();
-        wrapper.insert(flows.clone(), vec![], 0);
-        let wrapper2 = wrapper.clone();
-        wrapper.flow_table.update_info(0.into(), 99);
-        assert_eq!(&99, wrapper.flow_table.get_info(0.into()).unwrap());
-        assert_eq!(&0, wrapper2.flow_table.get_info(0.into()).unwrap());
-    }
-    fn build_id_vec(v: Vec<usize>) -> Vec<usize> {
-        v.into_iter().map(|i| i.into()).collect()
-    }
-    #[test]
-    fn test_remember_forget_flow() -> Result<(), String> {
-        let mut g = Network::new();
-        g.add_host(Some(5));
-        g.add_edge((0, 1), 10.0)?;
-        g.add_edge((1, 2), 20.0)?;
-        g.add_edge((2, 3), 2.0)?;
-        g.add_edge((0, 3), 2.0)?;
-        g.add_edge((0, 4), 2.0)?;
-        g.add_edge((3, 4), 2.0)?;
+    fn it_confirms_decision() {
+        let mut cnc = setup();
+        let decision = &mut cnc.decision;
+        decision.pick(1, 1);
+        decision.confirm();
 
-        let mut g = MemorizingGraph::new(g);
+        assert_eq!(decision.kth(0), Some(0));
+        assert_eq!(decision.kth(1), Some(1));
+        assert_eq!(decision.kth(2), Some(0));
 
-        let mut ans: Vec<Vec<usize>> = vec![vec![], vec![], vec![]];
-        assert_eq!(ans, g.get_overlap_flows(&vec![0, 3, 2, 1]));
-
-        g.update_flowid_on_route(true, 0.into(), &vec![2, 3, 4]);
-        g.update_flowid_on_route(true, 1.into(), &vec![1, 0, 3, 4]);
-
-        assert_eq!(ans, g.get_overlap_flows(&vec![4, 3, 0, 1])); // 兩個方向不視為重疊
-
-        let mut ov_flows = g.get_overlap_flows(&vec![0, 3, 4]);
-        assert_eq!(build_id_vec(vec![1]), ov_flows[0]);
-        ov_flows[1].sort();
-        assert_eq!(build_id_vec(vec![0, 1]), ov_flows[1]);
-
-        g.update_flowid_on_route(false, 1.into(), &vec![1, 0, 3, 4]);
-        ans = vec![vec![], vec![0.into()]];
-        assert_eq!(ans, g.get_overlap_flows(&vec![0, 3, 4]));
-
-        g.forget_all_flows();
-        ans = vec![vec![], vec![]];
-        assert_eq!(ans, g.get_overlap_flows(&vec![0, 3, 4]));
-
-        Ok(())
+        assert_eq!(decision.route(0), &vec![0, 4]);
+        assert_eq!(decision.route(1), &vec![0, 5, 4]);
+        assert_eq!(decision.route(2), &vec![1, 3, 2]);
     }
 }
-
