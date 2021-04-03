@@ -11,7 +11,7 @@ use std::rc::{Rc, Weak};
 const MTU: f64 = 1500.0;
 
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct Schedule {
     windows: Vec<Vec<Range<u32>>>,  // windows[#hop][#frame]
     queue: u8,
@@ -105,23 +105,23 @@ impl Scheduler {
             compare_tsn(tsn1, tsn2, decision, &flowtable)
         );
         for tsn in tsns {
-            let mut schedule = Schedule::new();
+            let mut queue = 0;
             let kth = decision.kth_next(tsn).unwrap();
             let period = flowtable.tsn_spec(tsn).unwrap().period;
             loop {
-                if self.try_calculate_windows(&mut schedule, tsn, decision).is_ok() {
+                if let Ok(schedule) = self.try_calculate_windows(tsn, queue, decision) {
                     insert_allocated_tsn(decision, tsn, kth, schedule, period);
                     break;
                 }
-                if self.try_increment_queue(&mut schedule).is_err() {
+                if let Err(_) = self.try_increment_queue(&mut queue) {
                     return Err(());
                 }
             }
         }
         Ok(())
     }
-    fn try_calculate_windows(&self, schedule: &mut Schedule, tsn: usize,
-        decision: &Decision) -> Result<u8, ()> {
+    fn try_calculate_windows(&self, tsn: usize, queue: u8,
+        decision: &Decision) -> Result<Schedule, ()> {
         let flowtable = self.flowtable();
         let network = self.network();
         let spec = flowtable.tsn_spec(tsn).unwrap();
@@ -131,9 +131,10 @@ impl Scheduler {
         let gcl = &decision.allocated_tsns;
         let hyperperiod = gcl.hyperperiod();
 
+        let mut schedule = Schedule::new();
         schedule.windows = vec![vec![std::u32::MAX..std::u32::MAX; frame_len]; route.len() - 1];
         let windows = &mut schedule.windows;
-        let queue = schedule.queue;
+        // let queue = schedule.queue;
 
         for (r, ends) in route.windows(2).enumerate() {
             let transmit_time = network.duration_on(ends, MTU).ceil() as u32;
@@ -190,13 +191,13 @@ impl Scheduler {
                 windows[r][f] = egress..(egress + transmit_time);
             }
         }
-        Ok(queue)
+        Ok(schedule)
     }
-    fn try_increment_queue(&self, schedule: &mut Schedule) -> Result<u8, ()> {
-        schedule.queue += 1;
-        match schedule.queue {
+    fn try_increment_queue(&self, queue: &mut u8) -> Result<u8, u8> {
+        *queue += 1;
+        match *queue {
             q if q < MAX_QUEUE => Ok(q),
-            _ => Err(()),
+            q => Err(q),
         }
     }
 }
@@ -279,39 +280,47 @@ fn insert_allocated_tsn(decision: &mut Decision, tsn: usize, kth: usize, schedul
     }
 }
 
-    // #[test]
-    // fn test_remember_forget_flow() -> Result<(), String> {
-    //     let mut g = Network::new();
-    //     g.add_host(Some(5));
-    //     g.add_edge((0, 1), 10.0)?;
-    //     g.add_edge((1, 2), 20.0)?;
-    //     g.add_edge((2, 3), 2.0)?;
-    //     g.add_edge((0, 3), 2.0)?;
-    //     g.add_edge((0, 4), 2.0)?;
-    //     g.add_edge((3, 4), 2.0)?;
 
-    //     let mut g = MemorizingGraph::new(g);
+#[cfg(test)]
+mod tests {
+    use crate::component::GateCtrlList;
+    use crate::algorithm::Algorithm;
+    use crate::cnc::CNC;
+    use crate::network::Network;
+    use crate::utils::json;
+    use crate::utils::stream::TSN;
 
-    //     let mut ans: Vec<Vec<usize>> = vec![vec![], vec![], vec![]];
-    //     assert_eq!(ans, g.get_overlap_flows(&vec![0, 3, 2, 1]));
+    fn setup() -> CNC {
+        // TODO use a more straight-forward scenario
+        let mut network = Network::new();
+        network.add_nodes(6, 0);
+        network.add_edges(vec![
+            (0, 1, 100.0), (0, 2, 100.0), (1, 3, 100.0), (1, 4, 100.0),
+            (2, 3, 100.0), (2, 5, 100.0), (3, 5, 100.0),
+        ]);
+        let tsns = vec![
+            TSN::new(0, 4, 1500, 100, 100, 0),
+            TSN::new(0, 5, 4500, 150, 150, 0),
+            TSN::new(0, 4, 3000, 200, 200, 0),
+            TSN::new(0, 4, 4500, 300, 300, 0),
+        ];
+        let avbs = vec![];
+        let config = json::load_config("config.example.json");
+        let mut cnc = CNC::new("aco", network, 0, config);
+        cnc.add_streams(tsns, avbs);
+        cnc.algorithm.prepare(&mut cnc.decision, &cnc.flowtable);
+        cnc
+    }
 
-    //     g.update_flowid_on_route(true, 0.into(), &vec![2, 3, 4]);
-    //     g.update_flowid_on_route(true, 1.into(), &vec![1, 0, 3, 4]);
-
-    //     assert_eq!(ans, g.get_overlap_flows(&vec![4, 3, 0, 1])); // 兩個方向不視為重疊
-
-    //     let mut ov_flows = g.get_overlap_flows(&vec![0, 3, 4]);
-    //     assert_eq!(build_id_vec(vec![1]), ov_flows[0]);
-    //     ov_flows[1].sort();
-    //     assert_eq!(build_id_vec(vec![0, 1]), ov_flows[1]);
-
-    //     g.update_flowid_on_route(false, 1.into(), &vec![1, 0, 3, 4]);
-    //     ans = vec![vec![], vec![0.into()]];
-    //     assert_eq!(ans, g.get_overlap_flows(&vec![0, 3, 4]));
-
-    //     g.forget_all_flows();
-    //     ans = vec![vec![], vec![]];
-    //     assert_eq!(ans, g.get_overlap_flows(&vec![0, 3, 4]));
-
-    //     Ok(())
-    // }
+    #[test]
+    fn it_calculates_windows() {
+        let mut cnc = setup();
+        cnc.decision.allocated_tsns = GateCtrlList::new(60);
+        let result = cnc.scheduler.try_calculate_windows(0, 0, &cnc.decision);
+        let windows = result.unwrap().windows;
+        assert_eq!(windows, vec![vec![0..15], vec![15..30]]);
+        let result = cnc.scheduler.try_calculate_windows(2, 0, &cnc.decision);
+        let windows = result.unwrap().windows;
+        assert_eq!(windows, vec![vec![0..15, 15..30], vec![15..30, 30..45]]);
+    }
+}
