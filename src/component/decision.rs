@@ -44,16 +44,15 @@ impl Decision {
     pub fn kth_next(&self, stream: usize) -> Option<usize> {
         self.choices[stream].kth_next()
     }
-    pub fn kth_route(&self, stream: usize, kth: usize) -> &Route {
+    pub fn candidate(&self, stream: usize, kth: usize) -> &Route {
         &self.candidates[stream][kth]
+    }
+    pub fn candidates(&self, stream: usize) -> &Vec<Route> {
+        &self.candidates[stream]
     }
     pub fn route(&self, stream: usize) -> &Route {
         let kth = self.kth(stream).unwrap();
-        self.kth_route(stream, kth)
-    }
-    pub fn route_next(&self, stream: usize) -> &Route {
-        let kth_next = self.kth_next(stream).unwrap();
-        self.kth_route(stream, kth_next)
+        self.candidate(stream, kth)
     }
     pub fn resize(&mut self, len: usize) {
         let default = Choice::Pending(KTH_DEFAULT);
@@ -66,17 +65,12 @@ impl Decision {
         self.choices.iter_mut()
             .for_each(|choice| choice.confirm());
     }
-    pub fn filter_pending<'a>(&'a self, source: &'a Vec<usize>)
-        -> impl Iterator<Item=usize> + 'a {
-        source.iter().cloned()
-            .filter(move |&id| matches!(self.choices[id],
-                    Choice::Pending(_)))
+    pub fn is_pending(&self, stream: usize) -> bool {
+        matches!(self.choices[stream], Choice::Pending(_))
     }
-    pub fn filter_switch<'a>(&'a self, source: &'a Vec<usize>)
-        -> impl Iterator<Item=usize> + 'a {
-        source.iter().cloned()
-            .filter(move |&id| matches!(self.choices[id],
-                    Choice::Switch(prev, next) if prev != next))
+    pub fn is_switch(&self, stream: usize) -> bool {
+        matches!(self.choices[stream],
+                 Choice::Switch(prev, next) if prev != next)
     }
 }
 

@@ -57,14 +57,16 @@ impl Scheduler {
         let avbs = flowtable.avbs();
         let mut targets = Vec::with_capacity(avbs.len());
 
-        targets.extend(decision.filter_switch(avbs));
-        for &avb in targets.iter() {
+        targets.extend(flowtable.avbs().iter()
+            .filter(|&&avb| decision.is_switch(avb)));
+        for &avb in &targets {
             let kth = decision.kth(avb).unwrap();
             remove_traversed_avb(decision, avb, kth);
         }
 
-        targets.extend(decision.filter_pending(avbs));
-        for &avb in targets.iter() {
+        targets.extend(flowtable.avbs().iter()
+            .filter(|&&avb| decision.is_pending(avb)));
+        for &avb in &targets {
             let kth = decision.kth_next(avb).unwrap();
             insert_traversed_avb(decision, avb, kth);
         }
@@ -75,13 +77,15 @@ impl Scheduler {
         let tsns = flowtable.tsns();
         let mut targets = Vec::with_capacity(tsns.len());
 
-        targets.extend(decision.filter_switch(tsns));
-        for &tsn in targets.iter() {
+        targets.extend(flowtable.tsns().iter()
+            .filter(|&&tsn| decision.is_switch(tsn)));
+        for &tsn in &targets {
             let kth = decision.kth(tsn).unwrap();
             remove_allocated_tsn(decision, tsn, kth);
         }
 
-        targets.extend(decision.filter_pending(tsns));
+        targets.extend(flowtable.tsns().iter()
+            .filter(|&&tsn| decision.is_pending(tsn)));
         let result = self.try_schedule_tsns(decision, targets);
         decision.tsn_fail = result.is_err();
 
@@ -125,7 +129,8 @@ impl Scheduler {
         let flowtable = self.flowtable();
         let network = self.network();
         let spec = flowtable.tsn_spec(tsn).unwrap();
-        let route = decision.route_next(tsn);
+        let kth_next = decision.kth_next(tsn).unwrap();
+        let route = decision.candidate(tsn, kth_next);
         let links = network.get_links_id_bandwidth(route);
         let frame_len = count_frames(spec);
         let gcl = &decision.allocated_tsns;
@@ -211,7 +216,8 @@ fn compare_tsn(tsn1: usize, tsn2: usize,
     let spec1 = flowtable.tsn_spec(tsn1).unwrap();
     let spec2 = flowtable.tsn_spec(tsn2).unwrap();
     let routelen = |tsn: usize| {
-        decision.route_next(tsn).len()
+        let kth_next = decision.kth_next(tsn).unwrap();
+        decision.candidate(tsn, kth_next).len()
     };
     spec1.max_delay.cmp(&spec2.max_delay)
         .then(spec1.period.cmp(&spec2.period))

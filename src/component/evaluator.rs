@@ -101,7 +101,7 @@ impl Evaluator {
     pub fn evaluate_avb_wcd_for_kth(&self, avb: usize, kth: usize, decision: &Decision) -> u32 {
         let flowtable = self.flowtable();
         let network = self.network();
-        let route = decision.kth_route(avb, kth);
+        let route = decision.candidate(avb, kth);
         let gcl = &decision.allocated_tsns;
         let mut end_to_end = 0.0;
         for ends in route.windows(2) {

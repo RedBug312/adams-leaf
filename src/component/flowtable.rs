@@ -26,7 +26,7 @@ impl FlowTable {
     pub fn avbs(&self) -> &Vec<usize> {
         &self.avbs
     }
-    pub fn inputs<'a>(&'a self) -> Range<usize> {
+    pub fn inputs(&self) -> Range<usize> {
         self.inputs.clone()
     }
     pub fn len(&self) -> usize {
