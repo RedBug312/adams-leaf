@@ -110,19 +110,19 @@ impl Choice {
 mod tests {
     use crate::algorithm::Algorithm;
     use crate::cnc::CNC;
-    use crate::utils::json;
+    use crate::utils::yaml;
     use crate::utils::stream::TSN;
 
     fn setup() -> CNC {
-        let network = json::load_network("test_graph.json");
+        let network = yaml::load_network("data/network/trap.yaml");
         let tsns = vec![
-            TSN::new(0, 4, 100, 100, 100, 0),
-            TSN::new(0, 4, 100, 150, 150, 0),
-            TSN::new(1, 2, 100, 200, 200, 0),
+            TSN::new(0, 1, 100, 100, 100, 0),
+            TSN::new(0, 1, 100, 150, 150, 0),
+            TSN::new(0, 1, 100, 200, 200, 0),
         ];
         let avbs = vec![];
-        let config = json::load_config("config.example.json");
-        let mut cnc = CNC::new("aco", network, 0, config);
+        let config = yaml::load_config("data/config/default.yaml");
+        let mut cnc = CNC::new(network, config);
         cnc.add_streams(tsns, avbs);
         cnc.algorithm.prepare(&mut cnc.decision, &cnc.flowtable);
         cnc
@@ -154,8 +154,8 @@ mod tests {
         assert_eq!(decision.kth(1), Some(1));
         assert_eq!(decision.kth(2), Some(0));
 
-        assert_eq!(decision.route(0), &vec![0, 4]);
-        assert_eq!(decision.route(1), &vec![0, 5, 4]);
-        assert_eq!(decision.route(2), &vec![1, 3, 2]);
+        assert_eq!(decision.route(0), &vec![0, 2, 3, 1]);
+        assert_eq!(decision.route(1), &vec![0, 3, 1]);
+        assert_eq!(decision.route(2), &vec![0, 2, 3, 1]);
     }
 }

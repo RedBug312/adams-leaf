@@ -46,7 +46,7 @@ impl Evaluator {
         let latest = latest.kth(avb);
         let current = decision.kth_next(avb);
         let wcd = self.evaluate_avb_wcd(avb, decision);
-        let max = flowtable.avb_spec(avb).unwrap().max_delay;
+        let max = flowtable.avb_spec(avb).unwrap().deadline;
 
         let mut objs = [0.0; 4];
         objs[0] = decision.tsn_fail as u8 as f64;
@@ -69,7 +69,7 @@ impl Evaluator {
         }
         for &avb in flowtable.avbs() {
             let wcd = self.evaluate_avb_wcd(avb, decision);
-            let max = flowtable.avb_spec(avb).unwrap().max_delay;
+            let max = flowtable.avb_spec(avb).unwrap().deadline;
             avb_failed_count += (wcd > max) as usize;
             avb_normed_wcd_sum += wcd as f64 / max as f64;
         }
@@ -146,7 +146,7 @@ fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
     for other in others {
         if avb == other { continue; }
         let other_spec = flowtable.avb_spec(other).unwrap();
-        if spec.avb_type == 'B' || other_spec.avb_type == 'A' {
+        if spec.class == 'B' || other_spec.class == 'A' {
             interfere += other_spec.size as f64 / bandwidth;
         }
     }
@@ -187,7 +187,7 @@ mod tests {
     use crate::algorithm::Algorithm;
     use crate::cnc::CNC;
     use crate::network::Network;
-    use crate::utils::json;
+    use crate::utils::yaml;
     use crate::utils::stream::AVB;
     use super::*;
 
@@ -201,8 +201,8 @@ mod tests {
             AVB::new(0, 2, 150, 10000, 200, 'A'),
             AVB::new(0, 2, 075, 10000, 200, 'B'),
         ];
-        let config = json::load_config("config.example.json");
-        let mut cnc = CNC::new("aco", network, 0, config);
+        let config = yaml::load_config("data/config/default.yaml");
+        let mut cnc = CNC::new(network, config);
         cnc.add_streams(tsns, avbs);
         cnc.algorithm.prepare(&mut cnc.decision, &cnc.flowtable);
         cnc

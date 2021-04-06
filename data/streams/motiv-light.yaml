@@ -1,0 +1,35 @@
+name: motiv-light.yaml
+
+scale:
+  tsns: 1
+  avbs: 3
+  hyperperiod: 1000
+  end_devices: 9
+
+tsns:
+- src: 3
+  dst: 2
+  size: 1500
+  period: 250
+  deadline: 2500
+  offset: 0
+
+avbs:
+- src: 2
+  dst: 6
+  size: 400
+  period: 200
+  deadline: 200
+  class: A
+- src: 4
+  dst: 8
+  size: 400
+  period: 200
+  deadline: 200
+  class: A
+- src: 3
+  dst: 7
+  size: 400
+  period: 200
+  deadline: 200
+  class: A

@@ -28,14 +28,14 @@ pub struct Toolbox<'a> {
 
 
 impl CNC {
-    pub fn new(name: &str, graph: Network, seed: u64, config: Config) -> Self {
-        let mut weights = [config.w0, config.w1, config.w2, config.w3];
-        if name == "ro" {
+    pub fn new(graph: Network, config: Config) -> Self {
+        let mut weights = config.weights;
+        if config.algorithm == "ro" {
             weights[2] = 0.0;
         }
-        let algorithm: AlgorithmEnum = match name {
-            "aco" => ACO::new(&graph, seed, config.clone()).into(),
-            "ro"  => RO::new(&graph, seed).into(),
+        let algorithm: AlgorithmEnum = match config.algorithm.as_str() {
+            "aco" => ACO::new(&graph, config.seed, config.parameters.clone()).into(),
+            "ro"  => RO::new(&graph, config.seed).into(),
             "spf" => SPF::new(&graph).into(),
             _     => panic!("Failed specify an unknown routing algorithm"),
         };
@@ -68,7 +68,7 @@ impl CNC {
         let latest = &self.decision;
         let config = &self.config;
 
-        let timeout = Duration::from_micros(config.t_limit as u64);
+        let timeout = Duration::from_micros(config.timeout);
         let mut current = latest.clone();
 
         let start = Instant::now();
@@ -116,7 +116,7 @@ impl<'a> Toolbox<'a> {
     pub fn evaluate_cost(&'a self, decision: &mut Decision) -> (f64, bool) {
         self.scheduler.configure(decision);  // where it's mutated
         let (cost, objs) = self.evaluator.evaluate_cost_objectives(decision, self.latest);
-        let early_exit = objs[1] == 0.0 && self.config.fast_stop;
-        (cost, early_exit)
+        let stop = self.config.early_stop && objs[1] == 0.0;
+        (cost, stop)
     }
 }

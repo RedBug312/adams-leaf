@@ -1,37 +1,37 @@
-use adams_leaf::utils::json;
+use adams_leaf::utils::config::Args;
+use adams_leaf::utils::yaml;
 use adams_leaf::cnc::CNC;
-use argh::FromArgs;
+use docopt::Docopt;
 
-/// A mixed-criticality and online routing model for TSN network
-#[derive(FromArgs)]
-struct Arguments {
-    #[argh(positional)]
-    algorithm: String,
-    #[argh(positional)]
-    network: String,
-    #[argh(positional)]
-    backgrounds: String,
-    #[argh(positional)]
-    inputs: String,
-    #[argh(positional)]
-    fold: u32,
-    /// path to configuration file
-    #[argh(option, short='c', default="String::from(\"config.example.json\")")]
-    config: String,
-    /// random seed for heuristic-based routing algorithm
-    #[argh(option, short='s', default="0")]
-    seed: u64,
-}
+const USAGE: &'static str = "
+Usage: adams_leaf [options] <network> <backgrounds> <inputs> <fold>
+       adams_leaf (--help | --version)
+
+Options:
+    -h, --help            Display this message
+    -c, --config PATH     Configure CNC algorithm and parameters
+    -a, --algorithm TYPE  Override algorithm used to calculate routing set
+    -m, --memory NUM      Override memory parameters for ACO algorithm
+    -s, --seed NUM        Override random seed for ACO or RO algorithm
+";
 
 fn main() {
-    let args: Arguments = argh::from_env();
+    let argv = std::env::args();
+    let args: Args = Docopt::new(USAGE)
+        .and_then(|d| d.argv(argv).deserialize())
+        .unwrap_or_else(|e| e.exit());
+    println!("{:?}", args);
 
-    let network = json::load_network(&args.network);
-    let (tsns1, avbs1) = json::load_streams(&args.backgrounds, 1);
-    let (tsns2, avbs2) = json::load_streams(&args.inputs, args.fold);
-    let config = json::load_config(&args.config);
+    let network = yaml::load_network(&args.arg_network);
+    let (tsns1, avbs1) = yaml::load_streams(&args.arg_backgrounds, 1);
+    let (tsns2, avbs2) = yaml::load_streams(&args.arg_inputs, args.arg_fold);
 
-    let mut cnc = CNC::new(&args.algorithm, network, args.seed, config);
+    let path = args.flag_config.clone()
+        .unwrap_or(String::from("data/config/default.yaml"));
+    let mut config = yaml::load_config(&path);
+    config.override_from_args(args);
+
+    let mut cnc = CNC::new(network, config);
 
     cnc.add_streams(tsns1, avbs1);
     let elapsed = cnc.configure();
