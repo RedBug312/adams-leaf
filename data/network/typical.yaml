@@ -1,0 +1,43 @@
+name: typical.yaml
+
+scale:
+  end_devices: 10
+  bridges: 4
+
+# (0)──┐                  ┌──(5)
+# (1)──┤    ┌──[11]──┐    ├──(6)
+# (2)──┼[10]┼────────┼[13]┼──(7)
+# (3)──┤    └──[12]──┘    ├──(8)
+# (4)──┘                  └──(9)
+
+edges:
+- ends: [0, 10]
+  bandwidth: 1000.0
+- ends: [1, 10]
+  bandwidth: 1000.0
+- ends: [2, 10]
+  bandwidth: 1000.0
+- ends: [3, 10]
+  bandwidth: 1000.0
+- ends: [4, 10]
+  bandwidth: 1000.0
+- ends: [10, 11]
+  bandwidth: 1000.0
+- ends: [10, 12]
+  bandwidth: 1000.0
+- ends: [11, 13]
+  bandwidth: 1000.0
+- ends: [12, 13]
+  bandwidth: 1000.0
+- ends: [10, 13]
+  bandwidth: 1000.0
+- ends: [5, 13]
+  bandwidth: 1000.0
+- ends: [6, 13]
+  bandwidth: 1000.0
+- ends: [7, 13]
+  bandwidth: 1000.0
+- ends: [8, 13]
+  bandwidth: 1000.0
+- ends: [9, 13]
+  bandwidth: 1000.0

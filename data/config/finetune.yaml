@@ -1,0 +1,11 @@
+name: finetune.yaml
+
+algorithm: "aco"
+weights: [2744.0, 72.2, 19.0, 0.001]
+early_stop: true
+timeout: 1000000
+seed: 0
+
+parameters:
+  tsn_memory: 4.0
+  avb_memory: 4.0

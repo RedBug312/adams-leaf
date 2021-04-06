@@ -1,0 +1,11 @@
+name: default.yaml
+
+algorithm: "aco"
+weights: [1000.0, 100.0, 1.0, 1.0]
+early_stop: true
+timeout: 100000
+seed: 0
+
+parameters:
+  tsn_memory: 3.0
+  avb_memory: 3.0

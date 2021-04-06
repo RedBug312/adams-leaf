@@ -1,0 +1,332 @@
+use crate::MAX_QUEUE;
+use crate::component::Decision;
+use crate::component::FlowTable;
+use crate::network::Network;
+use crate::utils::stream::TSN;
+use std::cmp::{Ordering, max};
+use std::ops::Range;
+use std::rc::{Rc, Weak};
+
+
+const MTU: f64 = 1500.0;
+
+
+#[derive(Debug, Default)]
+struct Schedule {
+    windows: Vec<Vec<Range<u32>>>,  // windows[#hop][#frame]
+    queue: u8,
+}
+
+impl Schedule {
+    fn new() -> Self {
+        Schedule { ..Default::default() }
+    }
+}
+
+#[derive(Default)]
+pub struct Scheduler {
+    flowtable: Weak<FlowTable>,
+    network: Weak<Network>,
+}
+
+
+impl Scheduler {
+    pub fn new() -> Self {
+        Scheduler { ..Default::default() }
+    }
+    pub fn flowtable(&self) -> Rc<FlowTable> {
+        self.flowtable.upgrade().unwrap()
+    }
+    pub fn flowtable_mut(&mut self) -> &mut Weak<FlowTable> {
+        &mut self.flowtable
+    }
+    pub fn network(&self) -> Rc<Network> {
+        self.network.upgrade().unwrap()
+    }
+    pub fn network_mut(&mut self) -> &mut Weak<Network> {
+        &mut self.network
+    }
+    pub fn configure(&self, decision: &mut Decision) {
+        self.configure_avbs(decision);
+        self.configure_tsns(decision);
+        decision.confirm();
+    }
+    /// 更新 AVB 資料流表與圖上資訊
+    fn configure_avbs(&self, decision: &mut Decision) {
+        let flowtable = self.flowtable();
+        let avbs = flowtable.avbs();
+        let mut targets = Vec::with_capacity(avbs.len());
+
+        targets.extend(flowtable.avbs().iter()
+            .filter(|&&avb| decision.is_switch(avb)));
+        for &avb in &targets {
+            let kth = decision.kth(avb).unwrap();
+            remove_traversed_avb(decision, avb, kth);
+        }
+
+        targets.extend(flowtable.avbs().iter()
+            .filter(|&&avb| decision.is_pending(avb)));
+        for &avb in &targets {
+            let kth = decision.kth_next(avb).unwrap();
+            insert_traversed_avb(decision, avb, kth);
+        }
+    }
+    /// 更新 TSN 資料流表與 GCL
+    fn configure_tsns(&self, decision: &mut Decision) {
+        let flowtable = self.flowtable();
+        let tsns = flowtable.tsns();
+        let mut targets = Vec::with_capacity(tsns.len());
+
+        targets.extend(flowtable.tsns().iter()
+            .filter(|&&tsn| decision.is_switch(tsn)));
+        for &tsn in &targets {
+            let kth = decision.kth(tsn).unwrap();
+            remove_allocated_tsn(decision, tsn, kth);
+        }
+
+        targets.extend(flowtable.tsns().iter()
+            .filter(|&&tsn| decision.is_pending(tsn)));
+        let result = self.try_schedule_tsns(decision, targets);
+        decision.tsn_fail = result.is_err();
+
+        if !decision.tsn_fail { return; }
+
+        decision.allocated_tsns.clear();
+        targets = tsns.clone();
+        let result = self.try_schedule_tsns(decision, targets);
+        decision.tsn_fail = result.is_err();
+    }
+
+    // M. L. Raagaard, P. Pop, M. Gutiérrez and W. Steiner, "Runtime reconfiguration of time-sensitive
+    // networking (TSN) schedules for Fog Computing," 2017 IEEE Fog World Congress (FWC), Santa Clara,
+    // CA, USA, 2017, pp. 1-6, doi: 10.1109/FWC.2017.8368523.
+
+    fn try_schedule_tsns(&self, decision: &mut Decision, tsns: Vec<usize>)
+        -> Result<(), ()> {
+        let flowtable = self.flowtable();
+        let mut tsns = tsns;
+        tsns.sort_by(|&tsn1, &tsn2|
+            compare_tsn(tsn1, tsn2, decision, &flowtable)
+        );
+        for tsn in tsns {
+            let mut queue = 0;
+            let kth = decision.kth_next(tsn).unwrap();
+            let period = flowtable.tsn_spec(tsn).unwrap().period;
+            loop {
+                if let Ok(schedule) = self.try_calculate_windows(tsn, queue, decision) {
+                    insert_allocated_tsn(decision, tsn, kth, schedule, period);
+                    break;
+                }
+                if let Err(_) = self.try_increment_queue(&mut queue) {
+                    return Err(());
+                }
+            }
+        }
+        Ok(())
+    }
+    fn try_calculate_windows(&self, tsn: usize, queue: u8,
+        decision: &Decision) -> Result<Schedule, ()> {
+        let flowtable = self.flowtable();
+        let network = self.network();
+        let spec = flowtable.tsn_spec(tsn).unwrap();
+        let kth_next = decision.kth_next(tsn).unwrap();
+        let route = decision.candidate(tsn, kth_next);
+        let links = network.get_links_id_bandwidth(route);
+        let frame_len = count_frames(spec);
+        let gcl = &decision.allocated_tsns;
+        let hyperperiod = gcl.hyperperiod();
+
+        let mut schedule = Schedule::new();
+        schedule.windows = vec![vec![std::u32::MAX..std::u32::MAX; frame_len]; route.len() - 1];
+        let windows = &mut schedule.windows;
+        // let queue = schedule.queue;
+
+        for (r, ends) in route.windows(2).enumerate() {
+            let transmit_time = network.duration_on(ends, MTU).ceil() as u32;
+            for f in 0..frame_len {
+                let prev_frame_done = match f {
+                    0 => spec.offset,
+                    _ => windows[r][f-1].end,
+                };
+                let prev_link_done = match r {
+                    0 => spec.offset,
+                    _ => windows[r-1][f].end,
+                };
+                let ingress = max(prev_frame_done, prev_link_done);
+
+                let mut egress = ingress;  // ignore bridge processing time
+                let p = spec.period as usize;
+                for time_shift in (0..hyperperiod).step_by(p) {
+                    // 考慮 hyper period 中每種狀況
+                    /*
+                     * 1. 每個連結一個時間只能傳輸一個封包
+                     * 2. 同個佇列一個時間只能容納一個資料流（但可能容納該資料流的數個封包）
+                     * 3. 要符合 deadline 的需求
+                     */
+                    // QUESTION 搞清楚第二點是為什麼？
+                    loop {
+                        // NOTE 確認沒有其它封包在這個連線上傳輸
+                        let option =
+                            gcl.get_next_empty_time(links[r].0, time_shift + egress, transmit_time);
+                        if let Some(time) = option {
+                            egress = time - time_shift;
+                            assert_within_deadline(egress + transmit_time, spec)?;
+                            continue;
+                        }
+                        // NOTE 確認傳輸到下個地方時，下個連線的佇列是空的（沒有其它的資料流）
+                        if r < links.len() - 1 {
+                            // 還不到最後一個節點
+                            let option = gcl.get_next_queue_empty_time(
+                                links[r + 1].0,
+                                queue,
+                                time_shift + (egress + transmit_time),
+                            );
+                            if let Some(time) = option {
+                                egress = time - time_shift;
+                                assert_within_deadline(egress + transmit_time, spec)?;
+                                continue;
+                            }
+                        }
+                        assert_within_deadline(egress + transmit_time, spec)?;
+                        break;
+                    }
+                    // QUESTION 是否要檢查 arrive_time ~ cur_offset+trans_time 這段時間中
+                    // 有沒有發生同個佇列被佔用的事件？
+                }
+                windows[r][f] = egress..(egress + transmit_time);
+            }
+        }
+        Ok(schedule)
+    }
+    fn try_increment_queue(&self, queue: &mut u8) -> Result<u8, u8> {
+        *queue += 1;
+        match *queue {
+            q if q < MAX_QUEUE => Ok(q),
+            q => Err(q),
+        }
+    }
+}
+
+/// 排序的標準：
+/// * `deadline` - 時間較緊的要排前面
+/// * `period` - 週期短的要排前面
+/// * `route length` - 路徑長的要排前面
+fn compare_tsn(tsn1: usize, tsn2: usize,
+    decision: &Decision, flowtable: &FlowTable) -> Ordering {
+    let spec1 = flowtable.tsn_spec(tsn1).unwrap();
+    let spec2 = flowtable.tsn_spec(tsn2).unwrap();
+    let routelen = |tsn: usize| {
+        let kth_next = decision.kth_next(tsn).unwrap();
+        decision.candidate(tsn, kth_next).len()
+    };
+    spec1.deadline.cmp(&spec2.deadline)
+        .then(spec1.period.cmp(&spec2.period))
+        .then(routelen(tsn1).cmp(&routelen(tsn2)).reverse())
+}
+
+#[inline]
+fn count_frames(spec: &TSN) -> usize {
+    (spec.size as f64 / MTU).ceil() as usize
+}
+
+fn assert_within_deadline(delay: u32, spec: &TSN) -> Result<u32, ()> {
+    match delay < spec.offset + spec.deadline {
+        true  => Ok(spec.offset + spec.deadline - delay),
+        false => Err(()),
+    }
+}
+
+fn remove_traversed_avb(decision: &mut Decision, avb: usize, kth: usize) {
+    let route = &decision.candidates[avb][kth];  // kth_route without clone
+    for ends in route.windows(2) {
+        let ends = (ends[0], ends[1]);
+        let set = decision.traversed_avbs.get_mut(&ends)
+            .expect("Failed to remove traversed avb from an invalid edge");
+        set.remove(&avb);
+    }
+}
+
+fn insert_traversed_avb(decision: &mut Decision, avb: usize, kth: usize) {
+    let route = &decision.candidates[avb][kth];  // kth_route without clone
+    for ends in route.windows(2) {
+        let ends = (ends[0], ends[1]);
+        let set = decision.traversed_avbs.get_mut(&ends)
+            .expect("Failed to insert traversed avb into an invalid edge");
+        set.insert(avb);
+    }
+}
+
+fn remove_allocated_tsn(decision: &mut Decision, tsn: usize, kth: usize) {
+    let gcl = &mut decision.allocated_tsns;
+    let route = &decision.candidates[tsn][kth];  // kth_route without clone
+    for ends in route.windows(2) {
+        let ends = (ends[0], ends[1]);
+        gcl.remove(&ends, tsn);
+    }
+}
+
+fn insert_allocated_tsn(decision: &mut Decision, tsn: usize, kth: usize, schedule: Schedule, period: u32) {
+    let gcl = &mut decision.allocated_tsns;
+    let hyperperiod = gcl.hyperperiod();
+    let windows = schedule.windows;
+    let route = &decision.candidates[tsn][kth];  // kth_route without clone
+    for (r, ends) in route.windows(2).enumerate() {
+        let ends = (ends[0], ends[1]);
+        for f in 0..windows[r].len() {
+            for timeshift in (0..hyperperiod).step_by(period as usize) {
+                let window = (timeshift + windows[r][f].start)
+                    ..(timeshift + windows[r][f].end);
+                gcl.insert_gate_evt(ends, tsn, window);
+                if r == 0 { continue; }
+                let window = (timeshift + windows[r-1][f].start)
+                    ..(timeshift + windows[r][f].start);
+                gcl.insert_queue_evt(ends, schedule.queue, tsn, window);
+            }
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use crate::component::GateCtrlList;
+    use crate::algorithm::Algorithm;
+    use crate::cnc::CNC;
+    use crate::network::Network;
+    use crate::utils::yaml;
+    use crate::utils::stream::TSN;
+
+    fn setup() -> CNC {
+        // TODO use a more straight-forward scenario
+        let mut network = Network::new();
+        network.add_nodes(6, 0);
+        network.add_edges(vec![
+            (0, 1, 100.0), (0, 2, 100.0), (1, 3, 100.0), (1, 4, 100.0),
+            (2, 3, 100.0), (2, 5, 100.0), (3, 5, 100.0),
+        ]);
+        let tsns = vec![
+            TSN::new(0, 4, 1500, 100, 100, 0),
+            TSN::new(0, 5, 4500, 150, 150, 0),
+            TSN::new(0, 4, 3000, 200, 200, 0),
+            TSN::new(0, 4, 4500, 300, 300, 0),
+        ];
+        let avbs = vec![];
+        let config = yaml::load_config("data/config/default.yaml");
+        let mut cnc = CNC::new(network, config);
+        cnc.add_streams(tsns, avbs);
+        cnc.algorithm.prepare(&mut cnc.decision, &cnc.flowtable);
+        cnc
+    }
+
+    #[test]
+    fn it_calculates_windows() {
+        let mut cnc = setup();
+        cnc.decision.allocated_tsns = GateCtrlList::new(60);
+        let result = cnc.scheduler.try_calculate_windows(0, 0, &cnc.decision);
+        let windows = result.unwrap().windows;
+        assert_eq!(windows, vec![vec![0..15], vec![15..30]]);
+        let result = cnc.scheduler.try_calculate_windows(2, 0, &cnc.decision);
+        let windows = result.unwrap().windows;
+        assert_eq!(windows, vec![vec![0..15, 15..30], vec![15..30, 30..45]]);
+    }
+}

@@ -1,0 +1,21 @@
+name: trap.yaml
+
+scale:
+  end_devices: 2
+  bridges: 2
+
+#  ┌╌╌╌╌╌╌╌╌╌╌╌┐
+# (0)───[2]───[3]───(1)
+#        └╌╌╌╌╌╌╌╌╌╌╌┘
+
+edges:
+- ends: [0, 2]
+  bandwidth: 1000.0
+- ends: [2, 3]
+  bandwidth: 1000.0
+- ends: [3, 1]
+  bandwidth: 1000.0
+- ends: [0, 3]
+  bandwidth: 100.0
+- ends: [2, 1]
+  bandwidth: 100.0

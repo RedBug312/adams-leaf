@@ -2,8 +2,7 @@ target/*
 .vscode
 *.swp
 
-.plot.lock
 plot/log/
 plot/*.dat
 plot/*.png
-*.log
+tests/result.log
