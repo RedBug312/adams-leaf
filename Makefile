@@ -1,5 +1,5 @@
 SRC = $(shell find src -type f)
-OUT = target/release/adams_leaf
+OUT = target/release/adams-leaf
 
 
 .PHONY: all
