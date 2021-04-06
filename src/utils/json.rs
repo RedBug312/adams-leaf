@@ -3,9 +3,6 @@ use serde::{Deserialize, Serialize};
 use crate::network::Network;
 use crate::utils::stream::{TSN, AVB};
 
-use super::config::Config;
-
-
 #[derive(Serialize, Deserialize)]
 struct StreamsJson {
     tt_flows: Vec<TSN>,
@@ -18,7 +15,6 @@ struct NetworkJson {
     switch_cnt: usize,
     edges: Vec<(usize, usize, f64)>,
 }
-
 
 pub fn load_streams(filepath: &str, times: u32) -> (Vec<TSN>, Vec<AVB>) {
     let text = fs::read_to_string(filepath)
@@ -39,14 +35,6 @@ pub fn load_network(filepath: &str) -> Network {
     network.add_nodes(json.host_cnt, json.switch_cnt);
     network.add_edges(json.edges);
     network
-}
-
-pub fn load_config(filepath: &str) -> Config {
-    let text = fs::read_to_string(filepath)
-        .expect("Failed to read network json file");
-    let json: Config = serde_json::from_str(&text)
-        .expect("Failed to parse network json file");
-    json
 }
 
 fn repeated<T: Clone>(vec: Vec<T>, mul: u32) -> Vec<T> {

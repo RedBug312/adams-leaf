@@ -293,7 +293,7 @@ mod tests {
     use crate::algorithm::Algorithm;
     use crate::cnc::CNC;
     use crate::network::Network;
-    use crate::utils::json;
+    use crate::utils::yaml;
     use crate::utils::stream::TSN;
 
     fn setup() -> CNC {
@@ -311,8 +311,8 @@ mod tests {
             TSN::new(0, 4, 4500, 300, 300, 0),
         ];
         let avbs = vec![];
-        let config = json::load_config("config.example.json");
-        let mut cnc = CNC::new("aco", network, 0, config);
+        let config = yaml::load_config("data/config/default.yaml");
+        let mut cnc = CNC::new(network, config);
         cnc.add_streams(tsns, avbs);
         cnc.algorithm.prepare(&mut cnc.decision, &cnc.flowtable);
         cnc

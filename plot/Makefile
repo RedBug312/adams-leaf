@@ -65,10 +65,11 @@ fig-5-3.dat: $(LOCK)
 .INTERMEDIATE: $(LOCK)
 $(LOCK): $(OUT)
 	mkdir -p log
+	$(RM) log/*.log
 	# use GNU parallel for progress bar
-	parallel --bar --tag --lb --colsep '-' $(OUT) {1} \
-		../exp_graph.json ../exp_flow_{2}.json ../exp_flow_reconf.json \
-		{3} --config ../assets/confs/config.{4}.json --seed {5} \
-		'>' log/{1}-{2}-{3}-{4}-{5}.log ::: \
-		$(LOG1:log/%.log=%) $(LOG2:log/%.log=%) $(LOG3:log/%.log=%)
+	parallel --bar --tag --lb --colsep '-' $(OUT) \
+		../exp_graph.json ../exp_flow_{2}.json ../exp_flow_reconf.json {3} \
+		--config ../data/config/finetune.yaml --algorithm {1} --memory {4} --seed {5} \
+		'>' log/{1}-{2}-{3}-{4}-{5}.log \
+		::: $(LOG1:log/%.log=%) $(LOG2:log/%.log=%) $(LOG3:log/%.log=%)
 	touch $@

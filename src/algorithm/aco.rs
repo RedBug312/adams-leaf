@@ -1,8 +1,7 @@
-use crate::{MAX_K, cnc::Toolbox};
+use crate::{MAX_K, cnc::Toolbox, utils::config::Parameters};
 use crate::component::Decision;
 use crate::component::FlowTable;
 use crate::network::Network;
-use crate::utils::config::Config;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use std::collections::BinaryHeap;
@@ -19,16 +18,16 @@ pub struct ACO {
     yens: Yens,
     memory: Vec<[f64; MAX_K]>,
     seed: u64,
-    config: Config,
+    param: Parameters,
 }
 
 
 impl ACO {
-    pub fn new(network: &Network, seed: u64, config: Config) -> Self {
+    pub fn new(network: &Network, seed: u64, param: Parameters) -> Self {
         let ants = AntColony::new(0, MAX_K, None);
         let yens = Yens::new(&network, MAX_K);
         let memory = vec![];
-        ACO { ants, yens, memory, seed, config }
+        ACO { ants, yens, memory, seed, param }
     }
     pub fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
         self.yens.count_shortest_paths(src, dst)
@@ -69,12 +68,12 @@ impl Algorithm for ACO {
         self.memory = vec![[1.0; MAX_K]; flowtable.len()];
         for &tsn in flowtable.tsns() {
             if let Some(kth) = decision.kth(tsn) {
-                self.memory[tsn][kth] = self.config.tsn_memory;
+                self.memory[tsn][kth] = self.param.tsn_memory;
             }
         }
         for &avb in flowtable.avbs() {
             if let Some(kth) = decision.kth(avb) {
-                self.memory[avb][kth] = self.config.avb_memory;
+                self.memory[avb][kth] = self.param.avb_memory;
             }
         }
     }
