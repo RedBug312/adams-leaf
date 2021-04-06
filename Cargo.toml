@@ -15,10 +15,10 @@ ordered-float = "2.1.1"
 priority-queue = "1.0.5"
 enum_dispatch = "0.3.5"
 hashbrown = "0.9.1"
-argh = "0.1.4"
 num = "0.4.0"
 itertools = "0.10.0"
 serde_yaml = "0.8.17"
+docopt = "1.1.1"
 
 [lib]
 doctest = false

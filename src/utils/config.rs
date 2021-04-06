@@ -1,29 +1,15 @@
 use serde::Deserialize;
-use argh::FromArgs;
 
-/// A mixed-criticality and online routing model for TSN network
-#[derive(FromArgs)]
-pub struct Arguments {
-    #[argh(positional)]
-    pub network: String,
-    #[argh(positional)]
-    pub backgrounds: String,
-    #[argh(positional)]
-    pub inputs: String,
-    #[argh(positional)]
-    pub fold: u32,
-    /// path to configuration file
-    #[argh(option, short='c', default="String::from(\"data/config/default.yaml\")")]
-    pub config: String,
-    /// override algorithm used to calculate routing set
-    #[argh(option, short='a')]
-    pub algorithm: Option<String>,
-    /// override memory parameter for ACO algorithm
-    #[argh(option, short='m')]
-    pub memory: Option<f64>,
-    /// override random seed for ACO or RO algorithms
-    #[argh(option, short='s')]
-    pub seed: Option<u64>,
+#[derive(Deserialize, Debug)]
+pub struct Args {
+    pub arg_network: String,
+    pub arg_backgrounds: String,
+    pub arg_inputs: String,
+    pub arg_fold: u32,
+    pub flag_config: Option<String>,
+    pub flag_algorithm: Option<String>,
+    pub flag_memory: Option<f64>,
+    pub flag_seed: Option<u64>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -44,17 +30,16 @@ pub struct Parameters {
 }
 
 impl Config {
-    pub fn override_from_args(&mut self, args: Arguments) {
-        if let Some(algorithm) = args.algorithm {
-            self.algorithm = algorithm;
-        }
-        if let Some(memory) = args.memory {
-            let memory = num::clamp(memory, 0.0, 9999999.9);
-            self.parameters.tsn_memory = memory;
-            self.parameters.tsn_memory = memory;
-        }
-        if let Some(seed) = args.seed {
-            self.seed = seed;
-        }
+    pub fn override_from_args(&mut self, args: Args) {
+        args.flag_algorithm
+            .map(|a| self.algorithm = a);
+        args.flag_memory
+            .map(|m| num::clamp(m, 0.0, 9999999.9))
+            .map(|m| {
+                self.parameters.tsn_memory = m;
+                self.parameters.avb_memory = m;
+            });
+        args.flag_seed
+            .map(|s| self.seed = s);
     }
 }
