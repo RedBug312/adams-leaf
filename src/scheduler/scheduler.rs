@@ -161,7 +161,7 @@ impl Scheduler {
                     /*
                      * 1. 每個連結一個時間只能傳輸一個封包
                      * 2. 同個佇列一個時間只能容納一個資料流（但可能容納該資料流的數個封包）
-                     * 3. 要符合 max_delay 的需求
+                     * 3. 要符合 deadline 的需求
                      */
                     // QUESTION 搞清楚第二點是為什麼？
                     loop {
@@ -219,7 +219,7 @@ fn compare_tsn(tsn1: usize, tsn2: usize,
         let kth_next = decision.kth_next(tsn).unwrap();
         decision.candidate(tsn, kth_next).len()
     };
-    spec1.max_delay.cmp(&spec2.max_delay)
+    spec1.deadline.cmp(&spec2.deadline)
         .then(spec1.period.cmp(&spec2.period))
         .then(routelen(tsn1).cmp(&routelen(tsn2)).reverse())
 }
@@ -230,8 +230,8 @@ fn count_frames(spec: &TSN) -> usize {
 }
 
 fn assert_within_deadline(delay: u32, spec: &TSN) -> Result<u32, ()> {
-    match delay < spec.offset + spec.max_delay {
-        true  => Ok(spec.offset + spec.max_delay - delay),
+    match delay < spec.offset + spec.deadline {
+        true  => Ok(spec.offset + spec.deadline - delay),
         false => Err(()),
     }
 }

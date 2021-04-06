@@ -24,8 +24,8 @@ fn main() {
     println!("{:?}", args);
 
     let network = json::load_network(&args.arg_network);
-    let (tsns1, avbs1) = json::load_streams(&args.arg_backgrounds, 1);
-    let (tsns2, avbs2) = json::load_streams(&args.arg_inputs, args.arg_fold);
+    let (tsns1, avbs1) = yaml::load_streams(&args.arg_backgrounds, 1);
+    let (tsns2, avbs2) = yaml::load_streams(&args.arg_inputs, args.arg_fold);
 
     let path = args.flag_config.clone()
         .unwrap_or(String::from("data/config/default.yaml"));

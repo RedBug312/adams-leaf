@@ -74,24 +74,30 @@ impl FlowTable {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::json;
+    use crate::utils::stream::{AVB, TSN};
     use super::FlowTable;
 
     fn setup() -> FlowTable {
         let mut flowtable = FlowTable::new();
-        let (tsns, avbs) = json::load_streams("test_flow.json", 1);
-        flowtable.append(tsns, avbs);
-        let (tsns, avbs) = json::load_streams("test_flow.json", 2);
-        flowtable.append(tsns, avbs);
+        let tsns = vec![
+            TSN::new(4, 2, 200, 10, 100, 20),
+        ];
+        let avbs = vec![
+            AVB::new(0, 1, 100, 10, 200, 'A'),
+            AVB::new(0, 2, 100, 10, 200, 'A'),
+            AVB::new(0, 3, 100, 10, 200, 'A'),
+        ];
+        flowtable.append(tsns.clone(), avbs.clone());
+        flowtable.append(tsns.clone(), avbs.clone());
         flowtable
     }
 
     #[test]
     fn it_queries_streams() {
         let flowtable = setup();
-        assert_eq!(flowtable.len(), 18);
-        assert_eq!(flowtable.tsns(), &vec![0, 6, 7]);
-        assert_eq!(flowtable.avbs().len(), 15);
-        assert_eq!(flowtable.inputs(), 6..18);
+        assert_eq!(flowtable.len(), 8);
+        assert_eq!(flowtable.tsns(), &vec![0, 4]);
+        assert_eq!(flowtable.avbs(), &vec![1, 2, 3, 5, 6, 7]);
+        assert_eq!(flowtable.inputs(), 4..8);
     }
 }

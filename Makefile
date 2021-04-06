@@ -18,7 +18,7 @@ check: $(OUT)
 	RUST_BACKTRACE=1 cargo test --test integration_test \
 		-- --show-output --test-threads=1 > tests/result.log
 	diff -I time -I finished --color tests/expect.log tests/result.log
-	time $(OUT) exp_graph.json exp_flow_heavy.json exp_flow_reconf.json 2 -a ro -s 420
+	time $(OUT) exp_graph.json data/streams/motiv-heavy.yaml data/streams/motiv-reconf.yaml 2 -a ro -s 420
 	cloc src
 
 .PHONY: clean
