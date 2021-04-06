@@ -1,4 +1,3 @@
-use adams_leaf::utils::json;
 use adams_leaf::utils::config::Args;
 use adams_leaf::utils::yaml;
 use adams_leaf::cnc::CNC;
@@ -23,7 +22,7 @@ fn main() {
         .unwrap_or_else(|e| e.exit());
     println!("{:?}", args);
 
-    let network = json::load_network(&args.arg_network);
+    let network = yaml::load_network(&args.arg_network);
     let (tsns1, avbs1) = yaml::load_streams(&args.arg_backgrounds, 1);
     let (tsns2, avbs2) = yaml::load_streams(&args.arg_inputs, args.arg_fold);
 

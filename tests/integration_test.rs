@@ -1,12 +1,11 @@
 use adams_leaf::cnc::CNC;
-use adams_leaf::utils::json;
 use adams_leaf::utils::yaml;
 
 #[test]
 fn it_runs_aco() {
     let (tsns1, avbs1) = yaml::load_streams("data/streams/motiv-heavy.yaml", 1);
     let (tsns2, avbs2) = yaml::load_streams("data/streams/motiv-reconf.yaml", 2);
-    let network = json::load_network("exp_graph.json");
+    let network = yaml::load_network("data/network/typical.yaml");
 
     let mut config = yaml::load_config("data/config/default.yaml");
     config.algorithm = String::from("aco");
@@ -27,7 +26,7 @@ fn it_runs_aco() {
 fn it_runs_ro() {
     let (tsns1, avbs1) = yaml::load_streams("data/streams/motiv-heavy.yaml", 1);
     let (tsns2, avbs2) = yaml::load_streams("data/streams/motiv-reconf.yaml", 2);
-    let network = json::load_network("exp_graph.json");
+    let network = yaml::load_network("data/network/typical.yaml");
 
     let mut config = yaml::load_config("data/config/default.yaml");
     config.algorithm = String::from("ro");
@@ -48,7 +47,7 @@ fn it_runs_ro() {
 fn it_runs_spf() {
     let (tsns1, avbs1) = yaml::load_streams("data/streams/motiv-heavy.yaml", 1);
     let (tsns2, avbs2) = yaml::load_streams("data/streams/motiv-reconf.yaml", 2);
-    let network = json::load_network("exp_graph.json");
+    let network = yaml::load_network("data/network/typical.yaml");
 
     let mut config = yaml::load_config("data/config/default.yaml");
     config.algorithm = String::from("spf");

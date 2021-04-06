@@ -4,7 +4,7 @@ scale:
   tsns: 1
   avbs: 3
   hyperperiod: 1000
-  switches: 10
+  end_devices: 9
 
 tsns:
 - src: 3
