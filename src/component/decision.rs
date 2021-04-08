@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
 use crate::network::Network;
-use crate::component::GateCtrlList;
+use crate::scheduler::GateCtrlList;
+use std::collections::{HashMap, HashSet};
 
 
 const KTH_DEFAULT: usize = 0;
@@ -110,8 +110,8 @@ impl Choice {
 mod tests {
     use crate::algorithm::Algorithm;
     use crate::cnc::CNC;
-    use crate::utils::yaml;
     use crate::utils::stream::TSN;
+    use crate::utils::yaml;
 
     fn setup() -> CNC {
         let network = yaml::load_network("data/network/trap.yaml");
