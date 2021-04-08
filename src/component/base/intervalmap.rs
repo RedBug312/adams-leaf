@@ -24,7 +24,7 @@ impl IntervalMap {
         assert_eq!(self.check_insertable(key.clone()), true);
         match self.intervals.binary_search_by_key(&key.start, |i| i.0.start) {
             Ok(_) => unreachable!(),
-            Err(pos) if self.pred_connected(pos, &key, value).is_some() => {
+            Err(pos) if self.pred_connected(pos, &key) == Some(value) => {
                 self.intervals[pos - 1].0.end = key.end;
             }
             Err(pos) => {
@@ -38,7 +38,7 @@ impl IntervalMap {
         assert_eq!(self.check_extendable(key.clone(), value), true);
         match self.intervals.binary_search_by_key(&key.start, |i| i.0.start) {
             Ok(_) => unreachable!(),
-            Err(pos) if self.pred_connected_alt(pos, &key, value).is_some() => {
+            Err(pos) if self.pred_connected(pos, &key) == Some(value) => {
                 self.intervals[pos - 1].0.end = key.end;
             }
             Err(pos) => {
@@ -66,16 +66,8 @@ impl IntervalMap {
             Err(_) => true,
         }
     }
-    fn pred_connected(&self, pos: usize, key: &Range<u32>, value: usize) -> Option<usize> {
-        match pos > 0 && self.intervals[pos - 1].0.end == key.start
-                      && self.intervals[pos - 1].1 == value {
-            true => Some(self.intervals[pos - 1].1),
-            false => None,
-        }
-    }
-    fn pred_connected_alt(&self, pos: usize, key: &Range<u32>, value: usize) -> Option<usize> {
-        match pos > 0 && self.intervals[pos - 1].0.end >= key.start
-                      && self.intervals[pos - 1].1 == value {
+    fn pred_connected(&self, pos: usize, key: &Range<u32>) -> Option<usize> {
+        match pos > 0 && self.intervals[pos - 1].0.end >= key.start {
             true => Some(self.intervals[pos - 1].1),
             false => None,
         }

@@ -4,7 +4,7 @@ use crate::network::Edge;
 use crate::network::Network;
 use std::cmp::max;
 use std::rc::{Rc, Weak};
-use super::Decision;
+use super::{Decision, Entry};
 
 
 /// AVB 資料流最多可以佔用的資源百分比（模擬 Credit Base Shaper 的效果）
@@ -160,7 +160,8 @@ fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
 
 fn interfere_from_tsn(edge: &Edge, wcd: f64, gcl: &GateCtrlList) -> f64 {
     let mut max_interfere = 0;
-    let events = gcl.get_gate_events(edge.ends);
+    let port = Entry::Port(edge.ends.0, edge.ends.1);
+    let events = gcl.events(port);
     // println!("{:?}", gcl.events(crate::component::Entry::Port(edge.ends.0, edge.ends.1)));
     // println!("{:?}", wcd);
     for i in 0..events.len() {
@@ -169,14 +170,14 @@ fn interfere_from_tsn(edge: &Edge, wcd: f64, gcl: &GateCtrlList) -> f64 {
         let mut j = i;
         while remained >= 0 {
             let curr = &events[j];
-            interfere += curr.end - curr.start;
+            interfere += curr.0.end - curr.0.start;
             j += 1;
             if j == events.len() {
                 // TODO 應該要循環？
                 break;
             }
             let next = &events[j];
-            remained -= next.start as i32 - curr.end as i32;
+            remained -= next.0.start as i32 - curr.0.end as i32;
         }
         max_interfere = max(max_interfere, interfere);
     }
