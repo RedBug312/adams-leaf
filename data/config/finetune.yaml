@@ -7,5 +7,5 @@ timeout: 1000000
 seed: 0
 
 parameters:
-  tsn_memory: 4.0
-  avb_memory: 4.0
+  tsn_memory: 3.0
+  avb_memory: 3.0
