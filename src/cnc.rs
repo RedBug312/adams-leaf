@@ -127,7 +127,8 @@ impl<'a> Toolbox<'a> {
     pub fn evaluate_cost(&'a self, decision: &mut Decision) -> (f64, bool) {
         self.scheduler.configure(decision);  // where it'msg mutated
         let (cost, objs) = self.evaluator.evaluate_cost_objectives(decision, self.latest);
-        let stop = self.config.early_stop && objs[1] == 0.0;
+        println!("{:?}", objs);
+        let stop = self.config.early_stop && objs[0] == 0.0 && objs[1] == 0.0;
         (cost, stop)
     }
 }

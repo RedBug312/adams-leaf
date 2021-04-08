@@ -161,6 +161,8 @@ fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
 fn interfere_from_tsn(edge: &Edge, wcd: f64, gcl: &GateCtrlList) -> f64 {
     let mut max_interfere = 0;
     let events = gcl.get_gate_events(edge.ends);
+    // println!("{:?}", gcl.events(crate::component::Entry::Port(edge.ends.0, edge.ends.1)));
+    // println!("{:?}", wcd);
     for i in 0..events.len() {
         let mut interfere = 0;
         let mut remained = wcd as i32;
@@ -178,6 +180,8 @@ fn interfere_from_tsn(edge: &Edge, wcd: f64, gcl: &GateCtrlList) -> f64 {
         }
         max_interfere = max(max_interfere, interfere);
     }
+    // println!("{:?}", edge);
+    // println!("{:?}", max_interfere);
     max_interfere as f64
 }
 
@@ -186,6 +190,7 @@ fn interfere_from_tsn(edge: &Edge, wcd: f64, gcl: &GateCtrlList) -> f64 {
 mod tests {
     use crate::algorithm::Algorithm;
     use crate::cnc::CNC;
+    use crate::component::Entry;
     use crate::network::Network;
     use crate::utils::yaml;
     use crate::utils::stream::AVB;
@@ -236,9 +241,10 @@ mod tests {
         cnc.scheduler.configure(&mut decision);
         // GCL: 3 - - - - 4 - 5 5 -
         let mut gcl = GateCtrlList::new(10);
-        gcl.insert_gate_evt(edge.ends, 3, 0..1);
-        gcl.insert_gate_evt(edge.ends, 4, 5..6);
-        gcl.insert_gate_evt(edge.ends, 5, 7..9);
+        let port = Entry::Port(0, 1);
+        gcl.insert(port, 3, 0..1, 10);
+        gcl.insert(port, 4, 5..6, 10);
+        gcl.insert(port, 5, 7..9, 10);
         println!("{:?}", gcl);
         assert_eq!(interfere_from_tsn(&edge, 1.0, &gcl), 3.0);  // should be 2.0
         assert_eq!(interfere_from_tsn(&edge, 2.0, &gcl), 3.0);  // should be 3.0

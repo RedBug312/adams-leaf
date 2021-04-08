@@ -13,7 +13,7 @@ const MIN_PH: f64 = 1.0;
 pub type State = Vec<usize>;
 
 
-#[derive(PartialOrd)]
+#[derive(PartialOrd, Debug)]
 pub struct WeightedState {
     pub neg_dist: f64,
     pub state: Option<State>,

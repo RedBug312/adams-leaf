@@ -17,6 +17,7 @@ Options:
 
 fn main() {
     let argv = std::env::args();
+    println!("{:?}", argv);
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| d.argv(argv).deserialize())
         .unwrap_or_else(|e| e.exit());

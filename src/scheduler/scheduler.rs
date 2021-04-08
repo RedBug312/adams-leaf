@@ -1,5 +1,6 @@
 use crate::MAX_QUEUE;
 use crate::component::Decision;
+use crate::component::Entry;
 use crate::component::FlowTable;
 use crate::network::Network;
 use crate::utils::stream::TSN;
@@ -124,6 +125,12 @@ impl Scheduler {
         }
         Ok(())
     }
+    // 考慮 hyper period 中每種狀況
+    /*
+     * 1. 每個連結一個時間只能傳輸一個封包
+     * 2. 同個佇列一個時間只能容納一個資料流（但可能容納該資料流的數個封包）
+     * 3. 要符合 deadline 的需求
+     */
     fn try_calculate_windows(&self, tsn: usize, queue: u8,
         decision: &Decision) -> Result<Schedule, ()> {
         let flowtable = self.flowtable();
@@ -131,17 +138,18 @@ impl Scheduler {
         let spec = flowtable.tsn_spec(tsn).unwrap();
         let kth_next = decision.kth_next(tsn).unwrap();
         let route = decision.candidate(tsn, kth_next);
-        let links = network.get_links_id_bandwidth(route);
         let frame_len = count_frames(spec);
         let gcl = &decision.allocated_tsns;
-        let hyperperiod = gcl.hyperperiod();
 
         let mut schedule = Schedule::new();
-        schedule.windows = vec![vec![std::u32::MAX..std::u32::MAX; frame_len]; route.len() - 1];
+        schedule.windows = vec![vec![0..0; frame_len]; route.len() - 1];
+        schedule.queue = queue;
         let windows = &mut schedule.windows;
         // let queue = schedule.queue;
 
         for (r, ends) in route.windows(2).enumerate() {
+            let port = Entry::Port(ends[0], ends[1]);
+            let queue = Entry::Queue(ends[0], ends[1], queue);
             let transmit_time = network.duration_on(ends, MTU).ceil() as u32;
             for f in 0..frame_len {
                 let prev_frame_done = match f {
@@ -153,47 +161,20 @@ impl Scheduler {
                     _ => windows[r-1][f].end,
                 };
                 let ingress = max(prev_frame_done, prev_link_done);
-
                 let mut egress = ingress;  // ignore bridge processing time
-                let p = spec.period as usize;
-                for time_shift in (0..hyperperiod).step_by(p) {
-                    // 考慮 hyper period 中每種狀況
-                    /*
-                     * 1. 每個連結一個時間只能傳輸一個封包
-                     * 2. 同個佇列一個時間只能容納一個資料流（但可能容納該資料流的數個封包）
-                     * 3. 要符合 deadline 的需求
-                     */
-                    // QUESTION 搞清楚第二點是為什麼？
-                    loop {
-                        // NOTE 確認沒有其它封包在這個連線上傳輸
-                        let option =
-                            gcl.get_next_empty_time(links[r].0, time_shift + egress, transmit_time);
-                        if let Some(time) = option {
-                            egress = time - time_shift;
-                            assert_within_deadline(egress + transmit_time, spec)?;
-                            continue;
-                        }
-                        // NOTE 確認傳輸到下個地方時，下個連線的佇列是空的（沒有其它的資料流）
-                        if r < links.len() - 1 {
-                            // 還不到最後一個節點
-                            let option = gcl.get_next_queue_empty_time(
-                                links[r + 1].0,
-                                queue,
-                                time_shift + (egress + transmit_time),
-                            );
-                            if let Some(time) = option {
-                                egress = time - time_shift;
-                                assert_within_deadline(egress + transmit_time, spec)?;
-                                continue;
-                            }
-                        }
-                        assert_within_deadline(egress + transmit_time, spec)?;
-                        break;
-                    }
-                    // QUESTION 是否要檢查 arrive_time ~ cur_offset+trans_time 這段時間中
-                    // 有沒有發生同個佇列被佔用的事件？
-                }
+
+                let window = egress..(egress + transmit_time);
+
+                egress += gcl.query_later_idle(port, tsn, window, spec.period)
+                    .ok_or(())?;
+                assert_within_deadline(egress + transmit_time, spec)?;
+
                 windows[r][f] = egress..(egress + transmit_time);
+
+                if r == 0 { continue; }
+                let window = windows[r-1][f].start..windows[r][f].end;
+                gcl.check_idle(queue, tsn, window, spec.period)
+                    .then(|| true).ok_or(())?;
             }
         }
         Ok(schedule)
@@ -267,21 +248,36 @@ fn remove_allocated_tsn(decision: &mut Decision, tsn: usize, kth: usize) {
 
 fn insert_allocated_tsn(decision: &mut Decision, tsn: usize, kth: usize, schedule: Schedule, period: u32) {
     let gcl = &mut decision.allocated_tsns;
-    let hyperperiod = gcl.hyperperiod();
+    // let hyperperiod = gcl.hyperperiod();
     let windows = schedule.windows;
     let route = &decision.candidates[tsn][kth];  // kth_route without clone
     for (r, ends) in route.windows(2).enumerate() {
-        let ends = (ends[0], ends[1]);
+        // println!("{:?}", ends);
+        // let ends = (ends[0], ends[1]);
         for f in 0..windows[r].len() {
-            for timeshift in (0..hyperperiod).step_by(period as usize) {
-                let window = (timeshift + windows[r][f].start)
-                    ..(timeshift + windows[r][f].end);
-                gcl.insert_gate_evt(ends, tsn, window);
-                if r == 0 { continue; }
-                let window = (timeshift + windows[r-1][f].start)
-                    ..(timeshift + windows[r][f].start);
-                gcl.insert_queue_evt(ends, schedule.queue, tsn, window);
-            }
+            let port = Entry::Port(ends[0], ends[1]);
+            let window = windows[r][f].clone();
+            gcl.insert(port, tsn, window, period);
+
+            if r == 0 { continue; }
+            let queue = Entry::Queue(ends[0], ends[1], schedule.queue);
+            let window = windows[r-1][f].start..windows[r][f].end;
+            // println!("{:?}", (r, f, window.clone()));
+            // println!("{:?}", gcl.check_idle(queue, window.clone(), period));
+            // println!("+++{:?}", queue);
+            // println!("+++{:?}", gcl.events(queue));
+            // println!("+++{:?}", window);
+            gcl.insert(queue, tsn, window, period);
+            // println!("+++{:?}", gcl.events(queue));
+            // for timeshift in (0..hyperperiod).step_by(period as usize) {
+            //     let window = (timeshift + windows[r][f].start)
+            //         ..(timeshift + windows[r][f].end);
+            //     gcl.insert_gate_evt(ends, tsn, window);
+            //     if r == 0 { continue; }
+            //     let window = (timeshift + windows[r-1][f].start)
+            //         ..(timeshift + windows[r][f].start);
+            //     gcl.insert_queue_evt(ends, schedule.queue, tsn, window);
+            // }
         }
     }
 }

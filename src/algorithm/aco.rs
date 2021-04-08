@@ -87,7 +87,16 @@ impl Algorithm for ACO {
         let visibility = &vis;
 
         let mut rng = ChaChaRng::seed_from_u64(self.seed);
-        let mut best_state = WeightedState::new(std::f64::MAX, None);
+        let state_len = self.ants.get_state_len();
+        let mut cur_state = Vec::<usize>::with_capacity(state_len);
+        for i in 0..state_len {
+            let next = decision.kth_next(i).unwrap();
+            cur_state.push(next);
+            // TODO online pharamon update
+        }
+        let cost = compute_aco_dist(decision, &cur_state, &mut best_dist, &toolbox);
+        let dist = distance(cost.0);
+        let mut best_state = WeightedState::new(dist, Some(cur_state));
         #[allow(unused_variables)]
         let mut epoch = 0;
         while Instant::now() < deadline {
@@ -130,17 +139,20 @@ impl Algorithm for ACO {
 
             let local_best_state = self.ants.offline_update(max_heap);
 
+            // println!("%%%{:?}", local_best_state.get_dist());
             if local_best_state.get_dist() < best_state.get_dist() {
                 best_state = local_best_state;
             }
+            // println!("%%%{:?}", best_state.get_dist());
             if should_stop {
                 break;
             }
-            #[cfg(debug_assertions)]
-            println!("pheromone = {:?}", self.ants.pheromone);
+            // #[cfg(debug_assertions)]
+            // println!("pheromone = {:?}", self.ants.pheromone);
         }
-        #[cfg(debug_assertions)]
-        println!("ACO epoch = {}", epoch);
+        // #[cfg(debug_assertions)]
+        // println!("ACO epoch = {}", epoch);
+        // println!("%%%{:?}", best_state);
         best_state.state.expect("找不到最好的解");
     }
 }
