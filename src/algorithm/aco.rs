@@ -139,11 +139,11 @@ impl Algorithm for ACO {
             if should_stop {
                 break;
             }
-            #[cfg(debug_assertions)]
-            println!("pheromone = {:?}", self.ants.pheromone);
+            // #[cfg(debug_assertions)]
+            // println!("pheromone = {:?}", self.ants.pheromone);
         }
-        #[cfg(debug_assertions)]
-        println!("ACO epoch = {}", epoch);
+        // #[cfg(debug_assertions)]
+        // println!("ACO epoch = {}", epoch);
         best_state.state.expect("找不到最好的解");
     }
 }

@@ -41,7 +41,7 @@ impl Solution {
         Solution {
             selections: vec![],
             outcomes: vec![],
-            allocated_tsns: GateCtrlList::new(1),
+            allocated_tsns: GateCtrlList::new(1000),
             traversed_avbs,
             flowtable: Weak::new(),
             network: Weak::new(),

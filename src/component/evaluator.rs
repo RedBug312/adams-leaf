@@ -2,7 +2,7 @@ use crate::component::FlowTable;
 use crate::component::GateCtrlList;
 use crate::network::Edge;
 use std::cmp::max;
-use super::Solution;
+use super::{Entry, Solution};
 
 
 /// AVB 資料流最多可以佔用的資源百分比（模擬 Credit Base Shaper 的效果）
@@ -148,21 +148,22 @@ fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
 
 fn interfere_from_tsn(edge: &Edge, wcd: f64, gcl: &GateCtrlList) -> f64 {
     let mut max_interfere = 0;
-    let events = gcl.get_gate_events(edge.ends);
+    let port = Entry::Port(edge.ends.0, edge.ends.1);
+    let events = gcl.events(port);
     for i in 0..events.len() {
         let mut interfere = 0;
         let mut remained = wcd as i32;
         let mut j = i;
         while remained >= 0 {
             let curr = &events[j];
-            interfere += curr.end - curr.start;
+            interfere += curr.0.end - curr.0.start;
             j += 1;
             if j == events.len() {
                 // TODO 應該要循環？
                 break;
             }
             let next = &events[j];
-            remained -= next.start as i32 - curr.end as i32;
+            remained -= next.0.start as i32 - curr.0.end as i32;
         }
         max_interfere = max(max_interfere, interfere);
     }
@@ -174,6 +175,7 @@ fn interfere_from_tsn(edge: &Edge, wcd: f64, gcl: &GateCtrlList) -> f64 {
 mod tests {
     use crate::algorithm::Algorithm;
     use crate::cnc::CNC;
+    use crate::component::Entry;
     use crate::network::Network;
     use crate::utils::yaml;
     use crate::utils::stream::AVB;
@@ -224,9 +226,10 @@ mod tests {
         cnc.scheduler.configure(&mut solution);
         // GCL: 3 - - - - 4 - 5 5 -
         let mut gcl = GateCtrlList::new(10);
-        gcl.insert_gate_evt(edge.ends, 3, 0..1);
-        gcl.insert_gate_evt(edge.ends, 4, 5..6);
-        gcl.insert_gate_evt(edge.ends, 5, 7..9);
+        let port = Entry::Port(0, 1);
+        gcl.insert(port, 3, 0..1, 10);
+        gcl.insert(port, 4, 5..6, 10);
+        gcl.insert(port, 5, 7..9, 10);
         println!("{:?}", gcl);
         assert_eq!(interfere_from_tsn(&edge, 1.0, &gcl), 3.0);  // should be 2.0
         assert_eq!(interfere_from_tsn(&edge, 2.0, &gcl), 3.0);  // should be 3.0

@@ -2,26 +2,21 @@ use crate::MAX_QUEUE;
 use hashbrown::HashMap;
 use num::integer::lcm;
 use std::ops::Range;
+use super::base::intervalmap::IntervalMap;
 
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-enum Entry {
+pub enum Entry {
     Port(usize, usize),
     Queue(usize, usize, u8),
 }
 
-#[derive(Clone, Debug, Default)]
-struct Event {
-    stream: usize,
-    window: Range<u32>,
-}
+pub type Event = (Range<u32>, usize);
 
 #[derive(Clone, Debug, Default)]
 pub struct GateCtrlList {
     hyperperiod: u32,
-    events: HashMap<Entry, Vec<Event>>,
-    // FIXME there's penalty 62ms -> 69ms when change cache key type to Entry
-    events_cache: HashMap<(usize, usize), Vec<Range<u32>>>,
+    events: HashMap<Entry, IntervalMap>,
 }
 
 
@@ -35,193 +30,143 @@ impl GateCtrlList {
     }
     pub fn clear(&mut self) {
         self.events = Default::default();
-        self.events_cache = Default::default();
     }
     pub fn hyperperiod(&self) -> u32 {
         self.hyperperiod
     }
-    fn events(&self, entry: Entry) -> &Vec<Event> {
+    pub fn events(&self, entry: Entry) -> &Vec<Event> {
         static EMPTY: Vec<Event> = vec![];
         self.events.get(&entry)
-            .unwrap_or(&EMPTY)
-    }
-    fn events_mut(&mut self, entry: Entry) -> &mut Vec<Event> {
-        self.events.entry(entry)
-            .or_insert_with(|| vec![])
-    }
-    /// 回傳 `link_id` 上所有閘門關閉事件。
-    /// * `回傳值` - 一個陣列，其內容為 (事件開始時間, 事件結束時間);
-    pub fn get_gate_events(&self, ends: (usize, usize)) -> &Vec<Range<u32>> {
-        // assert!(self.gate_evt.len() > link_id, "GCL: 指定了超出範圍的邊");
-        let cache = self.events_cache.get(&ends);
-        if cache.is_none() {
-            // 生成快速查找表
-            let mut lookup = Vec::new();
-            let port = Entry::Port(ends.0, ends.1);
-            let events = self.events(port);
-            let len = events.len();
-            if len > 0 {
-                let first_evt = &events[0];
-                let mut cur_evt = first_evt.window.clone();
-                for event in events[1..len].iter() {
-                    if cur_evt.end == event.window.start {
-                        // 首尾相接
-                        cur_evt.end = event.window.end; // 把閘門事件延長
-                    } else {
-                        lookup.push(cur_evt);
-                        cur_evt = event.window.clone();
-                    }
-                }
-                lookup.push(cur_evt);
-            }
-            unsafe {
-                // NOTE 內部可變，因為這只是加速用的
-                let _self = self as *const Self as *mut Self;
-                (*_self).events_cache.insert(ends, lookup);
-            }
-        }
-        self.events_cache.get(&ends).as_ref().unwrap()
-    }
-    pub fn insert_gate_evt(
-        &mut self,
-        ends: (usize, usize),
-        tsn: usize,
-        window: Range<u32>,
-    ) {
-        self.events_cache.remove(&ends);
-        let port = Entry::Port(ends.0, ends.1);
-        let event = Event::new(tsn, window);
-        let evts = self.events_mut(port);
-        match evts.binary_search_by_key(&event.window.start, |e| e.window.start) {
-            Ok(_) => panic!("插入重複的閘門事件: link={}, {:?}", ends.0, event),
-            Err(pos) => {
-                if pos > 0 && evts[pos - 1].window.end > event.window.start {
-                    // 開始時間位於前一個事件中
-                    panic!(
-                        "插入重疊的閘門事件： link={}, {:?} v.s. {:?}",
-                        ends.1,
-                        evts[pos - 1],
-                        event
-                    );
-                } else {
-                    evts.insert(pos, event)
-                }
-            }
-        }
-    }
-    pub fn insert_queue_evt(
-        &mut self,
-        ends: (usize, usize),
-        que: u8,
-        tsn: usize,
-        window: Range<u32>,
-    ) {
-        if window.start == window.end { return; }
-        let event = Event::new(tsn, window);
-        let queue = Entry::Queue(ends.0, ends.1, que);
-        let evts = self.events_mut(queue);
-        match evts.binary_search_by_key(&event.tuple(), |e| e.tuple()) {
-            // FIXME: 這個異常有機率發生，試著重現看看！
-            Ok(_) => panic!(
-                "插入重複的佇列事件: link={}, queue={}, {:?}",
-                ends.0, que, event
-            ),
-            Err(pos) => {
-                if pos > 0 && evts[pos - 1].window.end >= event.window.start {
-                    // FIXME don't extend event, just panic
-                    // 開始時間位於前一個事件中，則延伸前一個事件
-                    evts[pos - 1].window.end = event.window.end;
-                } else {
-                    evts.insert(pos, event)
-                }
-            }
-        }
-    }
-    /// 會先確認 start~(start+duration) 這段時間中有沒有與其它事件重疊
-    ///
-    /// 若否，則回傳 None，應可直接塞進去。若有重疊，則會告知下一個空的時間（但不一定塞得進去）
-    pub fn get_next_empty_time(&self, ends: (usize, usize), start: u32, duration: u32) -> Option<u32> {
-        let s1 = self.get_next_spot(ends, start);
-        let s2 = self.get_next_spot(ends, start + duration);
-        if s1.0 != s2.0 {
-            // 是不同的閘門事
-            Some(s1.0)
-        } else if s1.1 {
-            // 是同一個閘門事件的開始
-            None
-        } else {
-            // 是同一個閘門事件的結束，代表 start~duration 這段時間正處於該事件之中，重疊了!
-            Some(s2.0)
-        }
-    }
-    /// 計算最近的下一個「時間點」，此處的時間點有可能是閘門事件的開啟或結束。
-    ///
-    /// 回傳一組資料(usize, bool)，前者代表時間，後者代表該時間是閘門事件的開始還是結束（真代表開始）
-    fn get_next_spot(&self, ends: (usize, usize), time: u32) -> (u32, bool) {
-        // TODO 應該用二元搜索來優化?
-        let port = Entry::Port(ends.0, ends.1);
-        let evts = self.events(port);
-        for event in evts {
-            if event.window.start > time {
-                return (event.window.start, true);
-            } else if event.window.end > time {
-                return (event.window.end, false);
-            }
-        }
-        (self.hyperperiod, true)
-    }
-    /// 回傳 None 者，代表當前即是空的
-    pub fn get_next_queue_empty_time(
-        &self,
-        ends: (usize, usize),
-        queue_id: u8,
-        time: u32,
-    ) -> Option<u32> {
-        let queue = Entry::Queue(ends.0, ends.1, queue_id);
-        let evts = self.events(queue);
-        for event in evts {
-            if event.window.start <= time {
-                if event.window.end > time {
-                    return Some(event.window.end);
-                } else {
-                    return None;
-                }
-            }
-        }
-        None
+            .map_or(&EMPTY, |m| m.intervals())
     }
     pub fn remove(&mut self, ends: &(usize, usize), tsn: usize) {
-        self.events_cache.remove(&ends);
         let port = Entry::Port(ends.0, ends.1);
-        let gate_evt = self.events_mut(port);
-        let mut i = 0;
-        while i < gate_evt.len() {
-            if gate_evt[i].stream == tsn {
-                gate_evt.remove(i);
-            } else {
-                i += 1;
-            }
-        }
+        let map = self.events.entry(port)
+            .or_insert_with(|| IntervalMap::new());
+        map.remove_value(tsn);
         for queue_id in 0..MAX_QUEUE {
             let queue = Entry::Queue(ends.0, ends.1, queue_id);
-            let queue_evt = self.events_mut(queue);
-            let mut i = 0;
-            while i < queue_evt.len() {
-                if queue_evt[i].stream == tsn {
-                    queue_evt.remove(i);
-                } else {
-                    i += 1;
-                }
-            }
+            let map = self.events.entry(queue)
+                .or_insert_with(|| IntervalMap::new());
+            map.remove_value(tsn);
         }
+    }
+    pub fn insert(&mut self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) {
+        let hyperperiod = self.hyperperiod();
+        debug_assert!(window.end <= hyperperiod);
+        let events = self.events.entry(entry)
+            .or_insert_with(|| IntervalMap::new());
+        (0..hyperperiod).step_by(period as usize)
+            .map(|offset| shift(&window, offset))
+            .for_each(|inst| events.insert(inst, tsn))
+    }
+    fn check_idle_once(&self, entry: Entry, tsn: usize, window: Range<u32>) -> bool {
+        let hyperperiod = self.hyperperiod();
+        let events = self.events.get(&entry);
+        if events.is_none() { return true; }
+        let events = events.unwrap();
+        window.end <= hyperperiod && events.check_available(window, tsn)
+    }
+    pub fn check_idle(&self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) -> bool {
+        let hyperperiod = self.hyperperiod();
+        if window.end > period { return false; }
+        (0..hyperperiod).step_by(period as usize)
+            .map(|offset| shift(&window, offset))
+            .all(|inst| self.check_idle_once(entry, tsn, inst))
+    }
+    fn query_later_idle_once(&self, entry: Entry, tsn: usize, window: Range<u32>) -> Option<u32> {
+        debug_assert!(matches!(entry, Entry::Port(..)));
+        if self.check_idle_once(entry, tsn, window.clone()) { return Some(0) }
+        let events = self.events.get(&entry);
+        if events.is_none() { return Some(0); }
+        let events = events.unwrap();
+
+        let hyperperiod = self.hyperperiod();
+        if window.end > hyperperiod { return None; }
+        let padded = (hyperperiod..hyperperiod, usize::MAX);
+        let mut afters = Vec::from(events.intervals_after(window.start));
+        afters.push(padded);
+        afters.windows(2)
+            // .inspect(|i| println!("{:?}", i))
+            .map(|pair| pair[0].0.end..pair[1].0.start)
+            .find(|idle| idle.end - idle.start >= window.end - window.start)
+            .map(|idle| idle.start - window.start)
+    }
+    pub fn query_later_idle(&self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) -> Option<u32> {
+        debug_assert!(matches!(entry, Entry::Port(..)));
+        debug_assert!(window.end <= period);
+        let mut offset = 0;
+        let hyperperiod = self.hyperperiod();
+        if window.end > hyperperiod { return None; }
+        while !self.check_idle(entry, tsn, shift(&window, offset), period) {
+            let increment = (0..hyperperiod).step_by(period as usize)
+                .map(|timeshift| shift(&window, timeshift + offset))
+                .map(|inst| self.query_later_idle_once(entry, tsn, inst))
+                // .inspect(|x|println!("{:?}", x))
+                .collect::<Option<Vec<_>>>()
+                .and_then(|incrs| incrs.into_iter().max())?;
+            debug_assert!(increment > 0);
+            offset += increment;
+        }
+        Some(offset)
     }
 }
 
-impl Event {
-    fn new(stream: usize, window: Range<u32>) -> Self {
-        Event { stream, window }
+#[inline]
+fn shift(window: &Range<u32>, offset: u32) -> Range<u32> {
+    (window.start + offset)..(window.end + offset)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup() -> GateCtrlList {
+        let mut gcl = GateCtrlList::new(10);
+        let entry = Entry::Port(0, 1);
+        gcl.insert(entry, 0, 0..1, 5);
+        gcl.insert(entry, 0, 2..3, 5);
+        gcl.insert(entry, 1, 3..4, 10);
+        gcl.insert(entry, 2, 6..7, 10);
+        let before = [(0..1, 0), (2..3, 0), (3..4, 1), (5..6, 0), (6..7, 2), (7..8, 0)];
+        assert_eq!(gcl.events(entry), &before);
+        gcl
     }
-    fn tuple(&self) -> (u32, u32, usize) {
-        (self.window.start, self.window.end, self.stream)
+
+    #[test]
+    fn it_checks_idle() {
+        let gcl = setup();
+        let entry = Entry::Port(0, 1);
+        // before: 0 - 0 1 - 0 2 0 - -
+        // expect: 0 - 0 1 + 0 2 0 - +
+        assert_eq!(gcl.check_idle(entry, 9, 1..2, 5), false);
+        assert_eq!(gcl.check_idle(entry, 9, 4..5, 5), true);
+    }
+
+    #[test]
+    fn it_queries_later_idle_once() {
+        let mut gcl = GateCtrlList::new(10);
+        let entry = Entry::Port(0, 1);
+        gcl.insert(entry, 0, 0..1, 5);
+        gcl.insert(entry, 1, 2..3, 10);
+        let before = [(0..1, 0), (2..3, 1), (5..6, 0)];
+        assert_eq!(gcl.events(entry), &before);
+        // before: 0 - 1 - - 0 - - - -
+        // expect: 0 - 1 - - 0 + + + -
+        assert_eq!(gcl.query_later_idle_once(entry, 9, 0..2), Some(3));
+        assert_eq!(gcl.query_later_idle_once(entry, 9, 1..4), Some(5));
+        assert_eq!(gcl.query_later_idle_once(entry, 9, 0..5), None);
+    }
+
+    #[test]
+    fn it_queries_later_idle() {
+        let gcl = setup();
+        let entry = Entry::Port(0, 1);
+        // before: 0 - 0 1 - 0 2 0 - -
+        // expect: 0 - 0 1 + 0 2 0 - +
+        assert_eq!(gcl.query_later_idle(entry, 9, 0..1, 5), Some(4));
+        assert_eq!(gcl.query_later_idle(entry, 9, 2..3, 5), Some(2));
+        assert_eq!(gcl.query_later_idle(entry, 9, 0..2, 5), None);
+        assert_eq!(gcl.query_later_idle(entry, 9, 2..4, 5), None);
     }
 }
