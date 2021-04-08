@@ -7,9 +7,9 @@ fn it_runs_aco() {
     let (tsns2, avbs2) = yaml::load_streams("data/streams/motiv-reconf.yaml", 2);
     let network = yaml::load_network("data/network/typical.yaml");
 
-    let mut config = yaml::load_config("data/config/default.yaml");
+    let mut config = yaml::load_config("data/config/finetune.yaml");
     config.algorithm = String::from("aco");
-    config.seed = 42;
+    config.seed = 1;
 
     let mut cnc = CNC::new(network, config);
 
@@ -28,9 +28,9 @@ fn it_runs_ro() {
     let (tsns2, avbs2) = yaml::load_streams("data/streams/motiv-reconf.yaml", 2);
     let network = yaml::load_network("data/network/typical.yaml");
 
-    let mut config = yaml::load_config("data/config/default.yaml");
+    let mut config = yaml::load_config("data/config/finetune.yaml");
     config.algorithm = String::from("ro");
-    config.seed = 420;
+    config.seed = 4;
 
     let mut cnc = CNC::new(network, config);
 
@@ -49,7 +49,7 @@ fn it_runs_spf() {
     let (tsns2, avbs2) = yaml::load_streams("data/streams/motiv-reconf.yaml", 2);
     let network = yaml::load_network("data/network/typical.yaml");
 
-    let mut config = yaml::load_config("data/config/default.yaml");
+    let mut config = yaml::load_config("data/config/finetune.yaml");
     config.algorithm = String::from("spf");
 
     let mut cnc = CNC::new(network, config);
