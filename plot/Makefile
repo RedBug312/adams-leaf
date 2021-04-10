@@ -26,13 +26,10 @@ LOG1 += $(foreach f, $(FOLD),$(foreach s, $(SEED),log/aco-mid-$(f)-3-$(s).log))
 LOG1 += $(foreach f, $(FOLD),$(foreach s, $(SEED),log/aco-mid-$(f)-inf-$(s).log))
 
 fig-5-1.dat: $(LOCK)
-	(seq 10 10 70; ./filter-time.sh $(LOG1) \
-	| paste $(foreach i,$(SEED),-) \
-	| datamash transpose \
-	| datamash mean 1-28 \
-	| tr -s ' \t' '\n') \
-	| paste - - - - - - - \
-	| datamash transpose \
+	(echo INPUTS ACO-3 ACO-INF RO SPF; \
+	 ./summarize.sh $(LOG1) \
+	 | datamash crosstab 3,1 mean 5 \
+	 | tail -n+2) \
 	| column -t > $@
 
 LOG2 += $(foreach f, $(FOLD),$(foreach s, $(SEED),log/spf-heavy-$(f)-3-$(s).log))
@@ -41,25 +38,19 @@ LOG2 += $(foreach f, $(FOLD),$(foreach s, $(SEED),log/aco-heavy-$(f)-3-$(s).log)
 LOG2 += $(foreach f, $(FOLD),$(foreach s, $(SEED),log/aco-heavy-$(f)-inf-$(s).log))
 
 fig-5-2.dat: $(LOCK)
-	(seq 10 10 70; ./filter-time.sh $(LOG2) \
-	| paste $(foreach i,$(SEED),-) \
-	| datamash transpose \
-	| datamash mean 1-28 \
-	| tr -s ' \t' '\n') \
-	| paste - - - - - - - \
-	| datamash transpose \
+	(echo INPUTS ACO-3 ACO-INF RO SPF; \
+	 ./summarize.sh $(LOG2) \
+	 | datamash crosstab 3,1 mean 5 \
+	 | tail -n+2) \
 	| column -t > $@
 
 LOG3 += $(foreach m, $(MEMORY),$(foreach s, $(SEED),log/aco-heavy-4-$(m)-$(s).log))
 
 fig-5-3.dat: $(LOCK)
-	(seq 1 1 7; ./filter-time.sh $(LOG3) \
-	| paste $(foreach i,$(SEED),-) \
-	| datamash transpose \
-	| datamash mean 1-7 \
-	| tr -s ' \t' '\n') \
-	| paste - - - - - - - \
-	| datamash transpose \
+	(echo MEMORY ACO; \
+	 ./summarize.sh $(LOG3) \
+	 | datamash groupby 1 mean 5 \
+	 | sed 's|^aco-||g') \
 	| column -t > $@
 
 .INTERMEDIATE: $(LOCK)
