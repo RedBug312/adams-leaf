@@ -94,11 +94,20 @@ impl CNC {
 
         writeln!(msg, "TSN streams")?;
         for &tsn in flowtable.tsns() {
-            let outcome = if objs[0] == 0.0 { "ok" } else { "failed" };
-            let kth = current.kth(tsn).unwrap();
-            let route = current.route(tsn);
-            writeln!(msg, "- stream #{:02} {}, with route #{} {:?}",
-                     tsn, outcome, kth, route)?;
+            match current.is_stay(tsn) {
+                true  => {
+                    let outcome = "ok";
+                    let kth = current.kth(tsn).unwrap();
+                    let route = current.route(tsn);
+                    writeln!(msg, "- stream #{:02} {}, with route #{} {:?}",
+                             tsn, outcome, kth, route)?;
+                },
+                false => {
+                    let outcome = "failed";
+                    writeln!(msg, "- stream #{:02} {}",
+                             tsn, outcome)?;
+                }
+            }
         }
         writeln!(msg, "AVB streams")?;
         for &avb in flowtable.avbs() {
@@ -127,7 +136,7 @@ impl<'a> Toolbox<'a> {
     pub fn evaluate_cost(&'a self, decision: &mut Decision) -> (f64, bool) {
         self.scheduler.configure(decision);  // where it'msg mutated
         let (cost, objs) = self.evaluator.evaluate_cost_objectives(decision, self.latest);
-        println!("{:?}", objs);
+        println!("{:.2?}", objs);
         let stop = self.config.early_stop && objs[0] == 0.0 && objs[1] == 0.0;
         (cost, stop)
     }

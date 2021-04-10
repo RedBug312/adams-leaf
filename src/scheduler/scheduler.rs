@@ -49,7 +49,6 @@ impl Scheduler {
     pub fn configure(&self, decision: &mut Decision) {
         self.configure_avbs(decision);
         self.configure_tsns(decision);
-        decision.confirm();
     }
     /// 更新 AVB 資料流表與圖上資訊
     fn configure_avbs(&self, decision: &mut Decision) {
@@ -70,6 +69,7 @@ impl Scheduler {
             let kth = decision.kth_next(avb).unwrap();
             insert_traversed_avb(decision, avb, kth);
         }
+        decision.confirm(&targets);
     }
     /// 更新 TSN 資料流表與 GCL
     fn configure_tsns(&self, decision: &mut Decision) {
@@ -88,6 +88,10 @@ impl Scheduler {
             .filter(|&&tsn| decision.is_pending(tsn)));
         let result = self.try_schedule_tsns(decision, targets);
         decision.tsn_fail = result.is_err();
+        match result {
+            Ok(done) => decision.confirm(&done),
+            Err(_) => (),
+        }
 
         if !decision.tsn_fail { return; }
 
@@ -95,6 +99,9 @@ impl Scheduler {
         targets = tsns.clone();
         let result = self.try_schedule_tsns(decision, targets);
         decision.tsn_fail = result.is_err();
+        match result {
+            Ok(done) | Err(done) => decision.confirm(&done),
+        }
     }
 
     // M. L. Raagaard, P. Pop, M. Gutiérrez and W. Steiner, "Runtime reconfiguration of time-sensitive
@@ -102,9 +109,10 @@ impl Scheduler {
     // CA, USA, 2017, pp. 1-6, doi: 10.1109/FWC.2017.8368523.
 
     fn try_schedule_tsns(&self, decision: &mut Decision, tsns: Vec<usize>)
-        -> Result<(), ()> {
+        -> Result<Vec<usize>, Vec<usize>> {
         let flowtable = self.flowtable();
         let mut tsns = tsns;
+        let mut done = Vec::with_capacity(tsns.len());
         tsns.sort_by(|&tsn1, &tsn2|
             compare_tsn(tsn1, tsn2, decision, &flowtable)
         );
@@ -115,14 +123,15 @@ impl Scheduler {
             loop {
                 if let Ok(schedule) = self.try_calculate_windows(tsn, queue, decision) {
                     insert_allocated_tsn(decision, tsn, kth, schedule, period);
+                    done.push(tsn);
                     break;
                 }
                 if let Err(_) = self.try_increment_queue(&mut queue) {
-                    return Err(());
+                    return Err(done);
                 }
             }
         }
-        Ok(())
+        Ok(done)
     }
     // 考慮 hyper period 中每種狀況
     /*

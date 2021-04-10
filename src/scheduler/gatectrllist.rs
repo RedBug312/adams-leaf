@@ -96,7 +96,7 @@ impl GateCtrlList {
     }
     pub fn query_later_idle(&self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) -> Option<u32> {
         debug_assert!(matches!(entry, Entry::Port(..)));
-        debug_assert!(window.end <= period);
+        if window.end > period { return None; };
         let mut offset = 0;
         let hyperperiod = self.hyperperiod();
         while !self.check_idle(entry, tsn, shift(&window, offset), period) {

@@ -100,6 +100,7 @@ impl Algorithm for RO {
 
             if min_cost.1 {
                 // 找到可行解，且為快速終止模式
+                *decision = current.clone();
                 break;
             }
             println!("{:?}", iter_times);

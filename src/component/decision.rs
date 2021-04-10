@@ -17,7 +17,7 @@ pub struct Decision {
     pub tsn_fail: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum Choice {
     Pending(usize),
     Stay(usize),
@@ -61,12 +61,18 @@ impl Decision {
     pub fn pick(&mut self, stream: usize, kth: usize) {
         self.choices[stream].pick(kth);
     }
-    pub fn confirm(&mut self) {
-        self.choices.iter_mut()
-            .for_each(|choice| choice.confirm());
+    pub fn confirm(&mut self, streams: &[usize]) {
+        for &stream in streams {
+            self.choices[stream].confirm();
+        }
     }
     pub fn is_pending(&self, stream: usize) -> bool {
         matches!(self.choices[stream], Choice::Pending(_))
+    }
+    pub fn is_stay(&self, stream: usize) -> bool {
+        matches!(self.choices[stream], Choice::Stay(_))
+        | matches!(self.choices[stream],
+                 Choice::Switch(prev, next) if prev == next)
     }
     pub fn is_switch(&self, stream: usize) -> bool {
         matches!(self.choices[stream],
@@ -148,7 +154,7 @@ mod tests {
         let mut cnc = setup();
         let decision = &mut cnc.decision;
         decision.pick(1, 1);
-        decision.confirm();
+        decision.confirm(&[0, 1, 2]);
 
         assert_eq!(decision.kth(0), Some(0));
         assert_eq!(decision.kth(1), Some(1));
