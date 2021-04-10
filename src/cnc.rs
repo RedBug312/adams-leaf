@@ -91,22 +91,26 @@ impl CNC {
         let latest = &self.decision;
         let mut msg = String::new();
 
-        writeln!(msg, "TT Flows:")?;
-        for &tsn in flowtable.tsns() {
-            let route = current.route(tsn);
-            writeln!(msg, "flow id = FlowID({}), route = {:?}", tsn, route)?;
-        }
-        writeln!(msg, "AVB Flows:")?;
-        for &avb in flowtable.avbs() {
-            let route = current.route(avb);
-            let objs = self.evaluator.evaluate_avb_objectives(avb, current, latest);
-            writeln!(
-                msg, "flow id = FlowID({}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",
-                avb, route, objs[3], objs[2]
-            )?;
-        }
         let (cost, objs) = self.evaluator.evaluate_cost_objectives(current, latest);
-        writeln!(msg, "with cost {:.2} and each objective {:.2?}", cost, objs)?;
+
+        writeln!(msg, "TSN streams")?;
+        for &tsn in flowtable.tsns() {
+            let outcome = if objs[0] == 0.0 { "ok" } else { "failed" };
+            let route = current.route(tsn);
+            writeln!(msg, "- stream #{:02} {}, with route {:?}",
+                     tsn, outcome, route)?;
+        }
+        writeln!(msg, "AVB streams")?;
+        for &avb in flowtable.avbs() {
+            let objs = self.evaluator.evaluate_avb_objectives(avb, current, latest);
+            let outcome = if objs[3] <= 1.0 { "ok" } else { "failed" };
+            let reroute = if objs[2] == 0.0 { "" } else { "*" };
+            let route = current.route(avb);
+            writeln!(msg, "- stream #{:02} {} ({:02.0}%), with route {}{:?}",
+                     avb, outcome, objs[3] * 100.0, reroute, route)?;
+        }
+        writeln!(msg, "the solution has cost {:.2} and each objective {:.2?}",
+                 cost, objs)?;
         Ok(msg)
     }
 }
