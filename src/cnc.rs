@@ -95,18 +95,20 @@ impl CNC {
         writeln!(msg, "TSN streams")?;
         for &tsn in flowtable.tsns() {
             let outcome = if objs[0] == 0.0 { "ok" } else { "failed" };
+            let kth = current.kth(tsn).unwrap();
             let route = current.route(tsn);
-            writeln!(msg, "- stream #{:02} {}, with route {:?}",
-                     tsn, outcome, route)?;
+            writeln!(msg, "- stream #{:02} {}, with route #{} {:?}",
+                     tsn, outcome, kth, route)?;
         }
         writeln!(msg, "AVB streams")?;
         for &avb in flowtable.avbs() {
             let objs = self.evaluator.evaluate_avb_objectives(avb, current, latest);
             let outcome = if objs[3] <= 1.0 { "ok" } else { "failed" };
             let reroute = if objs[2] == 0.0 { "" } else { "*" };
+            let kth = current.kth(avb).unwrap();
             let route = current.route(avb);
-            writeln!(msg, "- stream #{:02} {} ({:02.0}%), with route {}{:?}",
-                     avb, outcome, objs[3] * 100.0, reroute, route)?;
+            writeln!(msg, "- stream #{:02} {} ({:02.0}%), with route #{}{} {:?}",
+                     avb, outcome, objs[3] * 100.0, kth, reroute, route)?;
         }
         writeln!(msg, "the solution has cost {:.2} and each objective {:.2?}",
                  cost, objs)?;
