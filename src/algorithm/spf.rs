@@ -18,7 +18,8 @@ impl Algorithm for SPF {
             .map(|ends| self.yens.k_shortest_paths(ends.0, ends.1));
         decision.candidates.extend(input_candidates);
     }
-    fn configure(&mut self, _decision: &mut Decision, _flowtable: &FlowTable, _deadline: Instant, _toolbox: Toolbox) {
+    fn configure(&mut self, decision: &mut Decision, _flowtable: &FlowTable, _deadline: Instant, toolbox: Toolbox) {
+        toolbox.evaluate_cost(decision);
     }
 }
 

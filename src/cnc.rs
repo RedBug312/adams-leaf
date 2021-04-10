@@ -71,13 +71,12 @@ impl CNC {
         let latest = &self.decision;
         let config = &self.config;
 
+        let toolbox = Toolbox::pack(scheduler, evaluator, latest, config);
         let timeout = Duration::from_micros(config.timeout);
         let mut current = latest.clone();
 
         let start = Instant::now();
         self.algorithm.prepare(&mut current, flowtable);
-        self.scheduler.configure(&mut current);  // should not schedule before routing
-        let toolbox = Toolbox::pack(scheduler, evaluator, latest, config);
         self.algorithm.configure(&mut current, flowtable, start + timeout, toolbox);
         let elapsed = start.elapsed().as_micros();
 
