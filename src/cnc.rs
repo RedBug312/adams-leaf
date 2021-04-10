@@ -4,8 +4,9 @@ use crate::network::Network;
 use crate::scheduler::Scheduler;
 use crate::utils::config::Config;
 use crate::utils::stream::{TSN, AVB};
-use std::time::{Duration, Instant};
+use std::fmt::{Error, Write};
 use std::rc::{Rc, Weak};
+use std::time::{Duration, Instant};
 
 
 pub struct CNC {
@@ -17,6 +18,7 @@ pub struct CNC {
     #[allow(dead_code)]
     pub network: Rc<Network>,
     pub config: Config,
+    pub summary: String,
 }
 
 pub struct Toolbox<'a> {
@@ -42,13 +44,14 @@ impl CNC {
         let flowtable = Rc::new(FlowTable::new());
         let decision = Decision::new(&graph);
         let network = Rc::new(graph);
+        let summary = String::new();
         let mut scheduler = Scheduler::new();
         *scheduler.flowtable_mut() = Rc::downgrade(&flowtable);
         *scheduler.network_mut() = Rc::downgrade(&network);
         let mut evaluator = Evaluator::new(weights);
         *evaluator.flowtable_mut() = Rc::downgrade(&flowtable);
         *evaluator.network_mut() = Rc::downgrade(&network);
-        Self { algorithm, scheduler, evaluator, decision, flowtable, network, config }
+        Self { algorithm, scheduler, evaluator, decision, flowtable, network, config, summary }
     }
     pub fn add_streams(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
         *self.scheduler.flowtable_mut() = Weak::new();
@@ -78,30 +81,33 @@ impl CNC {
         self.algorithm.configure(&mut current, flowtable, start + timeout, toolbox);
         let elapsed = start.elapsed().as_micros();
 
-        self.show_results(&current);
+        self.summary = self.summarize(&current).unwrap();
         self.decision = current;
 
         elapsed
     }
-    fn show_results(&self, current: &Decision) {
+    fn summarize(&self, current: &Decision) -> Result<String, Error> {
         let flowtable = &self.flowtable;
         let latest = &self.decision;
-        println!("TT Flows:");
+        let mut msg = String::new();
+
+        writeln!(msg, "TT Flows:")?;
         for &tsn in flowtable.tsns() {
             let route = current.route(tsn);
-            println!("flow id = FlowID({}), route = {:?}", tsn, route);
+            writeln!(msg, "flow id = FlowID({}), route = {:?}", tsn, route)?;
         }
-        println!("AVB Flows:");
+        writeln!(msg, "AVB Flows:")?;
         for &avb in flowtable.avbs() {
             let route = current.route(avb);
             let objs = self.evaluator.evaluate_avb_objectives(avb, current, latest);
-            println!(
-                "flow id = FlowID({}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",
+            writeln!(
+                msg, "flow id = FlowID({}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",
                 avb, route, objs[3], objs[2]
-            );
+            )?;
         }
         let (cost, objs) = self.evaluator.evaluate_cost_objectives(current, latest);
-        println!("with cost {:.2} and each objective {:.2?}", cost, objs);
+        writeln!(msg, "with cost {:.2} and each objective {:.2?}", cost, objs)?;
+        Ok(msg)
     }
 }
 
@@ -114,7 +120,7 @@ impl<'a> Toolbox<'a> {
         self.evaluator.evaluate_avb_wcd_for_kth(avb, kth, decision)
     }
     pub fn evaluate_cost(&'a self, decision: &mut Decision) -> (f64, bool) {
-        self.scheduler.configure(decision);  // where it's mutated
+        self.scheduler.configure(decision);  // where it'msg mutated
         let (cost, objs) = self.evaluator.evaluate_cost_objectives(decision, self.latest);
         let stop = self.config.early_stop && objs[1] == 0.0;
         (cost, stop)
