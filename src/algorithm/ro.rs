@@ -3,6 +3,7 @@ use crate::component::Decision;
 use crate::component::FlowTable;
 use crate::network::Network;
 use rand::{Rng, SeedableRng};
+use rand::seq::SliceRandom;
 use rand_chacha::ChaChaRng;
 use std::time::Instant;
 use super::base::yens::Yens;
@@ -62,12 +63,9 @@ impl Algorithm for RO {
                     break; // 找到可行解，返回
                 }
 
-                let rand = rng
-                    .gen_range(0..flowtable.len());
-                let target_id = rand.into();
-                if flowtable.avb_spec(target_id).is_none() {
-                    continue;
-                }
+                let target_id = flowtable.avbs()
+                    .choose(&mut rng)
+                    .unwrap().clone();
 
                 let new_route = self.find_min_cost_route(decision, target_id, None, &flowtable, &toolbox);
                 let old_route = decision

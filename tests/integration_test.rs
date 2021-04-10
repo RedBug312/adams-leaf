@@ -15,10 +15,12 @@ fn it_runs_aco() {
 
     cnc.add_streams(tsns1, avbs1);
     let elapsed = cnc.configure();
+    print!("{}", cnc.summary);
     println!("--- #1 elapsed time: {} μs ---", elapsed);
 
     cnc.add_streams(tsns2, avbs2);
     let elapsed = cnc.configure();
+    print!("{}", cnc.summary);
     println!("--- #2 elapsed time: {} μs ---", elapsed);
 }
 
@@ -36,10 +38,12 @@ fn it_runs_ro() {
 
     cnc.add_streams(tsns1, avbs1);
     let elapsed = cnc.configure();
+    print!("{}", cnc.summary);
     println!("--- #1 elapsed time: {} μs ---", elapsed);
 
     cnc.add_streams(tsns2, avbs2);
     let elapsed = cnc.configure();
+    print!("{}", cnc.summary);
     println!("--- #2 elapsed time: {} μs ---", elapsed);
 }
 
@@ -56,9 +60,11 @@ fn it_runs_spf() {
 
     cnc.add_streams(tsns1, avbs1);
     let elapsed = cnc.configure();
+    print!("{}", cnc.summary);
     println!("--- #1 elapsed time: {} μs ---", elapsed);
 
     cnc.add_streams(tsns2, avbs2);
     let elapsed = cnc.configure();
+    print!("{}", cnc.summary);
     println!("--- #2 elapsed time: {} μs ---", elapsed);
 }
