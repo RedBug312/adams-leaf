@@ -9,6 +9,7 @@ set ylabel 'Computing time (millisecond)'
 set xtics
 set ytics
 set key right bottom Left reverse nobox
+set key autotitle columnhead
 
 set datafile missing '-'
 set style data linespoints
