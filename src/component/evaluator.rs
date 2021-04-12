@@ -1,9 +1,7 @@
 use crate::component::FlowTable;
 use crate::component::GateCtrlList;
 use crate::network::Edge;
-use crate::network::Network;
 use std::cmp::max;
-use std::rc::{Rc, Weak};
 use super::Solution;
 
 
@@ -15,8 +13,6 @@ const MAX_BE_SIZE: f64 = 1500.0;
 
 #[derive(Default)]
 pub struct Evaluator {
-    flowtable: Weak<FlowTable>,
-    network: Weak<Network>,
     weights: [f64; 4],
 }
 
@@ -25,24 +21,12 @@ impl Evaluator {
     pub fn new(weights: [f64; 4]) -> Self {
         Evaluator { weights, ..Default::default() }
     }
-    pub fn flowtable(&self) -> Rc<FlowTable> {
-        self.flowtable.upgrade().unwrap()
-    }
-    pub fn flowtable_mut(&mut self) -> &mut Weak<FlowTable> {
-        &mut self.flowtable
-    }
-    pub fn network(&self) -> Rc<Network> {
-        self.network.upgrade().unwrap()
-    }
-    pub fn network_mut(&mut self) -> &mut Weak<Network> {
-        &mut self.network
-    }
     pub fn evaluate_avb_wcd(&self, avb: usize, solution: &Solution) -> u32 {
         let kth = solution.selection(avb).next().unwrap();
         self.evaluate_avb_wcd_for_kth(avb, kth, solution)
     }
     pub fn evaluate_avb_objectives(&self, avb: usize, solution: &Solution, latest: &Solution) -> [f64; 4] {
-        let flowtable = self.flowtable();
+        let flowtable = solution.flowtable();
         let latest = latest.selection(avb).current();
         let current = solution.selection(avb).next();
         let wcd = self.evaluate_avb_wcd(avb, solution);
@@ -57,7 +41,7 @@ impl Evaluator {
     }
     pub fn evaluate_objectives(&self, solution: &Solution, latest: &Solution)
         -> [f64; 4] {
-        let flowtable = self.flowtable();
+        let flowtable = solution.flowtable();
         let mut all_rerouted_count = 0;
         let mut tsn_failed_count = 0;
         let mut avb_failed_count = 0;
@@ -103,8 +87,8 @@ impl Evaluator {
     /// TODO: 改用 FlowTable?
     /// * `gcl` - 所有 TT 資料流的 Gate Control List
     pub fn evaluate_avb_wcd_for_kth(&self, avb: usize, kth: usize, solution: &Solution) -> u32 {
-        let flowtable = self.flowtable();
-        let network = self.network();
+        let flowtable = solution.flowtable();
+        let network = solution.network();
         let route = solution.candidate(avb, kth);
         let gcl = &solution.allocated_tsns;
         let mut end_to_end = 0.0;

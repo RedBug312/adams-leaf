@@ -1,11 +1,9 @@
 use crate::MAX_QUEUE;
 use crate::component::Solution;
 use crate::component::FlowTable;
-use crate::network::Network;
 use crate::utils::stream::TSN;
 use std::cmp::{Ordering, max};
 use std::ops::Range;
-use std::rc::{Rc, Weak};
 
 
 const MTU: f64 = 1500.0;
@@ -24,27 +22,12 @@ impl Schedule {
 }
 
 #[derive(Default)]
-pub struct Scheduler {
-    flowtable: Weak<FlowTable>,
-    network: Weak<Network>,
-}
+pub struct Scheduler {}
 
 
 impl Scheduler {
     pub fn new() -> Self {
         Scheduler { ..Default::default() }
-    }
-    pub fn flowtable(&self) -> Rc<FlowTable> {
-        self.flowtable.upgrade().unwrap()
-    }
-    pub fn flowtable_mut(&mut self) -> &mut Weak<FlowTable> {
-        &mut self.flowtable
-    }
-    pub fn network(&self) -> Rc<Network> {
-        self.network.upgrade().unwrap()
-    }
-    pub fn network_mut(&mut self) -> &mut Weak<Network> {
-        &mut self.network
     }
     pub fn configure(&self, solution: &mut Solution) {
         self.configure_avbs(solution);
@@ -53,7 +36,7 @@ impl Scheduler {
     }
     /// 更新 AVB 資料流表與圖上資訊
     fn configure_avbs(&self, solution: &mut Solution) {
-        let flowtable = self.flowtable();
+        let flowtable = solution.flowtable();
         let avbs = flowtable.avbs();
         let mut targets = Vec::with_capacity(avbs.len());
 
@@ -73,7 +56,7 @@ impl Scheduler {
     }
     /// 更新 TSN 資料流表與 GCL
     fn configure_tsns(&self, solution: &mut Solution) {
-        let flowtable = self.flowtable();
+        let flowtable = solution.flowtable();
         let tsns = flowtable.tsns();
         let mut targets = Vec::with_capacity(tsns.len());
 
@@ -101,7 +84,7 @@ impl Scheduler {
 
     fn try_schedule_tsns(&self, solution: &mut Solution, tsns: Vec<usize>)
         -> Result<(), ()> {
-        let flowtable = self.flowtable();
+        let flowtable = solution.flowtable();
         let mut tsns = tsns;
         tsns.sort_by(|&tsn1, &tsn2|
             compare_tsn(tsn1, tsn2, solution, &flowtable)
@@ -126,8 +109,8 @@ impl Scheduler {
     }
     fn try_calculate_windows(&self, tsn: usize, queue: u8,
         solution: &Solution) -> Result<Schedule, ()> {
-        let flowtable = self.flowtable();
-        let network = self.network();
+        let flowtable = solution.flowtable.upgrade().unwrap();
+        let network = solution.network.upgrade().unwrap();
         let spec = flowtable.tsn_spec(tsn).unwrap();
         let kth_next = solution.selection(tsn).next().unwrap();
         let route = solution.candidate(tsn, kth_next);

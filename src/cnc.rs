@@ -41,26 +41,22 @@ impl CNC {
             _     => panic!("Failed specify an unknown routing algorithm"),
         };
         let flowtable = Rc::new(FlowTable::new());
-        let solution = Solution::new(&graph);
+        let mut solution = Solution::new(&graph);
         let network = Rc::new(graph);
-        let mut scheduler = Scheduler::new();
-        *scheduler.flowtable_mut() = Rc::downgrade(&flowtable);
-        *scheduler.network_mut() = Rc::downgrade(&network);
-        let mut evaluator = Evaluator::new(weights);
-        *evaluator.flowtable_mut() = Rc::downgrade(&flowtable);
-        *evaluator.network_mut() = Rc::downgrade(&network);
+        solution.flowtable = Rc::downgrade(&flowtable);
+        solution.network = Rc::downgrade(&network);
+        let scheduler = Scheduler::new();
+        let evaluator = Evaluator::new(weights);
         Self { algorithm, scheduler, evaluator, solution, flowtable, network, config }
     }
     pub fn add_streams(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
-        *self.scheduler.flowtable_mut() = Weak::new();
-        *self.evaluator.flowtable_mut() = Weak::new();
+        self.solution.flowtable = Weak::new();
         // ensure everyone drops their ownerships
         debug_assert!(Rc::weak_count(&self.flowtable) == 0);
         let flowtable = Rc::get_mut(&mut self.flowtable).unwrap();
         flowtable.append(tsns, avbs);
         self.solution.resize(self.flowtable.len());
-        *self.scheduler.flowtable_mut() = Rc::downgrade(&self.flowtable);
-        *self.evaluator.flowtable_mut() = Rc::downgrade(&self.flowtable);
+        self.solution.flowtable = Rc::downgrade(&self.flowtable);
     }
     pub fn configure(&mut self) -> u128 {
         let scheduler = &self.scheduler;

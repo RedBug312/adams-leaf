@@ -1,6 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, rc::{Rc, Weak}};
 use crate::network::Network;
 use crate::component::GateCtrlList;
+
+use super::FlowTable;
 
 
 const KTH_DEFAULT: usize = 0;
@@ -10,11 +12,13 @@ type Route = Vec<usize>;
 /// 這個結構預期會被複製很多次，因此其中的每個元件都應儘可能想辦法降低複製成本
 #[derive(Clone)]
 pub struct Solution {
-    pub selections: Vec<Select>,
-    pub outcomes: Vec<Outcome>,
+    selections: Vec<Select>,
+    outcomes: Vec<Outcome>,
     pub candidates: Vec<Vec<Route>>,
     pub allocated_tsns: GateCtrlList,
     pub traversed_avbs: HashMap<(usize, usize), HashSet<usize>>,
+    pub flowtable: Weak<FlowTable>,
+    pub network: Weak<Network>,
 }
 
 #[derive(Clone)]
@@ -42,7 +46,15 @@ impl Solution {
             candidates: vec![],
             allocated_tsns: GateCtrlList::new(1),
             traversed_avbs,
+            flowtable: Weak::new(),
+            network: Weak::new(),
         }
+    }
+    pub fn flowtable(&self) -> Rc<FlowTable> {
+        self.flowtable.upgrade().unwrap()
+    }
+    pub fn network(&self) -> Rc<Network> {
+        self.network.upgrade().unwrap()
     }
     pub fn select(&mut self, nth: usize, kth: usize) {
          self.selections[nth].select(kth);
