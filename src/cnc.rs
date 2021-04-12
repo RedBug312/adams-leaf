@@ -4,8 +4,9 @@ use crate::network::Network;
 use crate::scheduler::Scheduler;
 use crate::utils::config::Config;
 use crate::utils::stream::{TSN, AVB};
-use std::time::{Duration, Instant};
+use std::fmt::Write;
 use std::rc::{Rc, Weak};
+use std::time::{Duration, Instant};
 
 
 pub struct CNC {
@@ -86,22 +87,31 @@ impl CNC {
     fn show_results(&self, current: &Decision) {
         let flowtable = &self.flowtable;
         let latest = &self.decision;
-        println!("TT Flows:");
-        for &tsn in flowtable.tsns() {
-            let route = current.route(tsn);
-            println!("flow id = FlowID({}), route = {:?}", tsn, route);
-        }
-        println!("AVB Flows:");
-        for &avb in flowtable.avbs() {
-            let route = current.route(avb);
-            let objs = self.evaluator.evaluate_avb_objectives(avb, current, latest);
-            println!(
-                "flow id = FlowID({}), route = {:?} avb wcd / max latency = {:?}, reroute = {}",
-                avb, route, objs[3], objs[2]
-            );
-        }
+        let mut msg = String::new();
+
         let (cost, objs) = self.evaluator.evaluate_cost_objectives(current, latest);
-        println!("with cost {:.2} and each objective {:.2?}", cost, objs);
+
+        writeln!(msg, "TSN streams").unwrap();
+        for &tsn in flowtable.tsns() {
+            let outcome = if objs[0] == 0.0 { "ok" } else { "failed" };
+            let kth = current.kth(tsn).unwrap();
+            let route = current.route(tsn);
+            writeln!(msg, "- stream #{:02} {}, with route #{} {:?}",
+                     tsn, outcome, kth, route).unwrap();
+        }
+        writeln!(msg, "AVB streams").unwrap();
+        for &avb in flowtable.avbs() {
+            let objs = self.evaluator.evaluate_avb_objectives(avb, current, latest);
+            let outcome = if objs[3] <= 1.0 { "ok" } else { "failed" };
+            let reroute = if objs[2] == 0.0 { "" } else { "*" };
+            let kth = current.kth(avb).unwrap();
+            let route = current.route(avb);
+            writeln!(msg, "- stream #{:02} {} ({:02.0}%), with route #{}{} {:?}",
+                     avb, outcome, objs[3] * 100.0, kth, reroute, route).unwrap();
+        }
+        writeln!(msg, "the solution has cost {:.2} and each objective {:.2?}",
+                 cost, objs).unwrap();
+        print!("{}", msg);
     }
 }
 
