@@ -1,6 +1,6 @@
 [package]
 name = "adams-leaf"
-version = "1.1.0"
+version = "1.1.1"
 authors = ["DavidYo <lturtsamuel@gmail.com>", "RedBug312 <redbug312@gmail.com>"]
 edition = "2018"
 
