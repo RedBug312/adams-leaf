@@ -10,7 +10,7 @@ type Route = Vec<usize>;
 /// 這個結構預期會被複製很多次，因此其中的每個元件都應儘可能想辦法降低複製成本
 #[derive(Clone)]
 pub struct Solution {
-    choices: Vec<Choice>,
+    pub selections: Vec<Select>,
     pub candidates: Vec<Vec<Route>>,
     pub allocated_tsns: GateCtrlList,
     pub traversed_avbs: HashMap<(usize, usize), HashSet<usize>>,
@@ -18,7 +18,7 @@ pub struct Solution {
 }
 
 #[derive(Clone)]
-enum Choice {
+pub enum Select {
     Pending(usize),
     Stay(usize),
     Switch(usize, usize),
@@ -31,18 +31,23 @@ impl Solution {
             .map(|&ends| (ends, HashSet::new()))
             .collect();
         Solution {
-            choices: vec![],
+            selections: vec![],
             candidates: vec![],
             allocated_tsns: GateCtrlList::new(1),
             traversed_avbs,
             tsn_fail: false,
         }
     }
-    pub fn kth(&self, stream: usize) -> Option<usize> {
-        self.choices[stream].kth()
+    pub fn select(&mut self, nth: usize, kth: usize) {
+         self.selections[nth].select(kth);
     }
-    pub fn kth_next(&self, stream: usize) -> Option<usize> {
-        self.choices[stream].kth_next()
+    pub fn confirm(&mut self) {
+        self.selections.iter_mut()
+            .for_each(|selection| selection.confirm());
+    }
+    pub fn selection(&self, nth: usize) -> &Select {
+        debug_assert!(nth < self.selections.len());
+        &self.selections[nth]
     }
     pub fn candidate(&self, stream: usize, kth: usize) -> &Route {
         &self.candidates[stream][kth]
@@ -51,56 +56,48 @@ impl Solution {
         &self.candidates[stream]
     }
     pub fn route(&self, stream: usize) -> &Route {
-        let kth = self.kth(stream).unwrap();
+        let kth = self.selection(stream).current().unwrap();
         self.candidate(stream, kth)
     }
     pub fn resize(&mut self, len: usize) {
-        let default = Choice::Pending(KTH_DEFAULT);
-        self.choices.resize(len, default);
-    }
-    pub fn pick(&mut self, stream: usize, kth: usize) {
-        self.choices[stream].pick(kth);
-    }
-    pub fn confirm(&mut self) {
-        self.choices.iter_mut()
-            .for_each(|choice| choice.confirm());
-    }
-    pub fn is_pending(&self, stream: usize) -> bool {
-        matches!(self.choices[stream], Choice::Pending(_))
-    }
-    pub fn is_switch(&self, stream: usize) -> bool {
-        matches!(self.choices[stream],
-                 Choice::Switch(prev, next) if prev != next)
+        let default = Select::Pending(KTH_DEFAULT);
+        self.selections.resize(len, default);
     }
 }
 
-impl Choice {
-    fn kth(&self) -> Option<usize> {
+impl Select {
+    pub fn current(&self) -> Option<usize> {
         match self {
-            Choice::Pending(_)      => None,
-            Choice::Stay(prev)      => Some(*prev),
-            Choice::Switch(prev, _) => Some(*prev),
+            Select::Pending(_)      => None,
+            Select::Stay(curr)      => Some(*curr),
+            Select::Switch(curr, _) => Some(*curr),
         }
     }
-    fn kth_next(&self) -> Option<usize> {
+    pub fn next(&self) -> Option<usize> {
         match self {
-            Choice::Pending(next)   => Some(*next),
-            Choice::Stay(prev)      => Some(*prev),
-            Choice::Switch(_, next) => Some(*next),
+            Select::Pending(next)   => Some(*next),
+            Select::Stay(curr)      => Some(*curr),
+            Select::Switch(_, next) => Some(*next),
         }
     }
-    fn pick(&mut self, next: usize) {
+    pub fn is_pending(&self) -> bool {
+        matches!(self, Select::Pending(_))
+    }
+    pub fn is_switch(&self) -> bool {
+        matches!(self, Select::Switch(curr, next) if curr != next)
+    }
+    fn select(&mut self, next: usize) {
         *self = match self {
-            Choice::Pending(_)      => Choice::Pending(next),
-            Choice::Stay(prev)      => Choice::Switch(*prev, next),
-            Choice::Switch(prev, _) => Choice::Switch(*prev, next),
+            Select::Pending(_)      => Select::Pending(next),
+            Select::Stay(curr)      => Select::Switch(*curr, next),
+            Select::Switch(curr, _) => Select::Switch(*curr, next),
         };
     }
     fn confirm(&mut self) {
         *self = match self {
-            Choice::Pending(next)   => Choice::Stay(*next),
-            Choice::Stay(prev)      => Choice::Stay(*prev),
-            Choice::Switch(_, next) => Choice::Stay(*next),
+            Select::Pending(next)   => Select::Stay(*next),
+            Select::Stay(curr)      => Select::Stay(*curr),
+            Select::Switch(_, next) => Select::Stay(*next),
         };
     }
 }
@@ -129,30 +126,30 @@ mod tests {
     }
 
     #[test]
-    fn it_picks_kth() {
+    fn it_selects_kth() {
         let mut cnc = setup();
         let solution = &mut cnc.solution;
-        solution.pick(1, 1);
+        solution.select(1, 1);
 
-        assert_eq!(solution.kth(0), None);
-        assert_eq!(solution.kth(1), None);
-        assert_eq!(solution.kth(2), None);
+        assert_eq!(solution.selection(0).current(), None);
+        assert_eq!(solution.selection(1).current(), None);
+        assert_eq!(solution.selection(2).current(), None);
 
-        assert_eq!(solution.kth_next(0), Some(0));
-        assert_eq!(solution.kth_next(1), Some(1));
-        assert_eq!(solution.kth_next(2), Some(0));
+        assert_eq!(solution.selection(0).next(), Some(0));
+        assert_eq!(solution.selection(1).next(), Some(1));
+        assert_eq!(solution.selection(2).next(), Some(0));
     }
 
     #[test]
     fn it_confirms_solution() {
         let mut cnc = setup();
         let solution = &mut cnc.solution;
-        solution.pick(1, 1);
+        solution.select(1, 1);
         solution.confirm();
 
-        assert_eq!(solution.kth(0), Some(0));
-        assert_eq!(solution.kth(1), Some(1));
-        assert_eq!(solution.kth(2), Some(0));
+        assert_eq!(solution.selection(0).current(), Some(0));
+        assert_eq!(solution.selection(1).current(), Some(1));
+        assert_eq!(solution.selection(2).current(), Some(0));
 
         assert_eq!(solution.route(0), &vec![0, 2, 3, 1]);
         assert_eq!(solution.route(1), &vec![0, 3, 1]);

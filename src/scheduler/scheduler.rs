@@ -58,16 +58,16 @@ impl Scheduler {
         let mut targets = Vec::with_capacity(avbs.len());
 
         targets.extend(flowtable.avbs().iter()
-            .filter(|&&avb| solution.is_switch(avb)));
+            .filter(|&&avb| solution.selection(avb).is_switch()));
         for &avb in &targets {
-            let kth = solution.kth(avb).unwrap();
+            let kth = solution.selection(avb).current().unwrap();
             remove_traversed_avb(solution, avb, kth);
         }
 
         targets.extend(flowtable.avbs().iter()
-            .filter(|&&avb| solution.is_pending(avb)));
+            .filter(|&&avb| solution.selection(avb).is_pending()));
         for &avb in &targets {
-            let kth = solution.kth_next(avb).unwrap();
+            let kth = solution.selection(avb).next().unwrap();
             insert_traversed_avb(solution, avb, kth);
         }
     }
@@ -78,14 +78,14 @@ impl Scheduler {
         let mut targets = Vec::with_capacity(tsns.len());
 
         targets.extend(flowtable.tsns().iter()
-            .filter(|&&tsn| solution.is_switch(tsn)));
+            .filter(|&&tsn| solution.selection(tsn).is_switch()));
         for &tsn in &targets {
-            let kth = solution.kth(tsn).unwrap();
+            let kth = solution.selection(tsn).current().unwrap();
             remove_allocated_tsn(solution, tsn, kth);
         }
 
         targets.extend(flowtable.tsns().iter()
-            .filter(|&&tsn| solution.is_pending(tsn)));
+            .filter(|&&tsn| solution.selection(tsn).is_pending()));
         let result = self.try_schedule_tsns(solution, targets);
         solution.tsn_fail = result.is_err();
 
@@ -110,7 +110,7 @@ impl Scheduler {
         );
         for tsn in tsns {
             let mut queue = 0;
-            let kth = solution.kth_next(tsn).unwrap();
+            let kth = solution.selection(tsn).next().unwrap();
             let period = flowtable.tsn_spec(tsn).unwrap().period;
             loop {
                 if let Ok(schedule) = self.try_calculate_windows(tsn, queue, solution) {
@@ -129,7 +129,7 @@ impl Scheduler {
         let flowtable = self.flowtable();
         let network = self.network();
         let spec = flowtable.tsn_spec(tsn).unwrap();
-        let kth_next = solution.kth_next(tsn).unwrap();
+        let kth_next = solution.selection(tsn).next().unwrap();
         let route = solution.candidate(tsn, kth_next);
         let links = network.get_links_id_bandwidth(route);
         let frame_len = count_frames(spec);
@@ -216,7 +216,7 @@ fn compare_tsn(tsn1: usize, tsn2: usize,
     let spec1 = flowtable.tsn_spec(tsn1).unwrap();
     let spec2 = flowtable.tsn_spec(tsn2).unwrap();
     let routelen = |tsn: usize| {
-        let kth_next = solution.kth_next(tsn).unwrap();
+        let kth_next = solution.selection(tsn).next().unwrap();
         solution.candidate(tsn, kth_next).len()
     };
     spec1.deadline.cmp(&spec2.deadline)

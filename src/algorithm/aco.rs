@@ -67,12 +67,12 @@ impl Algorithm for ACO {
         self.ants.extend_state_len(flowtable.len());
         self.memory = vec![[1.0; MAX_K]; flowtable.len()];
         for &tsn in flowtable.tsns() {
-            if let Some(kth) = solution.kth(tsn) {
+            if let Some(kth) = solution.selection(tsn).current() {
                 self.memory[tsn][kth] = self.param.tsn_memory;
             }
         }
         for &avb in flowtable.avbs() {
-            if let Some(kth) = solution.kth(avb) {
+            if let Some(kth) = solution.selection(avb).current() {
                 self.memory[avb][kth] = self.param.avb_memory;
             }
         }
@@ -186,7 +186,7 @@ fn compute_aco_dist(
 
     for (id, &kth) in state.iter().enumerate() {
         // NOTE: 若發現和舊的資料一樣，這個 update_info 函式會自動把它忽略掉
-        current.pick(id, kth);
+        current.select(id, kth);
     }
 
     let cost = toolbox.evaluate_cost(&mut current);

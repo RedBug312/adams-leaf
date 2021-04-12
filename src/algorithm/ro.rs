@@ -42,7 +42,7 @@ impl Algorithm for RO {
                 let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
                 let set = gen_n_distinct_outof_k(alpha, candidate_cnt, &mut rng);
                 let new_route = self.find_min_cost_route(solution, avb, Some(set), &flowtable, &toolbox);
-                current.pick(avb, new_route);
+                current.select(avb, new_route);
             }
             // PHASE 2
             let cost = toolbox.evaluate_cost(&mut current);
@@ -71,7 +71,7 @@ impl Algorithm for RO {
 
                 let new_route = self.find_min_cost_route(solution, target_id, None, &flowtable, &toolbox);
                 let old_route = solution
-                    .kth(target_id)
+                    .selection(target_id).current()
                     .unwrap();
 
                 if old_route == new_route {
@@ -79,7 +79,7 @@ impl Algorithm for RO {
                 }
 
                 // 實際更新下去，並計算成本
-                current.pick(target_id, new_route);
+                current.select(target_id, new_route);
                 let cost = toolbox.evaluate_cost(&mut current);
 
                 if cost.0 < min_cost.0 {
@@ -91,7 +91,7 @@ impl Algorithm for RO {
                     // println!("found min_cost = {:?}", cost);
                 } else {
                     // 恢復上一動
-                    current.pick(target_id, old_route);
+                    current.select(target_id, old_route);
                     iter_times_inner += 1;
                     if iter_times_inner == flowtable.len() {
                         //  NOTE: 迭代次數上限與資料流數量掛勾

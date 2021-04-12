@@ -38,13 +38,13 @@ impl Evaluator {
         &mut self.network
     }
     pub fn evaluate_avb_wcd(&self, avb: usize, solution: &Solution) -> u32 {
-        let kth = solution.kth_next(avb).unwrap();
+        let kth = solution.selection(avb).next().unwrap();
         self.evaluate_avb_wcd_for_kth(avb, kth, solution)
     }
     pub fn evaluate_avb_objectives(&self, avb: usize, solution: &Solution, latest: &Solution) -> [f64; 4] {
         let flowtable = self.flowtable();
-        let latest = latest.kth(avb);
-        let current = solution.kth_next(avb);
+        let latest = latest.selection(avb).current();
+        let current = solution.selection(avb).next();
         let wcd = self.evaluate_avb_wcd(avb, solution);
         let max = flowtable.avb_spec(avb).unwrap().deadline;
 
@@ -63,8 +63,8 @@ impl Evaluator {
         let mut avb_normed_wcd_sum = 0.0;
 
         for either in 0..flowtable.len() {
-            let latest = latest.kth(either);
-            let current = solution.kth_next(either);
+            let latest = latest.selection(either).current();
+            let current = solution.selection(either).next();
             all_rerouted_count += is_rerouted(latest, current) as usize;
         }
         for &avb in flowtable.avbs() {
