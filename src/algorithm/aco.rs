@@ -78,13 +78,20 @@ impl Algorithm for ACO {
     fn configure(&mut self, solution: &mut Solution, deadline: Instant, toolbox: Toolbox) {
         let vis = self.compute_visibility(solution, &toolbox);
         let cost = toolbox.evaluate_cost(solution);
+        let dist = distance(cost.0);
 
         let mut best_dist = distance(cost.0);
 
         let visibility = &vis;
 
         let mut rng = ChaChaRng::seed_from_u64(self.seed);
-        let mut best_state = WeightedState::new(std::f64::MAX, None);
+        let state_len = self.ants.get_state_len();
+        let mut cur_state = Vec::<usize>::with_capacity(state_len);
+        for i in 0..state_len {
+            let next = solution.selection(i).current().unwrap();
+            cur_state.push(next);
+        }
+        let mut best_state = WeightedState::new(dist, Some(cur_state));
         #[allow(unused_variables)]
         let mut epoch = 0;
         while Instant::now() < deadline {
@@ -93,7 +100,6 @@ impl Algorithm for ACO {
             //     self.aco.do_single_epoch(&visibility, &mut judge_func, &mut rng);
 
             let mut max_heap: BinaryHeap<WeightedState> = BinaryHeap::new();
-            let state_len = self.ants.get_state_len();
             let mut should_stop = false;
             for _ in 0..self.ants.r {
                 let mut cur_state = Vec::<usize>::with_capacity(state_len);
