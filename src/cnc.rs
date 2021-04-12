@@ -1,5 +1,5 @@
 use crate::algorithm::{ACO, Algorithm, AlgorithmEnum, RO, SPF};
-use crate::component::{Decision, Evaluator, FlowTable};
+use crate::component::{Evaluator, FlowTable, Solution};
 use crate::network::Network;
 use crate::scheduler::Scheduler;
 use crate::utils::config::Config;
@@ -14,7 +14,7 @@ pub struct CNC {
     pub scheduler: Scheduler,
     pub evaluator: Evaluator,
     pub flowtable: Rc<FlowTable>,
-    pub decision: Decision,
+    pub solution: Solution,
     #[allow(dead_code)]
     pub network: Rc<Network>,
     pub config: Config,
@@ -23,7 +23,7 @@ pub struct CNC {
 pub struct Toolbox<'a> {
     scheduler: &'a Scheduler,
     evaluator: &'a Evaluator,
-    latest: &'a Decision,
+    latest: &'a Solution,
     config: &'a Config,
 }
 
@@ -41,7 +41,7 @@ impl CNC {
             _     => panic!("Failed specify an unknown routing algorithm"),
         };
         let flowtable = Rc::new(FlowTable::new());
-        let decision = Decision::new(&graph);
+        let solution = Solution::new(&graph);
         let network = Rc::new(graph);
         let mut scheduler = Scheduler::new();
         *scheduler.flowtable_mut() = Rc::downgrade(&flowtable);
@@ -49,7 +49,7 @@ impl CNC {
         let mut evaluator = Evaluator::new(weights);
         *evaluator.flowtable_mut() = Rc::downgrade(&flowtable);
         *evaluator.network_mut() = Rc::downgrade(&network);
-        Self { algorithm, scheduler, evaluator, decision, flowtable, network, config }
+        Self { algorithm, scheduler, evaluator, solution, flowtable, network, config }
     }
     pub fn add_streams(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {
         *self.scheduler.flowtable_mut() = Weak::new();
@@ -58,7 +58,7 @@ impl CNC {
         debug_assert!(Rc::weak_count(&self.flowtable) == 0);
         let flowtable = Rc::get_mut(&mut self.flowtable).unwrap();
         flowtable.append(tsns, avbs);
-        self.decision.resize(self.flowtable.len());
+        self.solution.resize(self.flowtable.len());
         *self.scheduler.flowtable_mut() = Rc::downgrade(&self.flowtable);
         *self.evaluator.flowtable_mut() = Rc::downgrade(&self.flowtable);
     }
@@ -66,7 +66,7 @@ impl CNC {
         let scheduler = &self.scheduler;
         let evaluator = &self.evaluator;
         let flowtable = &self.flowtable;
-        let latest = &self.decision;
+        let latest = &self.solution;
         let config = &self.config;
 
         let timeout = Duration::from_micros(config.timeout);
@@ -80,13 +80,13 @@ impl CNC {
         let elapsed = start.elapsed().as_micros();
 
         self.show_results(&current);
-        self.decision = current;
+        self.solution = current;
 
         elapsed
     }
-    fn show_results(&self, current: &Decision) {
+    fn show_results(&self, current: &Solution) {
         let flowtable = &self.flowtable;
-        let latest = &self.decision;
+        let latest = &self.solution;
         let mut msg = String::new();
 
         let (cost, objs) = self.evaluator.evaluate_cost_objectives(current, latest);
@@ -117,15 +117,15 @@ impl CNC {
 
 impl<'a> Toolbox<'a> {
     pub fn pack(scheduler: &'a Scheduler, evaluator: &'a Evaluator,
-                latest: &'a Decision, config: &'a Config) -> Self {
+                latest: &'a Solution, config: &'a Config) -> Self {
         Toolbox { scheduler, evaluator, latest, config }
     }
-    pub fn evaluate_wcd(&'a self, avb: usize, kth: usize, decision: &Decision) -> u32 {
-        self.evaluator.evaluate_avb_wcd_for_kth(avb, kth, decision)
+    pub fn evaluate_wcd(&'a self, avb: usize, kth: usize, solution: &Solution) -> u32 {
+        self.evaluator.evaluate_avb_wcd_for_kth(avb, kth, solution)
     }
-    pub fn evaluate_cost(&'a self, decision: &mut Decision) -> (f64, bool) {
-        self.scheduler.configure(decision);  // where it's mutated
-        let (cost, objs) = self.evaluator.evaluate_cost_objectives(decision, self.latest);
+    pub fn evaluate_cost(&'a self, solution: &mut Solution) -> (f64, bool) {
+        self.scheduler.configure(solution);  // where it's mutated
+        let (cost, objs) = self.evaluator.evaluate_cost_objectives(solution, self.latest);
         let stop = self.config.early_stop && objs[1] == 0.0;
         (cost, stop)
     }

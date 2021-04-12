@@ -4,7 +4,7 @@ use crate::network::Edge;
 use crate::network::Network;
 use std::cmp::max;
 use std::rc::{Rc, Weak};
-use super::Decision;
+use super::Solution;
 
 
 /// AVB 資料流最多可以佔用的資源百分比（模擬 Credit Base Shaper 的效果）
@@ -37,25 +37,25 @@ impl Evaluator {
     pub fn network_mut(&mut self) -> &mut Weak<Network> {
         &mut self.network
     }
-    pub fn evaluate_avb_wcd(&self, avb: usize, decision: &Decision) -> u32 {
-        let kth = decision.kth_next(avb).unwrap();
-        self.evaluate_avb_wcd_for_kth(avb, kth, decision)
+    pub fn evaluate_avb_wcd(&self, avb: usize, solution: &Solution) -> u32 {
+        let kth = solution.kth_next(avb).unwrap();
+        self.evaluate_avb_wcd_for_kth(avb, kth, solution)
     }
-    pub fn evaluate_avb_objectives(&self, avb: usize, decision: &Decision, latest: &Decision) -> [f64; 4] {
+    pub fn evaluate_avb_objectives(&self, avb: usize, solution: &Solution, latest: &Solution) -> [f64; 4] {
         let flowtable = self.flowtable();
         let latest = latest.kth(avb);
-        let current = decision.kth_next(avb);
-        let wcd = self.evaluate_avb_wcd(avb, decision);
+        let current = solution.kth_next(avb);
+        let wcd = self.evaluate_avb_wcd(avb, solution);
         let max = flowtable.avb_spec(avb).unwrap().deadline;
 
         let mut objs = [0.0; 4];
-        objs[0] = decision.tsn_fail as u8 as f64;
+        objs[0] = solution.tsn_fail as u8 as f64;
         objs[1] = (wcd > max) as usize as f64;
         objs[2] = is_rerouted(latest, current) as usize as f64;
         objs[3] = wcd as f64 / max as f64;
         objs
     }
-    pub fn evaluate_objectives(&self, decision: &Decision, latest: &Decision)
+    pub fn evaluate_objectives(&self, solution: &Solution, latest: &Solution)
         -> [f64; 4] {
         let flowtable = self.flowtable();
         let mut all_rerouted_count = 0;
@@ -64,26 +64,26 @@ impl Evaluator {
 
         for either in 0..flowtable.len() {
             let latest = latest.kth(either);
-            let current = decision.kth_next(either);
+            let current = solution.kth_next(either);
             all_rerouted_count += is_rerouted(latest, current) as usize;
         }
         for &avb in flowtable.avbs() {
-            let wcd = self.evaluate_avb_wcd(avb, decision);
+            let wcd = self.evaluate_avb_wcd(avb, solution);
             let max = flowtable.avb_spec(avb).unwrap().deadline;
             avb_failed_count += (wcd > max) as usize;
             avb_normed_wcd_sum += wcd as f64 / max as f64;
         }
 
         let mut objs = [0.0; 4];
-        objs[0] = decision.tsn_fail as u8 as f64;
+        objs[0] = solution.tsn_fail as u8 as f64;
         objs[1] = avb_failed_count as f64 / flowtable.avbs().len() as f64;
         objs[2] = all_rerouted_count as f64 / flowtable.len() as f64;
         objs[3] = avb_normed_wcd_sum / flowtable.avbs().len() as f64;
         objs
     }
-    pub fn evaluate_cost_objectives(&self, decision: &Decision, latest: &Decision)
+    pub fn evaluate_cost_objectives(&self, solution: &Solution, latest: &Solution)
         -> (f64, [f64; 4]) {
-        let objs = self.evaluate_objectives(decision, latest);
+        let objs = self.evaluate_objectives(solution, latest);
         let cost = objs.iter()
             .zip(self.weights.iter())
             .map(|(x, y)| x * y)
@@ -98,15 +98,15 @@ impl Evaluator {
     /// * `flow_table` - 資料流表。需注意的是，這裡僅用了資料流本身的資料，而未使用其隨附資訊
     /// TODO: 改用 FlowTable?
     /// * `gcl` - 所有 TT 資料流的 Gate Control List
-    pub fn evaluate_avb_wcd_for_kth(&self, avb: usize, kth: usize, decision: &Decision) -> u32 {
+    pub fn evaluate_avb_wcd_for_kth(&self, avb: usize, kth: usize, solution: &Solution) -> u32 {
         let flowtable = self.flowtable();
         let network = self.network();
-        let route = decision.candidate(avb, kth);
-        let gcl = &decision.allocated_tsns;
+        let route = solution.candidate(avb, kth);
+        let gcl = &solution.allocated_tsns;
         let mut end_to_end = 0.0;
         for ends in route.windows(2) {
             let edge = network.edge(ends);
-            let traversed_avbs = decision.traversed_avbs.get(&edge.ends)
+            let traversed_avbs = solution.traversed_avbs.get(&edge.ends)
                 .map_or_else(|| vec![], |set| set.iter().cloned().collect());
             let mut per_hop = 0.0;
             per_hop += transmit_avb_itself(edge, avb, &flowtable);
@@ -204,7 +204,7 @@ mod tests {
         let config = yaml::load_config("data/config/default.yaml");
         let mut cnc = CNC::new(network, config);
         cnc.add_streams(tsns, avbs);
-        cnc.algorithm.prepare(&mut cnc.decision, &cnc.flowtable);
+        cnc.algorithm.prepare(&mut cnc.solution, &cnc.flowtable);
         cnc
     }
 
@@ -221,8 +221,8 @@ mod tests {
         let cnc = setup();
         let edge = cnc.network.edge(&[0, 1]);
         let flowtable = &cnc.flowtable;
-        let mut decision = cnc.decision.clone();
-        cnc.scheduler.configure(&mut decision);
+        let mut solution = cnc.solution.clone();
+        cnc.scheduler.configure(&mut solution);
         assert_eq!(interfere_from_avb(&edge, 0, vec![0, 1, 2], flowtable), 2.0);
         assert_eq!(interfere_from_avb(&edge, 1, vec![0, 1, 2], flowtable), 1.0);
         assert_eq!(interfere_from_avb(&edge, 2, vec![0, 1, 2], flowtable), 3.0);
@@ -232,8 +232,8 @@ mod tests {
     fn it_evaluates_tsn_interfere() {
         let cnc = setup();
         let edge = cnc.network.edge(&[0, 1]);
-        let mut decision = cnc.decision.clone();
-        cnc.scheduler.configure(&mut decision);
+        let mut solution = cnc.solution.clone();
+        cnc.scheduler.configure(&mut solution);
         // GCL: 3 - - - - 4 - 5 5 -
         let mut gcl = GateCtrlList::new(10);
         gcl.insert_gate_evt(edge.ends, 3, 0..1);

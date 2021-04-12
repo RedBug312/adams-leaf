@@ -1,5 +1,5 @@
 use crate::{MAX_K, cnc::Toolbox, utils::config::Parameters};
-use crate::component::Decision;
+use crate::component::Solution;
 use crate::component::FlowTable;
 use crate::network::Network;
 use rand::{Rng, SeedableRng};
@@ -32,7 +32,7 @@ impl ACO {
     pub fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
         self.yens.count_shortest_paths(src, dst)
     }
-    fn compute_visibility(&self, decision: &Decision, flowtable: &FlowTable,
+    fn compute_visibility(&self, solution: &Solution, flowtable: &FlowTable,
                           toolbox: &Toolbox) -> Vec<[f64; MAX_K]> {
         // TODO 好好設計能見度函式！
         // 目前：路徑長的倒數
@@ -41,7 +41,7 @@ impl ACO {
         for &avb in flowtable.avbs() {
             let (src, dst) = flowtable.ends(avb);
             for kth in 0..self.get_candidate_count(src, dst) {
-                let wcd = toolbox.evaluate_wcd(avb, kth, decision) as f64;
+                let wcd = toolbox.evaluate_wcd(avb, kth, solution) as f64;
                 vis[avb][kth] = 1.0 / wcd * self.memory[avb][kth];
             }
         }
@@ -57,30 +57,30 @@ impl ACO {
 }
 
 impl Algorithm for ACO {
-    fn prepare(&mut self, decision: &mut Decision, flowtable: &FlowTable) {
+    fn prepare(&mut self, solution: &mut Solution, flowtable: &FlowTable) {
         for id in flowtable.inputs() {
             let (src, dst) = flowtable.ends(id);
             let candidates = self.yens.k_shortest_paths(src, dst);
-            decision.candidates.push(candidates);
+            solution.candidates.push(candidates);
         }
         // before initial scheduler configure
         self.ants.extend_state_len(flowtable.len());
         self.memory = vec![[1.0; MAX_K]; flowtable.len()];
         for &tsn in flowtable.tsns() {
-            if let Some(kth) = decision.kth(tsn) {
+            if let Some(kth) = solution.kth(tsn) {
                 self.memory[tsn][kth] = self.param.tsn_memory;
             }
         }
         for &avb in flowtable.avbs() {
-            if let Some(kth) = decision.kth(avb) {
+            if let Some(kth) = solution.kth(avb) {
                 self.memory[avb][kth] = self.param.avb_memory;
             }
         }
     }
-    fn configure(&mut self, decision: &mut Decision, flowtable: &FlowTable, deadline: Instant, toolbox: Toolbox) {
+    fn configure(&mut self, solution: &mut Solution, flowtable: &FlowTable, deadline: Instant, toolbox: Toolbox) {
 
-        let vis = self.compute_visibility(decision, flowtable, &toolbox);
-        let cost = toolbox.evaluate_cost(decision);
+        let vis = self.compute_visibility(solution, flowtable, &toolbox);
+        let cost = toolbox.evaluate_cost(solution);
 
         let mut best_dist = distance(cost.0);
 
@@ -106,7 +106,7 @@ impl Algorithm for ACO {
                     // TODO online pharamon update
                 }
 
-                let cost = compute_aco_dist(decision, &cur_state, &mut best_dist, &toolbox);
+                let cost = compute_aco_dist(solution, &cur_state, &mut best_dist, &toolbox);
                 let dist = distance(cost.0);
                 let judge = if cost.1 {
                     // 找到可行解，且為快速終止模式
@@ -175,14 +175,14 @@ fn select_cluster(visibility: &[f64; MAX_K], pheromone: &[f64; MAX_K], k: usize,
     }
 }
 
-/// 本函式不只會計算距離，如果看見最佳解，還會把該解的網路包裝器記錄回 decision 參數
+/// 本函式不只會計算距離，如果看見最佳解，還會把該解的網路包裝器記錄回 solution 參數
 fn compute_aco_dist(
-    decision: &mut Decision,
+    solution: &mut Solution,
     state: &Vec<usize>,
     best_dist: &mut f64,
     toolbox: &Toolbox,
 ) -> (f64, bool) {
-    let mut current = decision.clone();
+    let mut current = solution.clone();
 
     for (id, &kth) in state.iter().enumerate() {
         // NOTE: 若發現和舊的資料一樣，這個 update_info 函式會自動把它忽略掉
@@ -194,14 +194,14 @@ fn compute_aco_dist(
 
     if cost.1 {
         // 快速終止！
-        *decision = current;
+        *solution = current;
         return cost;
     }
 
     if dist < *best_dist {
         *best_dist = dist;
         // 記錄 FlowTable 及 GCL
-        *decision = current;
+        *solution = current;
     }
     cost
 }

@@ -1,5 +1,5 @@
 use crate::MAX_QUEUE;
-use crate::component::Decision;
+use crate::component::Solution;
 use crate::component::FlowTable;
 use crate::network::Network;
 use crate::utils::stream::TSN;
@@ -46,75 +46,75 @@ impl Scheduler {
     pub fn network_mut(&mut self) -> &mut Weak<Network> {
         &mut self.network
     }
-    pub fn configure(&self, decision: &mut Decision) {
-        self.configure_avbs(decision);
-        self.configure_tsns(decision);
-        decision.confirm();
+    pub fn configure(&self, solution: &mut Solution) {
+        self.configure_avbs(solution);
+        self.configure_tsns(solution);
+        solution.confirm();
     }
     /// 更新 AVB 資料流表與圖上資訊
-    fn configure_avbs(&self, decision: &mut Decision) {
+    fn configure_avbs(&self, solution: &mut Solution) {
         let flowtable = self.flowtable();
         let avbs = flowtable.avbs();
         let mut targets = Vec::with_capacity(avbs.len());
 
         targets.extend(flowtable.avbs().iter()
-            .filter(|&&avb| decision.is_switch(avb)));
+            .filter(|&&avb| solution.is_switch(avb)));
         for &avb in &targets {
-            let kth = decision.kth(avb).unwrap();
-            remove_traversed_avb(decision, avb, kth);
+            let kth = solution.kth(avb).unwrap();
+            remove_traversed_avb(solution, avb, kth);
         }
 
         targets.extend(flowtable.avbs().iter()
-            .filter(|&&avb| decision.is_pending(avb)));
+            .filter(|&&avb| solution.is_pending(avb)));
         for &avb in &targets {
-            let kth = decision.kth_next(avb).unwrap();
-            insert_traversed_avb(decision, avb, kth);
+            let kth = solution.kth_next(avb).unwrap();
+            insert_traversed_avb(solution, avb, kth);
         }
     }
     /// 更新 TSN 資料流表與 GCL
-    fn configure_tsns(&self, decision: &mut Decision) {
+    fn configure_tsns(&self, solution: &mut Solution) {
         let flowtable = self.flowtable();
         let tsns = flowtable.tsns();
         let mut targets = Vec::with_capacity(tsns.len());
 
         targets.extend(flowtable.tsns().iter()
-            .filter(|&&tsn| decision.is_switch(tsn)));
+            .filter(|&&tsn| solution.is_switch(tsn)));
         for &tsn in &targets {
-            let kth = decision.kth(tsn).unwrap();
-            remove_allocated_tsn(decision, tsn, kth);
+            let kth = solution.kth(tsn).unwrap();
+            remove_allocated_tsn(solution, tsn, kth);
         }
 
         targets.extend(flowtable.tsns().iter()
-            .filter(|&&tsn| decision.is_pending(tsn)));
-        let result = self.try_schedule_tsns(decision, targets);
-        decision.tsn_fail = result.is_err();
+            .filter(|&&tsn| solution.is_pending(tsn)));
+        let result = self.try_schedule_tsns(solution, targets);
+        solution.tsn_fail = result.is_err();
 
-        if !decision.tsn_fail { return; }
+        if !solution.tsn_fail { return; }
 
-        decision.allocated_tsns.clear();
+        solution.allocated_tsns.clear();
         targets = tsns.clone();
-        let result = self.try_schedule_tsns(decision, targets);
-        decision.tsn_fail = result.is_err();
+        let result = self.try_schedule_tsns(solution, targets);
+        solution.tsn_fail = result.is_err();
     }
 
     // M. L. Raagaard, P. Pop, M. Gutiérrez and W. Steiner, "Runtime reconfiguration of time-sensitive
     // networking (TSN) schedules for Fog Computing," 2017 IEEE Fog World Congress (FWC), Santa Clara,
     // CA, USA, 2017, pp. 1-6, doi: 10.1109/FWC.2017.8368523.
 
-    fn try_schedule_tsns(&self, decision: &mut Decision, tsns: Vec<usize>)
+    fn try_schedule_tsns(&self, solution: &mut Solution, tsns: Vec<usize>)
         -> Result<(), ()> {
         let flowtable = self.flowtable();
         let mut tsns = tsns;
         tsns.sort_by(|&tsn1, &tsn2|
-            compare_tsn(tsn1, tsn2, decision, &flowtable)
+            compare_tsn(tsn1, tsn2, solution, &flowtable)
         );
         for tsn in tsns {
             let mut queue = 0;
-            let kth = decision.kth_next(tsn).unwrap();
+            let kth = solution.kth_next(tsn).unwrap();
             let period = flowtable.tsn_spec(tsn).unwrap().period;
             loop {
-                if let Ok(schedule) = self.try_calculate_windows(tsn, queue, decision) {
-                    insert_allocated_tsn(decision, tsn, kth, schedule, period);
+                if let Ok(schedule) = self.try_calculate_windows(tsn, queue, solution) {
+                    insert_allocated_tsn(solution, tsn, kth, schedule, period);
                     break;
                 }
                 if let Err(_) = self.try_increment_queue(&mut queue) {
@@ -125,15 +125,15 @@ impl Scheduler {
         Ok(())
     }
     fn try_calculate_windows(&self, tsn: usize, queue: u8,
-        decision: &Decision) -> Result<Schedule, ()> {
+        solution: &Solution) -> Result<Schedule, ()> {
         let flowtable = self.flowtable();
         let network = self.network();
         let spec = flowtable.tsn_spec(tsn).unwrap();
-        let kth_next = decision.kth_next(tsn).unwrap();
-        let route = decision.candidate(tsn, kth_next);
+        let kth_next = solution.kth_next(tsn).unwrap();
+        let route = solution.candidate(tsn, kth_next);
         let links = network.get_links_id_bandwidth(route);
         let frame_len = count_frames(spec);
-        let gcl = &decision.allocated_tsns;
+        let gcl = &solution.allocated_tsns;
         let hyperperiod = gcl.hyperperiod();
 
         let mut schedule = Schedule::new();
@@ -212,12 +212,12 @@ impl Scheduler {
 /// * `period` - 週期短的要排前面
 /// * `route length` - 路徑長的要排前面
 fn compare_tsn(tsn1: usize, tsn2: usize,
-    decision: &Decision, flowtable: &FlowTable) -> Ordering {
+    solution: &Solution, flowtable: &FlowTable) -> Ordering {
     let spec1 = flowtable.tsn_spec(tsn1).unwrap();
     let spec2 = flowtable.tsn_spec(tsn2).unwrap();
     let routelen = |tsn: usize| {
-        let kth_next = decision.kth_next(tsn).unwrap();
-        decision.candidate(tsn, kth_next).len()
+        let kth_next = solution.kth_next(tsn).unwrap();
+        solution.candidate(tsn, kth_next).len()
     };
     spec1.deadline.cmp(&spec2.deadline)
         .then(spec1.period.cmp(&spec2.period))
@@ -236,40 +236,40 @@ fn assert_within_deadline(delay: u32, spec: &TSN) -> Result<u32, ()> {
     }
 }
 
-fn remove_traversed_avb(decision: &mut Decision, avb: usize, kth: usize) {
-    let route = &decision.candidates[avb][kth];  // kth_route without clone
+fn remove_traversed_avb(solution: &mut Solution, avb: usize, kth: usize) {
+    let route = &solution.candidates[avb][kth];  // kth_route without clone
     for ends in route.windows(2) {
         let ends = (ends[0], ends[1]);
-        let set = decision.traversed_avbs.get_mut(&ends)
+        let set = solution.traversed_avbs.get_mut(&ends)
             .expect("Failed to remove traversed avb from an invalid edge");
         set.remove(&avb);
     }
 }
 
-fn insert_traversed_avb(decision: &mut Decision, avb: usize, kth: usize) {
-    let route = &decision.candidates[avb][kth];  // kth_route without clone
+fn insert_traversed_avb(solution: &mut Solution, avb: usize, kth: usize) {
+    let route = &solution.candidates[avb][kth];  // kth_route without clone
     for ends in route.windows(2) {
         let ends = (ends[0], ends[1]);
-        let set = decision.traversed_avbs.get_mut(&ends)
+        let set = solution.traversed_avbs.get_mut(&ends)
             .expect("Failed to insert traversed avb into an invalid edge");
         set.insert(avb);
     }
 }
 
-fn remove_allocated_tsn(decision: &mut Decision, tsn: usize, kth: usize) {
-    let gcl = &mut decision.allocated_tsns;
-    let route = &decision.candidates[tsn][kth];  // kth_route without clone
+fn remove_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize) {
+    let gcl = &mut solution.allocated_tsns;
+    let route = &solution.candidates[tsn][kth];  // kth_route without clone
     for ends in route.windows(2) {
         let ends = (ends[0], ends[1]);
         gcl.remove(&ends, tsn);
     }
 }
 
-fn insert_allocated_tsn(decision: &mut Decision, tsn: usize, kth: usize, schedule: Schedule, period: u32) {
-    let gcl = &mut decision.allocated_tsns;
+fn insert_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize, schedule: Schedule, period: u32) {
+    let gcl = &mut solution.allocated_tsns;
     let hyperperiod = gcl.hyperperiod();
     let windows = schedule.windows;
-    let route = &decision.candidates[tsn][kth];  // kth_route without clone
+    let route = &solution.candidates[tsn][kth];  // kth_route without clone
     for (r, ends) in route.windows(2).enumerate() {
         let ends = (ends[0], ends[1]);
         for f in 0..windows[r].len() {
@@ -314,18 +314,18 @@ mod tests {
         let config = yaml::load_config("data/config/default.yaml");
         let mut cnc = CNC::new(network, config);
         cnc.add_streams(tsns, avbs);
-        cnc.algorithm.prepare(&mut cnc.decision, &cnc.flowtable);
+        cnc.algorithm.prepare(&mut cnc.solution, &cnc.flowtable);
         cnc
     }
 
     #[test]
     fn it_calculates_windows() {
         let mut cnc = setup();
-        cnc.decision.allocated_tsns = GateCtrlList::new(60);
-        let result = cnc.scheduler.try_calculate_windows(0, 0, &cnc.decision);
+        cnc.solution.allocated_tsns = GateCtrlList::new(60);
+        let result = cnc.scheduler.try_calculate_windows(0, 0, &cnc.solution);
         let windows = result.unwrap().windows;
         assert_eq!(windows, vec![vec![0..15], vec![15..30]]);
-        let result = cnc.scheduler.try_calculate_windows(2, 0, &cnc.decision);
+        let result = cnc.scheduler.try_calculate_windows(2, 0, &cnc.solution);
         let windows = result.unwrap().windows;
         assert_eq!(windows, vec![vec![0..15, 15..30], vec![15..30, 30..45]]);
     }

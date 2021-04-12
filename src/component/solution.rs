@@ -9,7 +9,7 @@ type Route = Vec<usize>;
 
 /// 這個結構預期會被複製很多次，因此其中的每個元件都應儘可能想辦法降低複製成本
 #[derive(Clone)]
-pub struct Decision {
+pub struct Solution {
     choices: Vec<Choice>,
     pub candidates: Vec<Vec<Route>>,
     pub allocated_tsns: GateCtrlList,
@@ -25,12 +25,12 @@ enum Choice {
 }
 
 
-impl Decision {
+impl Solution {
     pub fn new(graph: &Network) -> Self {
         let traversed_avbs = graph.edges.keys()
             .map(|&ends| (ends, HashSet::new()))
             .collect();
-        Decision {
+        Solution {
             choices: vec![],
             candidates: vec![],
             allocated_tsns: GateCtrlList::new(1),
@@ -124,38 +124,38 @@ mod tests {
         let config = yaml::load_config("data/config/default.yaml");
         let mut cnc = CNC::new(network, config);
         cnc.add_streams(tsns, avbs);
-        cnc.algorithm.prepare(&mut cnc.decision, &cnc.flowtable);
+        cnc.algorithm.prepare(&mut cnc.solution, &cnc.flowtable);
         cnc
     }
 
     #[test]
     fn it_picks_kth() {
         let mut cnc = setup();
-        let decision = &mut cnc.decision;
-        decision.pick(1, 1);
+        let solution = &mut cnc.solution;
+        solution.pick(1, 1);
 
-        assert_eq!(decision.kth(0), None);
-        assert_eq!(decision.kth(1), None);
-        assert_eq!(decision.kth(2), None);
+        assert_eq!(solution.kth(0), None);
+        assert_eq!(solution.kth(1), None);
+        assert_eq!(solution.kth(2), None);
 
-        assert_eq!(decision.kth_next(0), Some(0));
-        assert_eq!(decision.kth_next(1), Some(1));
-        assert_eq!(decision.kth_next(2), Some(0));
+        assert_eq!(solution.kth_next(0), Some(0));
+        assert_eq!(solution.kth_next(1), Some(1));
+        assert_eq!(solution.kth_next(2), Some(0));
     }
 
     #[test]
-    fn it_confirms_decision() {
+    fn it_confirms_solution() {
         let mut cnc = setup();
-        let decision = &mut cnc.decision;
-        decision.pick(1, 1);
-        decision.confirm();
+        let solution = &mut cnc.solution;
+        solution.pick(1, 1);
+        solution.confirm();
 
-        assert_eq!(decision.kth(0), Some(0));
-        assert_eq!(decision.kth(1), Some(1));
-        assert_eq!(decision.kth(2), Some(0));
+        assert_eq!(solution.kth(0), Some(0));
+        assert_eq!(solution.kth(1), Some(1));
+        assert_eq!(solution.kth(2), Some(0));
 
-        assert_eq!(decision.route(0), &vec![0, 2, 3, 1]);
-        assert_eq!(decision.route(1), &vec![0, 3, 1]);
-        assert_eq!(decision.route(2), &vec![0, 2, 3, 1]);
+        assert_eq!(solution.route(0), &vec![0, 2, 3, 1]);
+        assert_eq!(solution.route(1), &vec![0, 3, 1]);
+        assert_eq!(solution.route(2), &vec![0, 2, 3, 1]);
     }
 }
