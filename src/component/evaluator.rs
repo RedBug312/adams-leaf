@@ -1,8 +1,8 @@
 use crate::component::FlowTable;
-use crate::component::GateCtrlList;
 use crate::network::Edge;
+use crate::scheduler::{Entry, GateCtrlList};
 use std::cmp::max;
-use super::{Entry, Solution};
+use super::Solution;
 
 
 /// AVB 資料流最多可以佔用的資源百分比（模擬 Credit Base Shaper 的效果）
@@ -175,10 +175,10 @@ fn interfere_from_tsn(edge: &Edge, wcd: f64, gcl: &GateCtrlList) -> f64 {
 mod tests {
     use crate::algorithm::Algorithm;
     use crate::cnc::CNC;
-    use crate::component::Entry;
     use crate::network::Network;
-    use crate::utils::yaml;
+    use crate::scheduler::{GateCtrlList, Entry};
     use crate::utils::stream::AVB;
+    use crate::utils::yaml;
     use super::*;
 
     fn setup() -> CNC {

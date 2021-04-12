@@ -1,7 +1,7 @@
-use std::{collections::{HashMap, HashSet}, rc::{Rc, Weak}};
 use crate::network::Network;
-use crate::component::GateCtrlList;
-
+use crate::scheduler::GateCtrlList;
+use std::collections::{HashMap, HashSet};
+use std::rc::{Rc, Weak};
 use super::FlowTable;
 
 

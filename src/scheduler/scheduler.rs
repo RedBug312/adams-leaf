@@ -1,7 +1,7 @@
 use crate::MAX_QUEUE;
-use crate::component::Solution;
-use crate::component::Entry;
 use crate::component::FlowTable;
+use crate::component::Solution;
+use crate::scheduler::Entry;
 use crate::utils::stream::TSN;
 use std::cmp::{Ordering, max};
 use std::ops::Range;
@@ -254,12 +254,12 @@ fn insert_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize, schedul
 
 #[cfg(test)]
 mod tests {
-    use crate::component::GateCtrlList;
     use crate::algorithm::Algorithm;
     use crate::cnc::CNC;
     use crate::network::Network;
-    use crate::utils::yaml;
+    use crate::scheduler::GateCtrlList;
     use crate::utils::stream::TSN;
+    use crate::utils::yaml;
 
     fn setup() -> CNC {
         // TODO use a more straight-forward scenario
