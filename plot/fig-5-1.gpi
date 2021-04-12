@@ -3,12 +3,12 @@ set terminal pngcairo enhanced font 'CMU-Sans-Serif,14' monochrome
 # set output 'fig-5-1.png'
 
 unset title
-set xlabel 'Number of new flows'
+set xlabel 'Number of input streams'
 set ylabel 'Computing time (millisecond)'
 
 set xtics
 set ytics
-set key right bottom Left reverse nobox
+set key right bottom Right nobox at 70, 0.4
 set key autotitle columnhead
 
 set datafile missing '-'
@@ -18,7 +18,7 @@ set logscale y
 set grid y
 
 plot [][0.01:3000] 'fig-5-1.dat' \
-        u 1:($5/1000) lt 1 pt 5 ps 2 t 'SPF', \
-     '' u 1:($4/1000) lt 1 pt 6 ps 2 t 'RO', \
-     '' u 1:($2/1000) lt 2 pt 7 ps 2 t 'ACO', \
-     '' u 1:($3/1000) lt 1 pt 8 ps 2 t 'ACO w/o reroute'
+        u 1:($5/1000) lt 1 pt 6 ps 2 t 'SPF', \
+     '' u 1:($4/1000) lt 1 pt 7 ps 2 t 'RO', \
+     '' u 1:($3/1000) lt 1 pt 8 ps 2 t 'OSACO w/o RR', \
+     '' u 1:($2/1000) lt 1 pt 9 ps 2 t 'OSACO'
