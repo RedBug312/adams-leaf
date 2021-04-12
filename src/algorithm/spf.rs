@@ -16,7 +16,8 @@ impl Algorithm for SPF {
         self.yens.k_shortest_paths(src, dst)
     }
     fn prepare(&mut self, _solution: &mut Solution, _flowtable: &FlowTable) {}
-    fn configure(&mut self, _solution: &mut Solution, _deadline: Instant, _toolbox: Toolbox) {
+    fn configure(&mut self, solution: &mut Solution, _deadline: Instant, toolbox: Toolbox) {
+        toolbox.evaluate_cost(solution);
     }
 }
 
