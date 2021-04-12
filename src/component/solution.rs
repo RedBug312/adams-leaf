@@ -6,7 +6,6 @@ use super::FlowTable;
 
 
 const KTH_DEFAULT: usize = 0;
-type Route = Vec<usize>;
 
 
 /// 這個結構預期會被複製很多次，因此其中的每個元件都應儘可能想辦法降低複製成本
@@ -14,7 +13,6 @@ type Route = Vec<usize>;
 pub struct Solution {
     selections: Vec<Select>,
     outcomes: Vec<Outcome>,
-    pub candidates: Vec<Vec<Route>>,
     pub allocated_tsns: GateCtrlList,
     pub traversed_avbs: HashMap<(usize, usize), HashSet<usize>>,
     pub flowtable: Weak<FlowTable>,
@@ -43,7 +41,6 @@ impl Solution {
         Solution {
             selections: vec![],
             outcomes: vec![],
-            candidates: vec![],
             allocated_tsns: GateCtrlList::new(1),
             traversed_avbs,
             flowtable: Weak::new(),
@@ -78,16 +75,6 @@ impl Solution {
     pub fn flag_unschedulable(&mut self, nth: usize, kth: usize) {
         debug_assert!(nth < self.outcomes.len());
         self.outcomes[nth] = Outcome::Unschedulable(kth);
-    }
-    pub fn candidate(&self, nth: usize, kth: usize) -> &Route {
-        &self.candidates[nth][kth]
-    }
-    pub fn candidates(&self, nth: usize) -> &Vec<Route> {
-        &self.candidates[nth]
-    }
-    pub fn route(&self, nth: usize) -> &Route {
-        let kth = self.selection(nth).current().unwrap();
-        self.candidate(nth, kth)
     }
     pub fn resize(&mut self, len: usize) {
         self.selections.resize(len, Select::Pending(KTH_DEFAULT));
@@ -189,8 +176,8 @@ mod tests {
         assert_eq!(solution.selection(1).current(), Some(1));
         assert_eq!(solution.selection(2).current(), Some(0));
 
-        assert_eq!(solution.route(0), &vec![0, 2, 3, 1]);
-        assert_eq!(solution.route(1), &vec![0, 3, 1]);
-        assert_eq!(solution.route(2), &vec![0, 2, 3, 1]);
+        assert_eq!(solution.selection(0).next(), Some(0));
+        assert_eq!(solution.selection(1).next(), Some(1));
+        assert_eq!(solution.selection(2).next(), Some(0));
     }
 }

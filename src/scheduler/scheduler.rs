@@ -109,11 +109,11 @@ impl Scheduler {
     }
     fn try_calculate_windows(&self, tsn: usize, queue: u8,
         solution: &Solution) -> Result<Schedule, ()> {
-        let flowtable = solution.flowtable.upgrade().unwrap();
-        let network = solution.network.upgrade().unwrap();
+        let flowtable = solution.flowtable();
+        let network = solution.network();
         let spec = flowtable.tsn_spec(tsn).unwrap();
-        let kth_next = solution.selection(tsn).next().unwrap();
-        let route = solution.candidate(tsn, kth_next);
+        let kth = solution.selection(tsn).next().unwrap();
+        let route = flowtable.candidate(tsn, kth);
         let links = network.get_links_id_bandwidth(route);
         let frame_len = count_frames(spec);
         let gcl = &solution.allocated_tsns;
@@ -199,8 +199,8 @@ fn compare_tsn(tsn1: usize, tsn2: usize,
     let spec1 = flowtable.tsn_spec(tsn1).unwrap();
     let spec2 = flowtable.tsn_spec(tsn2).unwrap();
     let routelen = |tsn: usize| {
-        let kth_next = solution.selection(tsn).next().unwrap();
-        solution.candidate(tsn, kth_next).len()
+        let kth = solution.selection(tsn).next().unwrap();
+        solution.flowtable().candidate(tsn, kth).len()
     };
     spec1.deadline.cmp(&spec2.deadline)
         .then(spec1.period.cmp(&spec2.period))
@@ -220,7 +220,8 @@ fn assert_within_deadline(delay: u32, spec: &TSN) -> Result<u32, ()> {
 }
 
 fn remove_traversed_avb(solution: &mut Solution, avb: usize, kth: usize) {
-    let route = &solution.candidates[avb][kth];  // kth_route without clone
+    let flowtable = solution.flowtable();
+    let route = flowtable.candidate(avb, kth);  // kth_route without clone
     for ends in route.windows(2) {
         let ends = (ends[0], ends[1]);
         let set = solution.traversed_avbs.get_mut(&ends)
@@ -230,7 +231,8 @@ fn remove_traversed_avb(solution: &mut Solution, avb: usize, kth: usize) {
 }
 
 fn insert_traversed_avb(solution: &mut Solution, avb: usize, kth: usize) {
-    let route = &solution.candidates[avb][kth];  // kth_route without clone
+    let flowtable = solution.flowtable();
+    let route = flowtable.candidate(avb, kth);  // kth_route without clone
     for ends in route.windows(2) {
         let ends = (ends[0], ends[1]);
         let set = solution.traversed_avbs.get_mut(&ends)
@@ -240,8 +242,9 @@ fn insert_traversed_avb(solution: &mut Solution, avb: usize, kth: usize) {
 }
 
 fn remove_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize) {
+    let flowtable = solution.flowtable();
+    let route = flowtable.candidate(tsn, kth);  // kth_route without clone
     let gcl = &mut solution.allocated_tsns;
-    let route = &solution.candidates[tsn][kth];  // kth_route without clone
     for ends in route.windows(2) {
         let ends = (ends[0], ends[1]);
         gcl.remove(&ends, tsn);
@@ -249,10 +252,11 @@ fn remove_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize) {
 }
 
 fn insert_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize, schedule: Schedule, period: u32) {
+    let flowtable = solution.flowtable();
+    let route = flowtable.candidate(tsn, kth);  // kth_route without clone
     let gcl = &mut solution.allocated_tsns;
     let hyperperiod = gcl.hyperperiod();
     let windows = schedule.windows;
-    let route = &solution.candidates[tsn][kth];  // kth_route without clone
     for (r, ends) in route.windows(2).enumerate() {
         let ends = (ends[0], ends[1]);
         for f in 0..windows[r].len() {

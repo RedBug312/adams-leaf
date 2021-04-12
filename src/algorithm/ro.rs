@@ -1,4 +1,4 @@
-use crate::{MAX_K, cnc::Toolbox};
+use crate::{MAX_K, cnc::Toolbox, network::Path};
 use crate::component::Solution;
 use crate::component::FlowTable;
 use crate::network::Network;
@@ -19,15 +19,13 @@ pub struct RO {
 
 
 impl Algorithm for RO {
-    fn prepare(&mut self, solution: &mut Solution, flowtable: &FlowTable) {
-        for id in flowtable.inputs() {
-            let (src, dst) = flowtable.ends(id);
-            let candidates = self.yens.k_shortest_paths(src, dst);
-            solution.candidates.push(candidates);
-        }
+    fn candidates(&self, src: usize, dst: usize) -> &Vec<Path> {
+        self.yens.k_shortest_paths(src, dst)
     }
+    fn prepare(&mut self, _solution: &mut Solution, _flowtable: &FlowTable) {}
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
-    fn configure(&mut self, solution: &mut Solution, flowtable: &FlowTable, deadline: Instant, toolbox: Toolbox) {
+    fn configure(&mut self, solution: &mut Solution, deadline: Instant, toolbox: Toolbox) {
+        let flowtable = solution.flowtable();
         // self.grasp(solution, deadline);
         let mut rng = ChaChaRng::seed_from_u64(self.seed);
         let mut iter_times = 0;

@@ -1,4 +1,4 @@
-use crate::{MAX_K, cnc::Toolbox, utils::config::Parameters};
+use crate::{MAX_K, cnc::Toolbox, network::Path, utils::config::Parameters};
 use crate::component::Solution;
 use crate::component::FlowTable;
 use crate::network::Network;
@@ -32,10 +32,10 @@ impl ACO {
     pub fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
         self.yens.count_shortest_paths(src, dst)
     }
-    fn compute_visibility(&self, solution: &Solution, flowtable: &FlowTable,
-                          toolbox: &Toolbox) -> Vec<[f64; MAX_K]> {
+    fn compute_visibility(&self, solution: &Solution, toolbox: &Toolbox) -> Vec<[f64; MAX_K]> {
         // TODO 好好設計能見度函式！
         // 目前：路徑長的倒數
+        let flowtable = solution.flowtable();
         let len = flowtable.len();
         let mut vis = vec![[0.0; MAX_K]; len];
         for &avb in flowtable.avbs() {
@@ -57,12 +57,10 @@ impl ACO {
 }
 
 impl Algorithm for ACO {
+    fn candidates(&self, src: usize, dst: usize) -> &Vec<Path> {
+        self.yens.k_shortest_paths(src, dst)
+    }
     fn prepare(&mut self, solution: &mut Solution, flowtable: &FlowTable) {
-        for id in flowtable.inputs() {
-            let (src, dst) = flowtable.ends(id);
-            let candidates = self.yens.k_shortest_paths(src, dst);
-            solution.candidates.push(candidates);
-        }
         // before initial scheduler configure
         self.ants.extend_state_len(flowtable.len());
         self.memory = vec![[1.0; MAX_K]; flowtable.len()];
@@ -77,9 +75,8 @@ impl Algorithm for ACO {
             }
         }
     }
-    fn configure(&mut self, solution: &mut Solution, flowtable: &FlowTable, deadline: Instant, toolbox: Toolbox) {
-
-        let vis = self.compute_visibility(solution, flowtable, &toolbox);
+    fn configure(&mut self, solution: &mut Solution, deadline: Instant, toolbox: Toolbox) {
+        let vis = self.compute_visibility(solution, &toolbox);
         let cost = toolbox.evaluate_cost(solution);
 
         let mut best_dist = distance(cost.0);

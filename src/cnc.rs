@@ -55,6 +55,7 @@ impl CNC {
         debug_assert!(Rc::weak_count(&self.flowtable) == 0);
         let flowtable = Rc::get_mut(&mut self.flowtable).unwrap();
         flowtable.append(tsns, avbs);
+        flowtable.append_candidates(&self.algorithm);
         self.solution.resize(self.flowtable.len());
         self.solution.flowtable = Rc::downgrade(&self.flowtable);
     }
@@ -72,7 +73,7 @@ impl CNC {
         self.algorithm.prepare(&mut current, flowtable);
         self.scheduler.configure(&mut current);  // should not schedule before routing
         let toolbox = Toolbox::pack(scheduler, evaluator, latest, config);
-        self.algorithm.configure(&mut current, flowtable, start + timeout, toolbox);
+        self.algorithm.configure(&mut current, start + timeout, toolbox);
         let elapsed = start.elapsed().as_micros();
 
         self.show_results(&current);
@@ -92,7 +93,7 @@ impl CNC {
             let outcome = if current.outcome(tsn).is_unschedulable()
                 { "failed" } else { "ok" };
             let kth = current.selection(tsn).current().unwrap();
-            let route = current.route(tsn);
+            let route = flowtable.candidate(tsn, kth);
             writeln!(msg, "- stream #{:02} {}, with route #{} {:?}",
                      tsn, outcome, kth, route).unwrap();
         }
@@ -102,7 +103,7 @@ impl CNC {
             let outcome = if objs[3] <= 1.0 { "ok" } else { "failed" };
             let reroute = if objs[2] == 0.0 { "" } else { "*" };
             let kth = current.selection(avb).current().unwrap();
-            let route = current.route(avb);
+            let route = flowtable.candidate(avb, kth);
             writeln!(msg, "- stream #{:02} {} ({:02.0}%), with route #{}{} {:?}",
                      avb, outcome, objs[3] * 100.0, kth, reroute, route).unwrap();
         }

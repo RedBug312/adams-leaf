@@ -92,10 +92,10 @@ impl Yens {
             .map(|paths| paths.len())
             .unwrap_or(0)
     }
-    pub fn k_shortest_paths(&self, src: usize, dst: usize) -> Vec<Path> {
-        self.path.get(&(src, dst))
-            .map(|r| r.clone())
-            .unwrap_or(vec![])
+    pub fn k_shortest_paths(&self, src: usize, dst: usize) -> &Vec<Path> {
+        static EMPTY: Vec<Path> = vec![];
+        let ends = (src, dst);
+        self.path.get(&ends).unwrap_or(&EMPTY)
     }
 }
 
