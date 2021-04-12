@@ -11,10 +11,10 @@ type Route = Vec<usize>;
 #[derive(Clone)]
 pub struct Solution {
     pub selections: Vec<Select>,
+    pub outcomes: Vec<Outcome>,
     pub candidates: Vec<Vec<Route>>,
     pub allocated_tsns: GateCtrlList,
     pub traversed_avbs: HashMap<(usize, usize), HashSet<usize>>,
-    pub tsn_fail: bool,
 }
 
 #[derive(Clone)]
@@ -24,6 +24,12 @@ pub enum Select {
     Switch(usize, usize),
 }
 
+#[derive(Clone)]
+pub enum Outcome {
+    Pending,
+    Schedulable(usize),
+    Unschedulable(usize),
+}
 
 impl Solution {
     pub fn new(graph: &Network) -> Self {
@@ -32,40 +38,58 @@ impl Solution {
             .collect();
         Solution {
             selections: vec![],
+            outcomes: vec![],
             candidates: vec![],
             allocated_tsns: GateCtrlList::new(1),
             traversed_avbs,
-            tsn_fail: false,
         }
     }
     pub fn select(&mut self, nth: usize, kth: usize) {
          self.selections[nth].select(kth);
     }
-    pub fn confirm(&mut self) {
-        self.selections.iter_mut()
-            .for_each(|selection| selection.confirm());
-    }
     pub fn selection(&self, nth: usize) -> &Select {
         debug_assert!(nth < self.selections.len());
         &self.selections[nth]
     }
-    pub fn candidate(&self, stream: usize, kth: usize) -> &Route {
-        &self.candidates[stream][kth]
+    pub fn confirm(&mut self) {
+        self.selections.iter_mut()
+            .for_each(|selection| selection.confirm());
     }
-    pub fn candidates(&self, stream: usize) -> &Vec<Route> {
-        &self.candidates[stream]
+    pub fn outcome(&self, nth: usize) -> &Outcome {
+        debug_assert!(nth < self.outcomes.len());
+        &self.outcomes[nth]
     }
-    pub fn route(&self, stream: usize) -> &Route {
-        let kth = self.selection(stream).current().unwrap();
-        self.candidate(stream, kth)
+    pub fn flag_schedulable(&mut self, nth: usize, kth: usize) {
+        debug_assert!(nth < self.outcomes.len());
+        self.outcomes[nth] = Outcome::Schedulable(kth);
+    }
+    pub fn flag_unschedulable(&mut self, nth: usize, kth: usize) {
+        debug_assert!(nth < self.outcomes.len());
+        self.outcomes[nth] = Outcome::Unschedulable(kth);
+    }
+    pub fn candidate(&self, nth: usize, kth: usize) -> &Route {
+        &self.candidates[nth][kth]
+    }
+    pub fn candidates(&self, nth: usize) -> &Vec<Route> {
+        &self.candidates[nth]
+    }
+    pub fn route(&self, nth: usize) -> &Route {
+        let kth = self.selection(nth).current().unwrap();
+        self.candidate(nth, kth)
     }
     pub fn resize(&mut self, len: usize) {
-        let default = Select::Pending(KTH_DEFAULT);
-        self.selections.resize(len, default);
+        self.selections.resize(len, Select::Pending(KTH_DEFAULT));
+        self.outcomes.resize(len, Outcome::Pending)
     }
 }
 
 impl Select {
+    pub fn is_pending(&self) -> bool {
+        matches!(self, Select::Pending(_))
+    }
+    pub fn is_switch(&self) -> bool {
+        matches!(self, Select::Switch(curr, next) if curr != next)
+    }
     pub fn current(&self) -> Option<usize> {
         match self {
             Select::Pending(_)      => None,
@@ -79,12 +103,6 @@ impl Select {
             Select::Stay(curr)      => Some(*curr),
             Select::Switch(_, next) => Some(*next),
         }
-    }
-    pub fn is_pending(&self) -> bool {
-        matches!(self, Select::Pending(_))
-    }
-    pub fn is_switch(&self) -> bool {
-        matches!(self, Select::Switch(curr, next) if curr != next)
     }
     fn select(&mut self, next: usize) {
         *self = match self {
@@ -102,6 +120,14 @@ impl Select {
     }
 }
 
+impl Outcome {
+    pub fn is_schedulable(&self) -> bool {
+        matches!(self, Outcome::Schedulable(_))
+    }
+    pub fn is_unschedulable(&self) -> bool {
+        matches!(self, Outcome::Unschedulable(_) | Outcome::Pending)
+    }
+}
 
 #[cfg(test)]
 mod tests {

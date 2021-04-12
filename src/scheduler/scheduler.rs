@@ -87,14 +87,12 @@ impl Scheduler {
         targets.extend(flowtable.tsns().iter()
             .filter(|&&tsn| solution.selection(tsn).is_pending()));
         let result = self.try_schedule_tsns(solution, targets);
-        solution.tsn_fail = result.is_err();
 
-        if !solution.tsn_fail { return; }
+        if result.is_ok() { return; }
 
         solution.allocated_tsns.clear();
         targets = tsns.clone();
-        let result = self.try_schedule_tsns(solution, targets);
-        solution.tsn_fail = result.is_err();
+        self.try_schedule_tsns(solution, targets).unwrap();
     }
 
     // M. L. Raagaard, P. Pop, M. Gutiérrez and W. Steiner, "Runtime reconfiguration of time-sensitive
@@ -115,9 +113,11 @@ impl Scheduler {
             loop {
                 if let Ok(schedule) = self.try_calculate_windows(tsn, queue, solution) {
                     insert_allocated_tsn(solution, tsn, kth, schedule, period);
+                    solution.flag_schedulable(tsn, kth);
                     break;
                 }
                 if let Err(_) = self.try_increment_queue(&mut queue) {
+                    solution.flag_unschedulable(tsn, kth);
                     return Err(());
                 }
             }

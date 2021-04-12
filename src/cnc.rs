@@ -93,7 +93,8 @@ impl CNC {
 
         writeln!(msg, "TSN streams").unwrap();
         for &tsn in flowtable.tsns() {
-            let outcome = if objs[0] == 0.0 { "ok" } else { "failed" };
+            let outcome = if current.outcome(tsn).is_unschedulable()
+                { "failed" } else { "ok" };
             let kth = current.selection(tsn).current().unwrap();
             let route = current.route(tsn);
             writeln!(msg, "- stream #{:02} {}, with route #{} {:?}",
