@@ -36,7 +36,7 @@ impl Evaluator {
         objs[0] = 0.0;
         objs[1] = (wcd > max) as usize as f64;
         objs[2] = is_rerouted(latest, current) as usize as f64;
-        objs[3] = wcd as f64 / max as f64;
+        objs[3] = wcd as f64;
         objs
     }
     pub fn evaluate_objectives(&self, solution: &Solution, latest: &Solution)
@@ -45,7 +45,7 @@ impl Evaluator {
         let mut all_rerouted_count = 0;
         let mut tsn_failed_count = 0;
         let mut avb_failed_count = 0;
-        let mut avb_normed_wcd_sum = 0.0;
+        let mut avb_wcd_sum = 0.0;
 
         for nth in 0..flowtable.len() {
             let latest = latest.selection(nth).current();
@@ -59,14 +59,14 @@ impl Evaluator {
             let wcd = self.evaluate_avb_wcd(avb, solution);
             let max = flowtable.avb_spec(avb).unwrap().deadline;
             avb_failed_count += (wcd > max) as usize;
-            avb_normed_wcd_sum += wcd as f64 / max as f64;
+            avb_wcd_sum += wcd as f64;
         }
 
         let mut objs = [0.0; 4];
-        objs[0] = tsn_failed_count as f64 / flowtable.tsns().len() as f64;
-        objs[1] = avb_failed_count as f64 / flowtable.avbs().len() as f64;
-        objs[2] = all_rerouted_count as f64 / flowtable.len() as f64;
-        objs[3] = avb_normed_wcd_sum / flowtable.avbs().len() as f64;
+        objs[0] = tsn_failed_count as f64;
+        objs[1] = avb_failed_count as f64;
+        objs[2] = all_rerouted_count as f64;
+        objs[3] = avb_wcd_sum;
         objs
     }
     pub fn evaluate_cost_objectives(&self, solution: &Solution, latest: &Solution)

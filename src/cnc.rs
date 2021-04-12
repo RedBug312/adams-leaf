@@ -99,12 +99,13 @@ impl CNC {
         writeln!(msg, "AVB streams").unwrap();
         for &avb in flowtable.avbs() {
             let objs = self.evaluator.evaluate_avb_objectives(avb, current, latest);
-            let outcome = if objs[3] <= 1.0 { "ok" } else { "failed" };
+            let max = flowtable.avb_spec(avb).unwrap().deadline as f64;
+            let outcome = if objs[1] == 0.0 { "ok" } else { "failed" };
             let reroute = if objs[2] == 0.0 { "" } else { "*" };
             let kth = current.selection(avb).current().unwrap();
             let route = flowtable.candidate(avb, kth);
             writeln!(msg, "- stream #{:02} {} ({:02.0}%), with route #{}{} {:?}",
-                     avb, outcome, objs[3] * 100.0, kth, reroute, route).unwrap();
+                     avb, outcome, objs[3] / max * 100.0, kth, reroute, route).unwrap();
         }
         writeln!(msg, "the solution has cost {:.2} and each objective {:.2?}",
                  cost, objs).unwrap();
@@ -123,7 +124,7 @@ impl<'a> Toolbox<'a> {
     pub fn evaluate_cost(&'a self, solution: &mut Solution) -> (f64, bool) {
         self.scheduler.configure(solution);  // where it's mutated
         let (cost, objs) = self.evaluator.evaluate_cost_objectives(solution, self.latest);
-        let stop = self.config.early_stop && objs[1] == 0.0;
+        let stop = self.config.early_stop && objs[0] == 0.0 && objs[1] == 0.0;
         (cost, stop)
     }
 }
