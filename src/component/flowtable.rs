@@ -1,5 +1,8 @@
-use std::ops::Range;
+use crate::algorithm::AlgorithmEnum;
+use crate::algorithm::Algorithm;
+use crate::network::Path;
 use crate::utils::stream::{AVB, TSN};
+use std::ops::Range;
 
 
 enum Either {
@@ -13,6 +16,7 @@ pub struct FlowTable {
     tsns: Vec<usize>,
     avbs: Vec<usize>,
     inputs: Range<usize>,
+    candidates: Vec<Vec<Path>>,
 }
 
 
@@ -68,6 +72,18 @@ impl FlowTable {
             self.streams.push(Either::AVB(len + idx, avb));
         }
         self.inputs = self.inputs.end..self.streams.len();
+    }
+    pub fn append_candidates(&mut self, algorithm: &AlgorithmEnum) {
+        for nth in self.inputs() {
+            let (src, dst) = self.ends(nth);
+            let candidates = algorithm.candidates(src, dst);
+            self.candidates.push(candidates.clone());
+        }
+    }
+    pub fn candidate(&self, nth: usize, kth: usize) -> &Path {
+        debug_assert!(nth < self.candidates.len());
+        debug_assert!(kth < self.candidates[nth].len());
+        &self.candidates[nth][kth]
     }
 }
 

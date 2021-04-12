@@ -1,5 +1,5 @@
-use crate::{MAX_K, cnc::Toolbox};
-use crate::component::Decision;
+use crate::{MAX_K, cnc::Toolbox, network::Path};
+use crate::component::Solution;
 use crate::component::FlowTable;
 use crate::network::Network;
 use rand::{Rng, SeedableRng};
@@ -19,30 +19,28 @@ pub struct RO {
 
 
 impl Algorithm for RO {
-    fn prepare(&mut self, decision: &mut Decision, flowtable: &FlowTable) {
-        for id in flowtable.inputs() {
-            let (src, dst) = flowtable.ends(id);
-            let candidates = self.yens.k_shortest_paths(src, dst);
-            decision.candidates.push(candidates);
-        }
+    fn candidates(&self, src: usize, dst: usize) -> &Vec<Path> {
+        self.yens.k_shortest_paths(src, dst)
     }
+    fn prepare(&mut self, _solution: &mut Solution, _flowtable: &FlowTable) {}
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
-    fn configure(&mut self, decision: &mut Decision, flowtable: &FlowTable, deadline: Instant, toolbox: Toolbox) {
-        // self.grasp(decision, deadline);
+    fn configure(&mut self, solution: &mut Solution, deadline: Instant, toolbox: Toolbox) {
+        let flowtable = solution.flowtable();
+        // self.grasp(solution, deadline);
         let mut rng = ChaChaRng::seed_from_u64(self.seed);
         let mut iter_times = 0;
-        let mut min_cost = toolbox.evaluate_cost(decision);
+        let mut min_cost = toolbox.evaluate_cost(solution);
         while Instant::now() < deadline {
             iter_times += 1;
             // PHASE 1
-            let mut current = decision.clone();
+            let mut current = solution.clone();
             for &avb in flowtable.avbs() {
                 let (src, dst) = flowtable.ends(avb);
                 let candidate_cnt = self.get_candidate_count(src, dst);
                 let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
                 let set = gen_n_distinct_outof_k(alpha, candidate_cnt, &mut rng);
-                let new_route = self.find_min_cost_route(decision, avb, Some(set), &flowtable, &toolbox);
-                current.pick(avb, new_route);
+                let new_route = self.find_min_cost_route(solution, avb, Some(set), &flowtable, &toolbox);
+                current.select(avb, new_route);
             }
             // PHASE 2
             let cost = toolbox.evaluate_cost(&mut current);
@@ -54,7 +52,7 @@ impl Algorithm for RO {
 
             #[cfg(debug_assertions)]
             println!("start iteration #{}", iter_times);
-            // self.hill_climbing(decision, &mut rng, &deadline, &mut min_cost, current);
+            // self.hill_climbing(solution, &mut rng, &deadline, &mut min_cost, current);
 
             let mut iter_times_inner = 0;
             while Instant::now() < deadline {
@@ -69,9 +67,9 @@ impl Algorithm for RO {
                     continue;
                 }
 
-                let new_route = self.find_min_cost_route(decision, target_id, None, &flowtable, &toolbox);
-                let old_route = decision
-                    .kth(target_id)
+                let new_route = self.find_min_cost_route(solution, target_id, None, &flowtable, &toolbox);
+                let old_route = solution
+                    .selection(target_id).current()
                     .unwrap();
 
                 if old_route == new_route {
@@ -79,11 +77,11 @@ impl Algorithm for RO {
                 }
 
                 // 實際更新下去，並計算成本
-                current.pick(target_id, new_route);
+                current.select(target_id, new_route);
                 let cost = toolbox.evaluate_cost(&mut current);
 
                 if cost.0 < min_cost.0 {
-                    *decision = current.clone();
+                    *solution = current.clone();
                     min_cost = cost.clone();
                     iter_times_inner = 0;
 
@@ -91,7 +89,7 @@ impl Algorithm for RO {
                     // println!("found min_cost = {:?}", cost);
                 } else {
                     // 恢復上一動
-                    current.pick(target_id, old_route);
+                    current.select(target_id, old_route);
                     iter_times_inner += 1;
                     if iter_times_inner == flowtable.len() {
                         //  NOTE: 迭代次數上限與資料流數量掛勾
@@ -116,11 +114,11 @@ impl RO {
         RO { yens, seed }
     }
     /// 若有給定候選路徑的子集合，就從中選。若無，則遍歷所有候選路徑
-    fn find_min_cost_route(&self, decision: &Decision, id: usize, set: Option<Vec<usize>>, flowtable: &FlowTable, toolbox: &Toolbox) -> usize {
+    fn find_min_cost_route(&self, solution: &Solution, id: usize, set: Option<Vec<usize>>, flowtable: &FlowTable, toolbox: &Toolbox) -> usize {
         let (src, dst) = flowtable.ends(id);
         let (mut min_cost, mut best_k) = (std::f64::MAX, 0);
         let mut closure = |kth: usize| {
-            let wcd = toolbox.evaluate_wcd(id, kth, decision) as f64;
+            let wcd = toolbox.evaluate_wcd(id, kth, solution) as f64;
             if wcd < min_cost {
                 min_cost = wcd;
                 best_k = kth;

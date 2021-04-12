@@ -1,4 +1,4 @@
-use crate::{cnc::Toolbox, component::Decision};
+use crate::{cnc::Toolbox, component::Solution, network::Path};
 use crate::component::FlowTable;
 use crate::network::Network;
 use std::time::Instant;
@@ -12,13 +12,11 @@ pub struct SPF {
 
 
 impl Algorithm for SPF {
-    fn prepare(&mut self, decision: &mut Decision, flowtable: &FlowTable) {
-        let input_candidates = flowtable.inputs()
-            .map(|id| flowtable.ends(id))
-            .map(|ends| self.yens.k_shortest_paths(ends.0, ends.1));
-        decision.candidates.extend(input_candidates);
+    fn candidates(&self, src: usize, dst: usize) -> &Vec<Path> {
+        self.yens.k_shortest_paths(src, dst)
     }
-    fn configure(&mut self, _decision: &mut Decision, _flowtable: &FlowTable, _deadline: Instant, _toolbox: Toolbox) {
+    fn prepare(&mut self, _solution: &mut Solution, _flowtable: &FlowTable) {}
+    fn configure(&mut self, _solution: &mut Solution, _deadline: Instant, _toolbox: Toolbox) {
     }
 }
 
