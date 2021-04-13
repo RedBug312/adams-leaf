@@ -30,6 +30,9 @@ impl FlowTable {
     pub fn avbs(&self) -> &Vec<usize> {
         &self.avbs
     }
+    pub fn backgrounds(&self) -> Range<usize> {
+        0..self.inputs.start
+    }
     pub fn inputs(&self) -> Range<usize> {
         self.inputs.clone()
     }

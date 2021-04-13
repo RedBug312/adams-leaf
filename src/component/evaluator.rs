@@ -47,7 +47,7 @@ impl Evaluator {
         let mut avb_failed_count = 0;
         let mut avb_wcd_sum = 0.0;
 
-        for nth in 0..flowtable.len() {
+        for nth in flowtable.backgrounds() {
             let latest = latest.selection(nth).current();
             let current = solution.selection(nth).next();
             all_rerouted_count += is_rerouted(latest, current) as usize;
