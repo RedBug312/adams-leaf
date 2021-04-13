@@ -1,7 +1,8 @@
 use crate::MAX_QUEUE;
 use hashbrown::HashMap;
+use itertools::Itertools;
 use num::integer::lcm;
-use std::ops::Range;
+use std::{iter, ops::Range};
 use super::base::intervalmap::IntervalMap;
 
 const RESERVED: usize = usize::MAX;
@@ -53,8 +54,10 @@ impl GateCtrlList {
         }
     }
     pub fn occupy(&mut self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) {
+        // self.events.contains_key(&entry) may be false
         let hyperperiod = self.hyperperiod();
         debug_assert!(window.end <= hyperperiod);
+
         let intervals = self.events.entry(entry)
             .or_insert_with(|| IntervalMap::new());
         (0..hyperperiod).step_by(period as usize)
@@ -64,6 +67,7 @@ impl GateCtrlList {
     fn check_vacant_once(&self, entry: Entry, tsn: usize, window: Range<u32>) -> bool {
         // self.events.contains_key(&entry) may be false
         let hyperperiod = self.hyperperiod();
+
         window.end <= hyperperiod && match self.events.get(&entry) {
             Some(intervals) => intervals.check_vacant(window, tsn),
             None => true,
@@ -72,6 +76,7 @@ impl GateCtrlList {
     pub fn check_vacant(&self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) -> bool {
         // self.events.contains_key(&entry) may be false
         let hyperperiod = self.hyperperiod();
+
         (0..hyperperiod).step_by(period as usize)
             .map(|offset| shift(&window, offset))
             .all(|inst| self.check_vacant_once(entry, tsn, inst))
@@ -79,38 +84,40 @@ impl GateCtrlList {
     fn query_later_vacant_once(&self, entry: Entry, tsn: usize, window: Range<u32>) -> Option<u32> {
         debug_assert!(matches!(entry, Entry::Port(..)));
         debug_assert!(self.events.contains_key(&entry));
-        if self.check_vacant_once(entry, tsn, window.clone()) { return Some(0) }
-        let intervals = self.events.get(&entry).unwrap();
-
         let hyperperiod = self.hyperperiod();
         if window.end > hyperperiod { return None; }
+        if self.check_vacant_once(entry, tsn, window.clone()) { return Some(0); }
 
+        let intervals = self.events.get(&entry).unwrap();
         let ghost = (hyperperiod..hyperperiod, RESERVED);
-        let mut afters = Vec::from(intervals.intervals_after(window.start));
-        afters.push(ghost);
-        afters.windows(2)
-            .map(|pair| pair[0].0.end..pair[1].0.start)
+        let afters = intervals.intervals_after(window.start);
+        let afters = afters.iter().chain(iter::once(&ghost));
+        afters.tuple_windows()
+            .map(|(prev, next)| prev.0.end..next.0.start)
             .find(|idle| idle.end - idle.start >= window.end - window.start)
             .map(|idle| idle.start - window.start)
     }
     pub fn query_later_vacant(&self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) -> Option<u32> {
         debug_assert!(matches!(entry, Entry::Port(..)));
         debug_assert!(window.end <= period);
-        let mut offset = 0;
         let hyperperiod = self.hyperperiod();
-        if window.end > hyperperiod { return None; }
+
+        let mut offset = 0;
         while !self.check_vacant(entry, tsn, shift(&window, offset), period) {
             let increment = (0..hyperperiod).step_by(period as usize)
                 .map(|timeshift| shift(&window, timeshift + offset))
                 .map(|inst| self.query_later_vacant_once(entry, tsn, inst))
-                // .inspect(|x|println!("{:?}", x))
-                .collect::<Option<Vec<_>>>()
-                .and_then(|incrs| incrs.into_iter().max())?;
+                .try_fold(0, try_max)?;
             debug_assert!(increment > 0);
             offset += increment;
         }
         Some(offset)
     }
+}
+
+#[inline]
+fn try_max(x: u32, y: Option<u32>) -> Option<u32> {
+    y.map(|y| u32::max(x, y))
 }
 
 #[inline]
