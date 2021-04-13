@@ -13,7 +13,7 @@ impl IntervalMap {
         &self.intervals
     }
     pub fn intervals_after(&self, start: u32) -> &[(Range<u32>, usize)] {
-        match self.intervals.binary_search_by_key(&start, |i| i.0.start) {
+        match self.intervals.binary_search_by_key(&start, |i| i.0.end) {
             Ok(pos) => &self.intervals[pos..],
             Err(pos) => &self.intervals[pos..],
         }
@@ -107,8 +107,9 @@ mod tests {
         let map = setup();
         assert_eq!(map.intervals_after(0), &[(2..4, 0), (6..8, 1)]);
         assert_eq!(map.intervals_after(2), &[(2..4, 0), (6..8, 1)]);
-        assert_eq!(map.intervals_after(3), &[(6..8, 1)]);
-        assert_eq!(map.intervals_after(4), &[(6..8, 1)]);
+        assert_eq!(map.intervals_after(3), &[(2..4, 0), (6..8, 1)]);
+        assert_eq!(map.intervals_after(4), &[(2..4, 0), (6..8, 1)]);
+        assert_eq!(map.intervals_after(5), &[(6..8, 1)]);
     }
 }
 

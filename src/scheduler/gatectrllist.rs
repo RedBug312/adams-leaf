@@ -156,6 +156,18 @@ mod tests {
         assert_eq!(gcl.query_later_idle_once(entry, 9, 0..2), Some(3));
         assert_eq!(gcl.query_later_idle_once(entry, 9, 1..4), Some(5));
         assert_eq!(gcl.query_later_idle_once(entry, 9, 0..5), None);
+
+        let mut gcl = GateCtrlList::new(10);
+        gcl.insert(entry, 0, 0..2, 10);
+        gcl.insert(entry, 0, 2..5, 10);
+        let before = [(0..5, 0)];
+        assert_eq!(gcl.events(entry), &before);
+        // before: 0 0 0 0 0 - - - - -
+        // expect: 0 0 0 0 0 + + + - -
+        assert_eq!(gcl.query_later_idle_once(entry, 9, 0..3), Some(5));
+        assert_eq!(gcl.query_later_idle_once(entry, 9, 2..5), Some(3));
+        assert_eq!(gcl.query_later_idle_once(entry, 9, 4..7), Some(1));
+        assert_eq!(gcl.query_later_idle_once(entry, 9, 6..9), Some(0));
     }
 
     #[test]
