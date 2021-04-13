@@ -1,7 +1,7 @@
 use crate::MAX_QUEUE;
-use crate::component::FlowTable;
 use crate::component::Solution;
 use crate::scheduler::Entry;
+use crate::utils::error::Error;
 use crate::utils::stream::TSN;
 use std::cmp::{Ordering, max};
 use std::ops::Range;
@@ -84,25 +84,26 @@ impl Scheduler {
     // CA, USA, 2017, pp. 1-6, doi: 10.1109/FWC.2017.8368523.
 
     fn try_schedule_tsns(&self, solution: &mut Solution, tsns: Vec<usize>)
-        -> Result<(), ()> {
+        -> Result<(), Error> {
         let flowtable = solution.flowtable();
         let mut tsns = tsns;
         tsns.sort_by(|&tsn1, &tsn2|
-            compare_tsn(tsn1, tsn2, solution, &flowtable)
+            compare_tsn(tsn1, tsn2, solution)
         );
         for tsn in tsns {
             let mut queue = 0;
             let kth = solution.selection(tsn).next().unwrap();
             let period = flowtable.tsn_spec(tsn).unwrap().period;
             loop {
-                if let Ok(schedule) = self.try_calculate_windows(tsn, queue, solution) {
+                if let Ok(schedule) = self.try_calculate_windows(tsn, queue, solution)
+                    .map_err(|e| println!("{}", e)) {
                     insert_allocated_tsn(solution, tsn, kth, schedule, period);
                     solution.flag_schedulable(tsn, kth);
                     break;
                 }
                 if let Err(_) = self.try_increment_queue(&mut queue) {
                     solution.flag_unschedulable(tsn, kth);
-                    return Err(());
+                    return Err(Error::IncrementQueueError(tsn));
                 }
             }
         }
@@ -115,7 +116,7 @@ impl Scheduler {
      * 3. 要符合 deadline 的需求
      */
     fn try_calculate_windows(&self, tsn: usize, queue: u8,
-        solution: &Solution) -> Result<Schedule, ()> {
+        solution: &Solution) -> Result<Schedule, Error> {
         let flowtable = solution.flowtable();
         let network = solution.network();
         let spec = flowtable.tsn_spec(tsn).unwrap();
@@ -148,16 +149,23 @@ impl Scheduler {
 
                 let window = egress..(egress + transmit_time);
 
-                egress += gcl.query_later_vacant(port, usize::MAX, window, spec.period)
-                    .ok_or(())?;
-                assert_within_deadline(egress + transmit_time, spec)?;
+                egress += gcl.query_later_vacant(port, usize::MAX, window.clone(), spec.period)
+                    .ok_or_else(|| Error::QueryVacantError(
+                        port, tsn, window.clone(), spec.period, gcl.events(port).clone()
+                    ))?;
+                assert_within_deadline(egress + transmit_time, spec)
+                    .ok_or_else(|| Error::ExceedDeadlineError(
+                        port, tsn, window.clone(), spec.offset + spec.deadline
+                    ))?;
 
                 windows[r][f] = egress..(egress + transmit_time);
 
                 if r == 0 { continue; }
                 let window = windows[r-1][f].start..windows[r][f].end;
-                gcl.check_vacant(queue, tsn, window, spec.period)
-                    .then(|| true).ok_or(())?;
+                gcl.check_vacant(queue, tsn, window.clone(), spec.period).then(|| true)
+                    .ok_or_else(|| Error::CheckVacantError(
+                        queue, tsn, window, spec.period, gcl.events(queue).clone()
+                    ))?;
             }
         }
         Ok(schedule)
@@ -176,7 +184,8 @@ impl Scheduler {
 /// * `period` - 週期短的要排前面
 /// * `route length` - 路徑長的要排前面
 fn compare_tsn(tsn1: usize, tsn2: usize,
-    solution: &Solution, flowtable: &FlowTable) -> Ordering {
+    solution: &Solution) -> Ordering {
+    let flowtable = solution.flowtable();
     let spec1 = flowtable.tsn_spec(tsn1).unwrap();
     let spec2 = flowtable.tsn_spec(tsn2).unwrap();
     let routelen = |tsn: usize| {
@@ -193,10 +202,10 @@ fn count_frames(spec: &TSN) -> usize {
     (spec.size as f64 / MTU).ceil() as usize
 }
 
-fn assert_within_deadline(delay: u32, spec: &TSN) -> Result<u32, ()> {
+fn assert_within_deadline(delay: u32, spec: &TSN) -> Option<u32> {
     match delay < spec.offset + spec.deadline {
-        true  => Ok(spec.offset + spec.deadline - delay),
-        false => Err(()),
+        true  => Some(delay),
+        false => None,
     }
 }
 

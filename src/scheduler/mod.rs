@@ -5,3 +5,4 @@ mod gatectrllist;
 pub use scheduler::Scheduler;
 pub use gatectrllist::GateCtrlList;
 pub use gatectrllist::Entry;
+pub use gatectrllist::Event;
