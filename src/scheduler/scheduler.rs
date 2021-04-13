@@ -148,7 +148,7 @@ impl Scheduler {
 
                 let window = egress..(egress + transmit_time);
 
-                egress += gcl.query_later_idle(port, usize::MAX, window, spec.period)
+                egress += gcl.query_later_vacant(port, usize::MAX, window, spec.period)
                     .ok_or(())?;
                 assert_within_deadline(egress + transmit_time, spec)?;
 
@@ -156,7 +156,7 @@ impl Scheduler {
 
                 if r == 0 { continue; }
                 let window = windows[r-1][f].start..windows[r][f].end;
-                gcl.check_idle(queue, tsn, window, spec.period)
+                gcl.check_vacant(queue, tsn, window, spec.period)
                     .then(|| true).ok_or(())?;
             }
         }
@@ -241,12 +241,12 @@ fn insert_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize, schedul
         for f in 0..windows[r].len() {
             let port = Entry::Port(ends[0], ends[1]);
             let window = windows[r][f].clone();
-            gcl.insert(port, tsn, window, period);
+            gcl.occupy(port, tsn, window, period);
 
             if r == 0 { continue; }
             let queue = Entry::Queue(ends[0], ends[1], schedule.queue);
             let window = windows[r-1][f].start..windows[r][f].end;
-            gcl.insert(queue, tsn, window, period);
+            gcl.occupy(queue, tsn, window, period);
         }
     }
 }

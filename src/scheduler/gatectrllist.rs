@@ -4,6 +4,7 @@ use num::integer::lcm;
 use std::ops::Range;
 use super::base::intervalmap::IntervalMap;
 
+const RESERVED: usize = usize::MAX;
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum Entry {
@@ -41,67 +42,67 @@ impl GateCtrlList {
     }
     pub fn remove(&mut self, ends: &(usize, usize), tsn: usize) {
         let port = Entry::Port(ends.0, ends.1);
-        let map = self.events.entry(port)
+        let intervals = self.events.entry(port)
             .or_insert_with(|| IntervalMap::new());
-        map.remove_value(tsn);
+        intervals.remove_value(tsn);
         for queue_id in 0..MAX_QUEUE {
             let queue = Entry::Queue(ends.0, ends.1, queue_id);
-            let map = self.events.entry(queue)
+            let intervals = self.events.entry(queue)
                 .or_insert_with(|| IntervalMap::new());
-            map.remove_value(tsn);
+            intervals.remove_value(tsn);
         }
     }
-    pub fn insert(&mut self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) {
+    pub fn occupy(&mut self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) {
         let hyperperiod = self.hyperperiod();
         debug_assert!(window.end <= hyperperiod);
-        let events = self.events.entry(entry)
+        let intervals = self.events.entry(entry)
             .or_insert_with(|| IntervalMap::new());
         (0..hyperperiod).step_by(period as usize)
             .map(|offset| shift(&window, offset))
-            .for_each(|inst| events.insert(inst, tsn))
+            .for_each(|inst| intervals.occupy(inst, tsn))
     }
-    fn check_idle_once(&self, entry: Entry, tsn: usize, window: Range<u32>) -> bool {
+    fn check_vacant_once(&self, entry: Entry, tsn: usize, window: Range<u32>) -> bool {
+        // self.events.contains_key(&entry) may be false
         let hyperperiod = self.hyperperiod();
-        let events = self.events.get(&entry);
-        if events.is_none() { return true; }
-        let events = events.unwrap();
-        window.end <= hyperperiod && events.check_available(window, tsn)
+        window.end <= hyperperiod && match self.events.get(&entry) {
+            Some(intervals) => intervals.check_vacant(window, tsn),
+            None => true,
+        }
     }
-    pub fn check_idle(&self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) -> bool {
+    pub fn check_vacant(&self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) -> bool {
+        // self.events.contains_key(&entry) may be false
         let hyperperiod = self.hyperperiod();
-        if window.end > period { return false; }
         (0..hyperperiod).step_by(period as usize)
             .map(|offset| shift(&window, offset))
-            .all(|inst| self.check_idle_once(entry, tsn, inst))
+            .all(|inst| self.check_vacant_once(entry, tsn, inst))
     }
-    fn query_later_idle_once(&self, entry: Entry, tsn: usize, window: Range<u32>) -> Option<u32> {
+    fn query_later_vacant_once(&self, entry: Entry, tsn: usize, window: Range<u32>) -> Option<u32> {
         debug_assert!(matches!(entry, Entry::Port(..)));
-        if self.check_idle_once(entry, tsn, window.clone()) { return Some(0) }
-        let events = self.events.get(&entry);
-        if events.is_none() { return Some(0); }
-        let events = events.unwrap();
+        debug_assert!(self.events.contains_key(&entry));
+        if self.check_vacant_once(entry, tsn, window.clone()) { return Some(0) }
+        let intervals = self.events.get(&entry).unwrap();
 
         let hyperperiod = self.hyperperiod();
         if window.end > hyperperiod { return None; }
-        let padded = (hyperperiod..hyperperiod, usize::MAX);
-        let mut afters = Vec::from(events.intervals_after(window.start));
-        afters.push(padded);
+
+        let ghost = (hyperperiod..hyperperiod, RESERVED);
+        let mut afters = Vec::from(intervals.intervals_after(window.start));
+        afters.push(ghost);
         afters.windows(2)
-            // .inspect(|i| println!("{:?}", i))
             .map(|pair| pair[0].0.end..pair[1].0.start)
             .find(|idle| idle.end - idle.start >= window.end - window.start)
             .map(|idle| idle.start - window.start)
     }
-    pub fn query_later_idle(&self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) -> Option<u32> {
+    pub fn query_later_vacant(&self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) -> Option<u32> {
         debug_assert!(matches!(entry, Entry::Port(..)));
         debug_assert!(window.end <= period);
         let mut offset = 0;
         let hyperperiod = self.hyperperiod();
         if window.end > hyperperiod { return None; }
-        while !self.check_idle(entry, tsn, shift(&window, offset), period) {
+        while !self.check_vacant(entry, tsn, shift(&window, offset), period) {
             let increment = (0..hyperperiod).step_by(period as usize)
                 .map(|timeshift| shift(&window, timeshift + offset))
-                .map(|inst| self.query_later_idle_once(entry, tsn, inst))
+                .map(|inst| self.query_later_vacant_once(entry, tsn, inst))
                 // .inspect(|x|println!("{:?}", x))
                 .collect::<Option<Vec<_>>>()
                 .and_then(|incrs| incrs.into_iter().max())?;
@@ -124,61 +125,61 @@ mod tests {
     fn setup() -> GateCtrlList {
         let mut gcl = GateCtrlList::new(10);
         let entry = Entry::Port(0, 1);
-        gcl.insert(entry, 0, 0..1, 5);
-        gcl.insert(entry, 0, 2..3, 5);
-        gcl.insert(entry, 1, 3..4, 10);
-        gcl.insert(entry, 2, 6..7, 10);
+        gcl.occupy(entry, 0, 0..1, 5);
+        gcl.occupy(entry, 0, 2..3, 5);
+        gcl.occupy(entry, 1, 3..4, 10);
+        gcl.occupy(entry, 2, 6..7, 10);
         let before = [(0..1, 0), (2..3, 0), (3..4, 1), (5..6, 0), (6..7, 2), (7..8, 0)];
         assert_eq!(gcl.events(entry), &before);
         gcl
     }
 
     #[test]
-    fn it_checks_idle() {
+    fn it_checks_vacant() {
         let gcl = setup();
         let entry = Entry::Port(0, 1);
         // before: 0 - 0 1 - 0 2 0 - -
         // expect: 0 - 0 1 + 0 2 0 - +
-        assert_eq!(gcl.check_idle(entry, 9, 1..2, 5), false);
-        assert_eq!(gcl.check_idle(entry, 9, 4..5, 5), true);
+        assert_eq!(gcl.check_vacant(entry, 9, 1..2, 5), false);
+        assert_eq!(gcl.check_vacant(entry, 9, 4..5, 5), true);
     }
 
     #[test]
-    fn it_queries_later_idle_once() {
+    fn it_queries_later_vacant_once() {
         let mut gcl = GateCtrlList::new(10);
         let entry = Entry::Port(0, 1);
-        gcl.insert(entry, 0, 0..1, 5);
-        gcl.insert(entry, 1, 2..3, 10);
+        gcl.occupy(entry, 0, 0..1, 5);
+        gcl.occupy(entry, 1, 2..3, 10);
         let before = [(0..1, 0), (2..3, 1), (5..6, 0)];
         assert_eq!(gcl.events(entry), &before);
         // before: 0 - 1 - - 0 - - - -
         // expect: 0 - 1 - - 0 + + + -
-        assert_eq!(gcl.query_later_idle_once(entry, 9, 0..2), Some(3));
-        assert_eq!(gcl.query_later_idle_once(entry, 9, 1..4), Some(5));
-        assert_eq!(gcl.query_later_idle_once(entry, 9, 0..5), None);
+        assert_eq!(gcl.query_later_vacant_once(entry, 9, 0..2), Some(3));
+        assert_eq!(gcl.query_later_vacant_once(entry, 9, 1..4), Some(5));
+        assert_eq!(gcl.query_later_vacant_once(entry, 9, 0..5), None);
 
         let mut gcl = GateCtrlList::new(10);
-        gcl.insert(entry, 0, 0..2, 10);
-        gcl.insert(entry, 0, 2..5, 10);
+        gcl.occupy(entry, 0, 0..2, 10);
+        gcl.occupy(entry, 0, 2..5, 10);
         let before = [(0..5, 0)];
         assert_eq!(gcl.events(entry), &before);
         // before: 0 0 0 0 0 - - - - -
         // expect: 0 0 0 0 0 + + + - -
-        assert_eq!(gcl.query_later_idle_once(entry, 9, 0..3), Some(5));
-        assert_eq!(gcl.query_later_idle_once(entry, 9, 2..5), Some(3));
-        assert_eq!(gcl.query_later_idle_once(entry, 9, 4..7), Some(1));
-        assert_eq!(gcl.query_later_idle_once(entry, 9, 6..9), Some(0));
+        assert_eq!(gcl.query_later_vacant_once(entry, 9, 0..3), Some(5));
+        assert_eq!(gcl.query_later_vacant_once(entry, 9, 2..5), Some(3));
+        assert_eq!(gcl.query_later_vacant_once(entry, 9, 4..7), Some(1));
+        assert_eq!(gcl.query_later_vacant_once(entry, 9, 6..9), Some(0));
     }
 
     #[test]
-    fn it_queries_later_idle() {
+    fn it_queries_later_vacant() {
         let gcl = setup();
         let entry = Entry::Port(0, 1);
         // before: 0 - 0 1 - 0 2 0 - -
         // expect: 0 - 0 1 + 0 2 0 - +
-        assert_eq!(gcl.query_later_idle(entry, 9, 0..1, 5), Some(4));
-        assert_eq!(gcl.query_later_idle(entry, 9, 2..3, 5), Some(2));
-        assert_eq!(gcl.query_later_idle(entry, 9, 0..2, 5), None);
-        assert_eq!(gcl.query_later_idle(entry, 9, 2..4, 5), None);
+        assert_eq!(gcl.query_later_vacant(entry, 9, 0..1, 5), Some(4));
+        assert_eq!(gcl.query_later_vacant(entry, 9, 2..3, 5), Some(2));
+        assert_eq!(gcl.query_later_vacant(entry, 9, 0..2, 5), None);
+        assert_eq!(gcl.query_later_vacant(entry, 9, 2..4, 5), None);
     }
 }

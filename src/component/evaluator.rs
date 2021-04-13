@@ -227,9 +227,9 @@ mod tests {
         // GCL: 3 - - - - 4 - 5 5 -
         let mut gcl = GateCtrlList::new(10);
         let port = Entry::Port(0, 1);
-        gcl.insert(port, 3, 0..1, 10);
-        gcl.insert(port, 4, 5..6, 10);
-        gcl.insert(port, 5, 7..9, 10);
+        gcl.occupy(port, 3, 0..1, 10);
+        gcl.occupy(port, 4, 5..6, 10);
+        gcl.occupy(port, 5, 7..9, 10);
         println!("{:?}", gcl);
         assert_eq!(interfere_from_tsn(&edge, 1.0, &gcl), 3.0);  // should be 2.0
         assert_eq!(interfere_from_tsn(&edge, 2.0, &gcl), 3.0);  // should be 3.0
