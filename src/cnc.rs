@@ -99,7 +99,7 @@ impl CNC {
         writeln!(msg, "AVB streams").unwrap();
         for &avb in flowtable.avbs() {
             let objs = self.evaluator.evaluate_avb_objectives(avb, current, latest);
-            let max = flowtable.avb_spec(avb).unwrap().deadline as f64;
+            let max = flowtable.avb_spec(avb).deadline as f64;
             let outcome = if objs[1] == 0.0 { "ok" } else { "failed" };
             let reroute = if objs[2] == 0.0 { "" } else { "*" };
             let kth = current.selection(avb).current().unwrap();

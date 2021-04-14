@@ -30,7 +30,7 @@ impl Evaluator {
         let latest = latest.selection(avb).current();
         let current = solution.selection(avb).next();
         let wcd = self.evaluate_avb_wcd(avb, solution);
-        let max = flowtable.avb_spec(avb).unwrap().deadline;
+        let max = flowtable.avb_spec(avb).deadline;
 
         let mut objs = [0.0; 4];
         objs[0] = 0.0;
@@ -47,7 +47,7 @@ impl Evaluator {
         let mut avb_failed_count = 0;
         let mut avb_wcd_sum = 0.0;
 
-        for nth in 0..flowtable.len() {
+        for nth in flowtable.backgrounds() {
             let latest = latest.selection(nth).current();
             let current = solution.selection(nth).next();
             all_rerouted_count += is_rerouted(latest, current) as usize;
@@ -57,7 +57,7 @@ impl Evaluator {
         }
         for &avb in flowtable.avbs() {
             let wcd = self.evaluate_avb_wcd(avb, solution);
-            let max = flowtable.avb_spec(avb).unwrap().deadline;
+            let max = flowtable.avb_spec(avb).deadline;
             avb_failed_count += (wcd > max) as usize;
             avb_wcd_sum += wcd as f64;
         }
@@ -114,7 +114,7 @@ fn is_rerouted(latest: Option<usize>, current: Option<usize>) -> bool {
 
 fn transmit_avb_itself(edge: &Edge, avb: usize, flowtable: &FlowTable) -> f64 {
     let bandwidth = MAX_AVB_SETTING * edge.bandwidth;
-    let spec = flowtable.avb_spec(avb).unwrap();
+    let spec = flowtable.avb_spec(avb);
     spec.size as f64 / bandwidth
 }
 
@@ -130,10 +130,10 @@ fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
     flowtable: &FlowTable) -> f64 {
     let mut interfere = 0.0;
     let bandwidth = MAX_AVB_SETTING * edge.bandwidth;
-    let spec = flowtable.avb_spec(avb).unwrap();
+    let spec = flowtable.avb_spec(avb);
     for other in others {
         if avb == other { continue; }
-        let other_spec = flowtable.avb_spec(other).unwrap();
+        let other_spec = flowtable.avb_spec(other);
         if spec.class == 'B' || other_spec.class == 'A' {
             interfere += other_spec.size as f64 / bandwidth;
         }
