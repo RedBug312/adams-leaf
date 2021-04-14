@@ -6,3 +6,7 @@ plot/log/
 plot/*.dat
 plot/*.png
 tests/result.log
+
+flamegraph.svg
+perf.data
+perf.data.old
