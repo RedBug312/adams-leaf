@@ -10,6 +10,6 @@ pub enum Error {
     QueryVacantError(Entry, usize, Range<u32>, u32, Vec<Event>),
     #[error("stream #{1:02} checked no vacant for {2:?} per {3} on {0:?}: {4:?}")]
     CheckVacantError(Entry, usize, Range<u32>, u32, Vec<Event>),
-    #[error("stream #{1:02} exceeded deadline {3} for {2:?} on {0:?}")]
-    ExceedDeadlineError(Entry, usize, Range<u32>, u32),
+    #[error("stream #{1:02} exceeded deadline {3} for {2:?} on {0:?}, windows {4:?}")]
+    ExceedDeadlineError(Entry, usize, Range<u32>, u32, Vec<Vec<Range<u32>>>),
 }

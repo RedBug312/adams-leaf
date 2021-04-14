@@ -75,6 +75,7 @@ impl GateCtrlList {
     }
     pub fn check_vacant(&self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) -> bool {
         // self.events.contains_key(&entry) may be false
+        debug_assert!(window.end <= period);
         let hyperperiod = self.hyperperiod();
 
         (0..hyperperiod).step_by(period as usize)
@@ -110,6 +111,7 @@ impl GateCtrlList {
                 .try_fold(0, try_max)?;
             debug_assert!(increment > 0);
             offset += increment;
+            if window.end + offset > period { return None; }
         }
         Some(offset)
     }

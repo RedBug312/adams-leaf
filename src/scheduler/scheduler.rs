@@ -7,7 +7,8 @@ use std::cmp::{Ordering, max};
 use std::ops::Range;
 
 
-const MTU: f64 = 1500.0;
+const MTU: f64 = 1522.0;
+const OCTETS: f64 = 8.0;
 
 
 #[derive(Debug, Default)]
@@ -103,7 +104,9 @@ impl Scheduler {
                 }
                 if let Err(_) = self.try_increment_queue(&mut queue) {
                     solution.flag_unschedulable(tsn, kth);
-                    return Err(Error::IncrementQueueError(tsn));
+                    let e = Error::IncrementQueueError(tsn);
+                    println!("{}", e);
+                    return Err(e);
                 }
             }
         }
@@ -134,8 +137,13 @@ impl Scheduler {
         for (r, ends) in route.windows(2).enumerate() {
             let port = Entry::Port(ends[0], ends[1]);
             let queue = Entry::Queue(ends[0], ends[1], queue);
-            let transmit_time = network.duration_on(ends, MTU).ceil() as u32;
             for f in 0..frame_len {
+                let size = match f == frame_len - 1 {
+                    true  => spec.size as f64 % MTU * OCTETS,
+                    false => MTU * OCTETS,
+                };
+                let transmit_time = network.duration_on(ends, size).ceil() as u32;
+
                 let prev_frame_done = match f {
                     0 => spec.offset,
                     _ => windows[r][f-1].end,
@@ -148,14 +156,14 @@ impl Scheduler {
                 let mut egress = ingress;  // ignore bridge processing time
 
                 let window = egress..(egress + transmit_time);
+                assert_within_deadline(egress + transmit_time, spec)
+                    .ok_or_else(|| Error::ExceedDeadlineError(
+                        port, tsn, window.clone(), spec.offset + spec.deadline, windows.clone()
+                    ))?;
 
                 egress += gcl.query_later_vacant(port, usize::MAX, window.clone(), spec.period)
                     .ok_or_else(|| Error::QueryVacantError(
                         port, tsn, window.clone(), spec.period, gcl.events(port).clone()
-                    ))?;
-                assert_within_deadline(egress + transmit_time, spec)
-                    .ok_or_else(|| Error::ExceedDeadlineError(
-                        port, tsn, window.clone(), spec.offset + spec.deadline
                     ))?;
 
                 windows[r][f] = egress..(egress + transmit_time);
@@ -275,8 +283,8 @@ mod tests {
         let mut network = Network::new();
         network.add_nodes(6, 0);
         network.add_edges(vec![
-            (0, 1, 100.0), (0, 2, 100.0), (1, 3, 100.0), (1, 4, 100.0),
-            (2, 3, 100.0), (2, 5, 100.0), (3, 5, 100.0),
+            (0, 1, 1000.0), (0, 2, 1000.0), (1, 3, 1000.0), (1, 4, 1000.0),
+            (2, 3, 1000.0), (2, 5, 1000.0), (3, 5, 1000.0),
         ]);
         let tsns = vec![
             TSN::new(0, 4, 1500, 100, 100, 0),
@@ -298,9 +306,9 @@ mod tests {
         cnc.solution.allocated_tsns = GateCtrlList::new(60);
         let result = cnc.scheduler.try_calculate_windows(0, 0, &cnc.solution);
         let windows = result.unwrap().windows;
-        assert_eq!(windows, vec![vec![0..15], vec![15..30]]);
+        assert_eq!(windows, [[0..13], [13..26]]);
         let result = cnc.scheduler.try_calculate_windows(2, 0, &cnc.solution);
         let windows = result.unwrap().windows;
-        assert_eq!(windows, vec![vec![0..15, 15..30], vec![15..30, 30..45]]);
+        assert_eq!(windows, [[0..13, 13..26], [13..26, 26..39]]);
     }
 }
