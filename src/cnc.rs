@@ -82,6 +82,7 @@ impl CNC {
     }
     fn show_results(&self, current: &Solution) {
         let flowtable = &self.flowtable;
+        let network = &self.network;
         let latest = &self.solution;
         let mut msg = String::new();
 
@@ -92,7 +93,7 @@ impl CNC {
             let outcome = if current.outcome(tsn).is_unschedulable()
                 { "failed" } else { "ok" };
             let kth = current.selection(tsn).current().unwrap();
-            let route = flowtable.candidate(tsn, kth);
+            let route = network.node_sequence(flowtable.candidate(tsn, kth));
             writeln!(msg, "- stream #{:02} {}, with route #{} {:?}",
                      tsn, outcome, kth, route).unwrap();
         }
@@ -103,7 +104,7 @@ impl CNC {
             let outcome = if objs[1] == 0.0 { "ok" } else { "failed" };
             let reroute = if objs[2] == 0.0 { "" } else { "*" };
             let kth = current.selection(avb).current().unwrap();
-            let route = flowtable.candidate(avb, kth);
+            let route = network.node_sequence(flowtable.candidate(avb, kth));
             writeln!(msg, "- stream #{:02} {} ({:02.0}%), with route #{}{} {:?}",
                      avb, outcome, objs[3] / max * 100.0, kth, reroute, route).unwrap();
         }
