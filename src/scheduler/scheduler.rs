@@ -301,7 +301,8 @@ mod tests {
     #[test]
     fn it_calculates_windows() {
         let mut cnc = setup();
-        cnc.solution.allocated_tsns = GateCtrlList::new(60);
+        let network = cnc.network;
+        cnc.solution.allocated_tsns = GateCtrlList::new(&network, 60);
         let result = cnc.scheduler.try_calculate_windows(0, 0, &cnc.solution);
         let windows = result.unwrap().windows;
         assert_eq!(windows, vec![vec![0..15], vec![15..30]]);

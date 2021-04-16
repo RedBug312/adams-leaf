@@ -222,9 +222,10 @@ mod tests {
         let cnc = setup();
         let edge = 0.into();
         let mut solution = cnc.solution.clone();
+        let network = solution.network();
         cnc.scheduler.configure(&mut solution);
         // GCL: 3 - - - - 4 - 5 5 -
-        let mut gcl = GateCtrlList::new(10);
+        let mut gcl = GateCtrlList::new(&network, 10);
         gcl.insert_gate_evt(edge, 3, 0..1);
         gcl.insert_gate_evt(edge, 4, 5..6);
         gcl.insert_gate_evt(edge, 5, 7..9);
