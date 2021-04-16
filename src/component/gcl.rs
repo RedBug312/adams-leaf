@@ -29,8 +29,6 @@ struct Event {
 pub struct GateCtrlList {
     hyperperiod: u32,
     events: Vec<Vec<Event>>,
-    // FIXME there's penalty 62ms -> 69ms when change cache key type to Entry
-    events_cache: Vec<Option<Vec<Range<u32>>>>,
 }
 
 
@@ -38,8 +36,7 @@ impl GateCtrlList {
     pub fn new(network: &Network, hyperperiod: u32) -> Self {
         let edge_count = network.edge_count();
         let events = vec![vec![]; edge_count * 9];
-        let events_cache = vec![None; edge_count * 9];
-        Self { hyperperiod, events, events_cache }
+        Self { hyperperiod, events }
     }
     // XXX this function have never been called
     pub fn update_hyperperiod(&mut self, new_p: u32) {
@@ -47,7 +44,6 @@ impl GateCtrlList {
     }
     pub fn clear(&mut self) {
         self.events.iter_mut().for_each(|e| e.clear());
-        self.events_cache.iter_mut().for_each(|e| *e = None);
     }
     pub fn hyperperiod(&self) -> u32 {
         self.hyperperiod
@@ -60,37 +56,27 @@ impl GateCtrlList {
     }
     /// 回傳 `link_id` 上所有閘門關閉事件。
     /// * `回傳值` - 一個陣列，其內容為 (事件開始時間, 事件結束時間);
-    pub fn get_gate_events(&self, edge: EdgeIndex) -> &Vec<Range<u32>> {
-        // assert!(self.gate_evt.len() > link_id, "GCL: 指定了超出範圍的邊");
+    pub fn get_gate_events(&self, edge: EdgeIndex) -> Vec<Range<u32>> {
+        // 生成快速查找表
+        let mut lookup = Vec::new();
         let port = Entry::Port(edge);
-        let cache = &self.events_cache[port.index()];
-        if cache.is_none() {
-            // 生成快速查找表
-            let mut lookup = Vec::new();
-            let port = Entry::Port(edge);
-            let events = self.events(port);
-            let len = events.len();
-            if len > 0 {
-                let first_evt = &events[0];
-                let mut cur_evt = first_evt.window.clone();
-                for event in events[1..len].iter() {
-                    if cur_evt.end == event.window.start {
-                        // 首尾相接
-                        cur_evt.end = event.window.end; // 把閘門事件延長
-                    } else {
-                        lookup.push(cur_evt);
-                        cur_evt = event.window.clone();
-                    }
+        let events = self.events(port);
+        let len = events.len();
+        if len > 0 {
+            let first_evt = &events[0];
+            let mut cur_evt = first_evt.window.clone();
+            for event in events[1..len].iter() {
+                if cur_evt.end == event.window.start {
+                    // 首尾相接
+                    cur_evt.end = event.window.end; // 把閘門事件延長
+                } else {
+                    lookup.push(cur_evt);
+                    cur_evt = event.window.clone();
                 }
-                lookup.push(cur_evt);
             }
-            unsafe {
-                // NOTE 內部可變，因為這只是加速用的
-                let _self = self as *const Self as *mut Self;
-                (*_self).events_cache[port.index()] = Some(lookup);
-            }
+            lookup.push(cur_evt);
         }
-        cache.as_ref().unwrap()
+        lookup
     }
     pub fn insert_gate_evt(
         &mut self,
@@ -99,7 +85,6 @@ impl GateCtrlList {
         window: Range<u32>,
     ) {
         let port = Entry::Port(edge);
-        self.events_cache[port.index()] = None;
         let event = Event::new(tsn, window);
         let evts = self.events_mut(port);
         match evts.binary_search_by_key(&event.window.start, |e| e.window.start) {
@@ -202,7 +187,6 @@ impl GateCtrlList {
     }
     pub fn remove(&mut self, edge: EdgeIndex, tsn: usize) {
         let port = Entry::Port(edge);
-        self.events_cache[port.index()] = None;
         let gate_evt = self.events_mut(port);
         let mut i = 0;
         while i < gate_evt.len() {
