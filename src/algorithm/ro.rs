@@ -21,7 +21,7 @@ pub struct RO {
 
 impl Algorithm for RO {
     fn candidates(&self, src: usize, dst: usize) -> &Vec<Path> {
-        self.yens.k_shortest_paths(src, dst)
+        self.yens.k_shortest_paths(src.into(), dst.into())
     }
     fn prepare(&mut self, _solution: &mut Solution, _flowtable: &FlowTable) {}
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
@@ -109,7 +109,8 @@ impl Algorithm for RO {
 
 impl RO {
     pub fn new(network: &Network, seed: u64) -> Self {
-        let yens = Yens::new(&network, MAX_K);
+        let mut yens = Yens::new(&network, MAX_K);
+        yens.compute(&network);
         RO { yens, seed }
     }
     /// 若有給定候選路徑的子集合，就從中選。若無，則遍歷所有候選路徑
@@ -135,7 +136,7 @@ impl RO {
         best_k
     }
     fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
-        self.yens.count_shortest_paths(src, dst)
+        self.yens.count_shortest_paths(src.into(), dst.into())
     }
 }
 

@@ -114,18 +114,17 @@ impl Scheduler {
         let spec = flowtable.tsn_spec(tsn);
         let kth = solution.selection(tsn).next().unwrap();
         let route = flowtable.candidate(tsn, kth);
-        let links = network.get_links_id_bandwidth(route);
         let frame_len = count_frames(spec);
         let gcl = &solution.allocated_tsns;
         let hyperperiod = gcl.hyperperiod();
 
         let mut schedule = Schedule::new();
-        schedule.windows = vec![vec![std::u32::MAX..std::u32::MAX; frame_len]; route.len() - 1];
+        schedule.windows = vec![vec![std::u32::MAX..std::u32::MAX; frame_len]; route.len()];
         let windows = &mut schedule.windows;
         // let queue = schedule.queue;
 
-        for (r, ends) in route.windows(2).enumerate() {
-            let transmit_time = network.duration_on(ends, MTU).ceil() as u32;
+        for (r, &edge) in route.iter().enumerate() {
+            let transmit_time = network.duration_on(edge, MTU).ceil() as u32;
             for f in 0..frame_len {
                 let prev_frame_done = match f {
                     0 => spec.offset,
@@ -150,17 +149,17 @@ impl Scheduler {
                     loop {
                         // NOTE 確認沒有其它封包在這個連線上傳輸
                         let option =
-                            gcl.get_next_empty_time(links[r].0, time_shift + egress, transmit_time);
+                            gcl.get_next_empty_time(edge, time_shift + egress, transmit_time);
                         if let Some(time) = option {
                             egress = time - time_shift;
                             assert_within_deadline(egress + transmit_time, spec)?;
                             continue;
                         }
                         // NOTE 確認傳輸到下個地方時，下個連線的佇列是空的（沒有其它的資料流）
-                        if r < links.len() - 1 {
+                        if r + 1 < route.len() {
                             // 還不到最後一個節點
                             let option = gcl.get_next_queue_empty_time(
-                                links[r + 1].0,
+                                route[r + 1],
                                 queue,
                                 time_shift + (egress + transmit_time),
                             );
@@ -222,10 +221,8 @@ fn assert_within_deadline(delay: u32, spec: &TSN) -> Result<u32, ()> {
 fn remove_traversed_avb(solution: &mut Solution, avb: usize, kth: usize) {
     let flowtable = solution.flowtable();
     let route = flowtable.candidate(avb, kth);  // kth_route without clone
-    for ends in route.windows(2) {
-        let ends = (ends[0], ends[1]);
-        let set = solution.traversed_avbs.get_mut(&ends)
-            .expect("Failed to remove traversed avb from an invalid edge");
+    for edge in route {
+        let set = &mut solution.traversed_avbs[edge.index()];
         set.remove(&avb);
     }
 }
@@ -233,10 +230,8 @@ fn remove_traversed_avb(solution: &mut Solution, avb: usize, kth: usize) {
 fn insert_traversed_avb(solution: &mut Solution, avb: usize, kth: usize) {
     let flowtable = solution.flowtable();
     let route = flowtable.candidate(avb, kth);  // kth_route without clone
-    for ends in route.windows(2) {
-        let ends = (ends[0], ends[1]);
-        let set = solution.traversed_avbs.get_mut(&ends)
-            .expect("Failed to insert traversed avb into an invalid edge");
+    for edge in route {
+        let set = &mut solution.traversed_avbs[edge.index()];
         set.insert(avb);
     }
 }
@@ -245,9 +240,8 @@ fn remove_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize) {
     let flowtable = solution.flowtable();
     let route = flowtable.candidate(tsn, kth);  // kth_route without clone
     let gcl = &mut solution.allocated_tsns;
-    for ends in route.windows(2) {
-        let ends = (ends[0], ends[1]);
-        gcl.remove(&ends, tsn);
+    for &edge in route {
+        gcl.remove(edge, tsn);
     }
 }
 
@@ -257,17 +251,16 @@ fn insert_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize, schedul
     let gcl = &mut solution.allocated_tsns;
     let hyperperiod = gcl.hyperperiod();
     let windows = schedule.windows;
-    for (r, ends) in route.windows(2).enumerate() {
-        let ends = (ends[0], ends[1]);
+    for (r, &edge) in route.iter().enumerate() {
         for f in 0..windows[r].len() {
             for timeshift in (0..hyperperiod).step_by(period as usize) {
                 let window = (timeshift + windows[r][f].start)
                     ..(timeshift + windows[r][f].end);
-                gcl.insert_gate_evt(ends, tsn, window);
+                gcl.insert_gate_evt(edge, tsn, window);
                 if r == 0 { continue; }
                 let window = (timeshift + windows[r-1][f].start)
                     ..(timeshift + windows[r][f].start);
-                gcl.insert_queue_evt(ends, schedule.queue, tsn, window);
+                gcl.insert_queue_evt(edge, schedule.queue, tsn, window);
             }
         }
     }

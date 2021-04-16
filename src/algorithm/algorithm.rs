@@ -1,6 +1,7 @@
-use crate::{component::FlowTable, network::Path};
-use crate::component::Solution;
 use crate::cnc::Toolbox;
+use crate::component::FlowTable;
+use crate::component::Solution;
+use crate::network::Path;
 use enum_dispatch::enum_dispatch;
 use std::time::Instant;
 use super::aco::ACO;
