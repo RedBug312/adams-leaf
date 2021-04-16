@@ -1,5 +1,4 @@
-use crate::{MAX_QUEUE, network::EdgeIndex};
-use hashbrown::HashMap;
+use crate::{MAX_QUEUE, network::{EdgeIndex, Network}};
 use num::integer::lcm;
 use std::ops::Range;
 
@@ -8,6 +7,16 @@ use std::ops::Range;
 enum Entry {
     Port(EdgeIndex),
     Queue(EdgeIndex, u8),
+}
+
+impl Entry {
+    fn index(&self) -> usize {
+        match self {
+            Entry::Port(ix) => 9 * ix.index(),
+            Entry::Queue(ix, q) if *q < 8 => 9 * ix.index() + *q as usize + 1,
+            Entry::Queue(..) => unreachable!(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -19,41 +28,42 @@ struct Event {
 #[derive(Clone, Debug, Default)]
 pub struct GateCtrlList {
     hyperperiod: u32,
-    events: HashMap<Entry, Vec<Event>>,
+    events: Vec<Vec<Event>>,
     // FIXME there's penalty 62ms -> 69ms when change cache key type to Entry
-    events_cache: HashMap<Entry, Vec<Range<u32>>>,
+    events_cache: Vec<Option<Vec<Range<u32>>>>,
 }
 
 
 impl GateCtrlList {
-    pub fn new(hyperperiod: u32) -> Self {
-        Self { hyperperiod, ..Default::default() }
+    pub fn new(network: &Network, hyperperiod: u32) -> Self {
+        let edge_count = network.edge_count();
+        let events = vec![vec![]; edge_count * 9];
+        let events_cache = vec![None; edge_count * 9];
+        Self { hyperperiod, events, events_cache }
     }
     // XXX this function have never been called
     pub fn update_hyperperiod(&mut self, new_p: u32) {
         self.hyperperiod = lcm(self.hyperperiod, new_p);
     }
     pub fn clear(&mut self) {
-        self.events = Default::default();
-        self.events_cache = Default::default();
+        self.events.iter_mut().for_each(|e| e.clear());
+        self.events_cache.iter_mut().for_each(|e| *e = None);
     }
     pub fn hyperperiod(&self) -> u32 {
         self.hyperperiod
     }
     fn events(&self, entry: Entry) -> &Vec<Event> {
-        static EMPTY: Vec<Event> = vec![];
-        self.events.get(&entry)
-            .unwrap_or(&EMPTY)
+        &self.events[entry.index()]
     }
     fn events_mut(&mut self, entry: Entry) -> &mut Vec<Event> {
-        self.events.entry(entry)
-            .or_insert_with(|| vec![])
+        &mut self.events[entry.index()]
     }
     /// 回傳 `link_id` 上所有閘門關閉事件。
     /// * `回傳值` - 一個陣列，其內容為 (事件開始時間, 事件結束時間);
     pub fn get_gate_events(&self, edge: EdgeIndex) -> &Vec<Range<u32>> {
         // assert!(self.gate_evt.len() > link_id, "GCL: 指定了超出範圍的邊");
-        let cache = self.events_cache.get(&Entry::Port(edge));
+        let port = Entry::Port(edge);
+        let cache = &self.events_cache[port.index()];
         if cache.is_none() {
             // 生成快速查找表
             let mut lookup = Vec::new();
@@ -77,10 +87,10 @@ impl GateCtrlList {
             unsafe {
                 // NOTE 內部可變，因為這只是加速用的
                 let _self = self as *const Self as *mut Self;
-                (*_self).events_cache.insert(Entry::Port(edge), lookup);
+                (*_self).events_cache[port.index()] = Some(lookup);
             }
         }
-        self.events_cache.get(&Entry::Port(edge)).as_ref().unwrap()
+        cache.as_ref().unwrap()
     }
     pub fn insert_gate_evt(
         &mut self,
@@ -89,7 +99,7 @@ impl GateCtrlList {
         window: Range<u32>,
     ) {
         let port = Entry::Port(edge);
-        self.events_cache.remove(&port);
+        self.events_cache[port.index()] = None;
         let event = Event::new(tsn, window);
         let evts = self.events_mut(port);
         match evts.binary_search_by_key(&event.window.start, |e| e.window.start) {
@@ -192,7 +202,7 @@ impl GateCtrlList {
     }
     pub fn remove(&mut self, edge: EdgeIndex, tsn: usize) {
         let port = Entry::Port(edge);
-        self.events_cache.remove(&port);
+        self.events_cache[port.index()] = None;
         let gate_evt = self.events_mut(port);
         let mut i = 0;
         while i < gate_evt.len() {

@@ -40,7 +40,7 @@ impl Solution {
         Solution {
             selections: vec![],
             outcomes: vec![],
-            allocated_tsns: GateCtrlList::new(1),
+            allocated_tsns: GateCtrlList::new(graph, 1),
             traversed_avbs: vec![HashSet::new(); edge_count],
             flowtable: Weak::new(),
             network: Weak::new(),
