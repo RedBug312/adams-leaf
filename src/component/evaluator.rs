@@ -1,6 +1,6 @@
-use crate::{component::FlowTable, network::EdgeIndex};
-use crate::component::GateCtrlList;
-use crate::network::Edge;
+use crate::component::FlowTable;
+use crate::network::{Edge, EdgeIndex};
+use crate::scheduler::GateCtrlList;
 use std::cmp::max;
 use super::Solution;
 

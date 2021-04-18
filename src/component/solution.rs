@@ -1,8 +1,7 @@
-use crate::component::GateCtrlList;
 use crate::network::Network;
 use hashbrown::HashSet;
+use crate::scheduler::GateCtrlList;
 use std::rc::{Rc, Weak};
-
 use super::FlowTable;
 
 
