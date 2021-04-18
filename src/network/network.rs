@@ -4,7 +4,7 @@ use std::iter;
 pub struct NodeIndex(usize);
 
 impl NodeIndex {
-    fn new(ix: usize) -> Self {
+    pub fn new(ix: usize) -> Self {
         NodeIndex(ix)
     }
     pub fn index(self) -> usize {
@@ -22,7 +22,7 @@ impl From<usize> for NodeIndex {
 pub struct EdgeIndex(usize);
 
 impl EdgeIndex {
-    fn new(ix: usize) -> Self {
+    pub fn new(ix: usize) -> Self {
         EdgeIndex(ix)
     }
     pub fn index(self) -> usize {
