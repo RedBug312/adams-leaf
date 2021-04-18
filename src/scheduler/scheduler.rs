@@ -1,9 +1,9 @@
 use crate::{MAX_QUEUE, network::EdgeIndex};
 use crate::component::Solution;
-use crate::component::FlowTable;
 use crate::utils::stream::TSN;
 use std::cmp::{Ordering, max};
 use std::ops::Range;
+use super::gatectrllist::Entry;
 
 
 const MTU: f64 = 1500.0;
@@ -83,7 +83,8 @@ impl Scheduler {
 
         solution.allocated_tsns.clear();
         targets = tsns.clone();
-        self.try_schedule_tsns(solution, targets).unwrap();
+        // XXX schedule failed still happened
+        let _result = self.try_schedule_tsns(solution, targets);
     }
 
     // M. L. Raagaard, P. Pop, M. Gutiérrez and W. Steiner, "Runtime reconfiguration of time-sensitive
@@ -92,18 +93,16 @@ impl Scheduler {
 
     fn try_schedule_tsns(&self, solution: &mut Solution, tsns: Vec<usize>)
         -> Result<(), ()> {
-        let flowtable = solution.flowtable();
         let mut tsns = tsns;
         tsns.sort_by(|&tsn1, &tsn2|
-            compare_tsn(tsn1, tsn2, solution, &flowtable)
+            compare_tsn(tsn1, tsn2, solution)
         );
         for tsn in tsns {
             let mut queue = 0;
             let kth = solution.selection(tsn).next().unwrap();
-            let period = flowtable.tsn_spec(tsn).period;
             loop {
                 if let Ok(schedule) = self.try_calculate_windows(tsn, queue, solution) {
-                    insert_allocated_tsn(solution, tsn, kth, schedule, period);
+                    insert_allocated_tsn(solution, tsn, kth, schedule);
                     solution.flag_schedulable(tsn, kth);
                     break;
                 }
@@ -123,7 +122,6 @@ impl Scheduler {
         let kth = solution.selection(tsn).next().unwrap();
         let route = flowtable.candidate(tsn, kth);
         let gcl = &solution.allocated_tsns;
-        let hyperperiod = gcl.hyperperiod();
 
         let mut schedule = Schedule::new(route, spec.size, queue);
         let (route_len, frame_len) = schedule.shape();
@@ -131,6 +129,8 @@ impl Scheduler {
 
         for r in 0..route_len {
             let edge = route[r];
+            let port = Entry::Port(edge);
+            let queue = Entry::Queue(edge, queue);
             let transmit_time = network.duration_on(edge, MTU).ceil() as u32;
             for f in 0..frame_len {
                 let prev_frame_done = match f {
@@ -142,47 +142,32 @@ impl Scheduler {
                     _ => windows[r-1][f].end,
                 };
                 let ingress = max(prev_frame_done, prev_link_done);
-
                 let mut egress = ingress;  // ignore bridge processing time
-                let p = spec.period as usize;
-                for time_shift in (0..hyperperiod).step_by(p) {
-                    // 考慮 hyper period 中每種狀況
-                    /*
-                     * 1. 每個連結一個時間只能傳輸一個封包
-                     * 2. 同個佇列一個時間只能容納一個資料流（但可能容納該資料流的數個封包）
-                     * 3. 要符合 deadline 的需求
-                     */
-                    // QUESTION 搞清楚第二點是為什麼？
-                    loop {
-                        // NOTE 確認沒有其它封包在這個連線上傳輸
-                        let option =
-                            gcl.get_next_empty_time(edge, time_shift + egress, transmit_time);
-                        if let Some(time) = option {
-                            egress = time - time_shift;
-                            assert_within_deadline(egress + transmit_time, spec)?;
-                            continue;
-                        }
-                        // NOTE 確認傳輸到下個地方時，下個連線的佇列是空的（沒有其它的資料流）
-                        if r + 1 < route.len() {
-                            // 還不到最後一個節點
-                            let option = gcl.get_next_queue_empty_time(
-                                route[r + 1],
-                                queue,
-                                time_shift + (egress + transmit_time),
-                            );
-                            if let Some(time) = option {
-                                egress = time - time_shift;
-                                assert_within_deadline(egress + transmit_time, spec)?;
-                                continue;
-                            }
-                        }
-                        assert_within_deadline(egress + transmit_time, spec)?;
-                        break;
-                    }
-                    // QUESTION 是否要檢查 arrive_time ~ cur_offset+trans_time 這段時間中
-                    // 有沒有發生同個佇列被佔用的事件？
+
+                let window = egress..(egress + transmit_time);
+                assert_within_deadline(window.end, spec)?;
+
+                if r + 1 < route_len {
+                    let queue_peek = Entry::Queue(route[r+1], schedule.queue);
+                    egress += gcl.query_later_vacant(queue_peek, tsn, window, spec.period)
+                        .ok_or(())?;
                 }
-                windows[r][f] = egress..(egress + transmit_time);
+
+                let window = egress..(egress + transmit_time);
+                assert_within_deadline(window.end, spec)?;
+
+                egress += gcl.query_later_vacant(port, usize::MAX, window, spec.period)
+                    .ok_or(())?;
+                assert_within_deadline(egress + transmit_time, spec)?;
+
+                let window = egress..(egress + transmit_time);
+                assert_within_deadline(window.end, spec)?;
+                windows[r][f] = window;
+
+                if r == 0 { continue; }
+                let window = windows[r-1][f].start..windows[r][f].start;
+                gcl.check_vacant(queue, tsn, window, spec.period).then(|| 0)
+                    .ok_or(())?;
             }
         }
         Ok(schedule)
@@ -200,8 +185,8 @@ impl Scheduler {
 /// * `deadline` - 時間較緊的要排前面
 /// * `period` - 週期短的要排前面
 /// * `route length` - 路徑長的要排前面
-fn compare_tsn(tsn1: usize, tsn2: usize,
-    solution: &Solution, flowtable: &FlowTable) -> Ordering {
+fn compare_tsn(tsn1: usize, tsn2: usize, solution: &Solution) -> Ordering {
+    let flowtable = solution.flowtable();
     let spec1 = flowtable.tsn_spec(tsn1);
     let spec2 = flowtable.tsn_spec(tsn2);
     let routelen = |tsn: usize| {
@@ -213,9 +198,10 @@ fn compare_tsn(tsn1: usize, tsn2: usize,
         .then(routelen(tsn1).cmp(&routelen(tsn2)).reverse())
 }
 
-fn assert_within_deadline(delay: u32, spec: &TSN) -> Result<u32, ()> {
-    match delay < spec.offset + spec.deadline {
-        true  => Ok(spec.offset + spec.deadline - delay),
+fn assert_within_deadline(arrival: u32, spec: &TSN) -> Result<u32, ()> {
+    let delay = arrival - spec.offset;
+    match delay <= spec.deadline {
+        true  => Ok(delay),
         false => Err(()),
     }
 }
@@ -247,27 +233,26 @@ fn remove_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize) {
     }
 }
 
-fn insert_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize, schedule: Schedule, period: u32) {
+fn insert_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize, schedule: Schedule) {
     let flowtable = solution.flowtable();
+    let period = flowtable.tsn_spec(tsn).period;
     let route = flowtable.candidate(tsn, kth);  // kth_route without clone
     let gcl = &mut solution.allocated_tsns;
-    let hyperperiod = gcl.hyperperiod();
 
     let (route_len, frame_len) = schedule.shape();
     let windows = schedule.windows;
 
     for r in 0..route_len {
         let edge = route[r];
+        let port = Entry::Port(edge);
+        let queue = Entry::Queue(edge, schedule.queue);
         for f in 0..frame_len {
-            for timeshift in (0..hyperperiod).step_by(period as usize) {
-                let window = (timeshift + windows[r][f].start)
-                    ..(timeshift + windows[r][f].end);
-                gcl.insert_gate_evt(edge, tsn, window);
-                if r == 0 { continue; }
-                let window = (timeshift + windows[r-1][f].start)
-                    ..(timeshift + windows[r][f].start);
-                gcl.insert_queue_evt(edge, schedule.queue, tsn, window);
-            }
+            let window = windows[r][f].clone();
+            gcl.insert(port, tsn, window, period);
+
+            if r == 0 { continue; }
+            let window = windows[r-1][f].start..windows[r][f].start;
+            gcl.insert(queue, tsn, window, period);
         }
     }
 }
