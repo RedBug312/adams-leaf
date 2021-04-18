@@ -1,14 +1,15 @@
-use crate::{MAX_K, cnc::Toolbox, network::Path, utils::config::Parameters};
-use crate::component::Solution;
 use crate::component::FlowTable;
+use crate::component::Solution;
 use crate::network::Network;
+use crate::network::Path;
+use crate::{MAX_K, cnc::Toolbox, utils::config::Parameters};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use std::collections::BinaryHeap;
 use std::time::Instant;
 use super::Algorithm;
-use super::base::ants::AntColony;
 use super::base::ants::ACOJudgeResult;
+use super::base::ants::AntColony;
 use super::base::ants::WeightedState;
 use super::base::yens::Yens;
 
@@ -25,12 +26,13 @@ pub struct ACO {
 impl ACO {
     pub fn new(network: &Network, seed: u64, param: Parameters) -> Self {
         let ants = AntColony::new(0, MAX_K, None);
-        let yens = Yens::new(&network, MAX_K);
+        let mut yens = Yens::new(network, MAX_K);
+        yens.compute(&network);
         let memory = vec![];
         ACO { ants, yens, memory, seed, param }
     }
     pub fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
-        self.yens.count_shortest_paths(src, dst)
+        self.yens.count_shortest_paths(src.into(), dst.into())
     }
     fn compute_visibility(&self, solution: &Solution, toolbox: &Toolbox) -> Vec<[f64; MAX_K]> {
         // TODO 好好設計能見度函式！
@@ -48,7 +50,7 @@ impl ACO {
         for &tsn in flowtable.tsns() {
             let (src, dst) = flowtable.ends(tsn);
             for kth in 0..self.get_candidate_count(src, dst) {
-                let route = self.yens.kth_shortest_path(src, dst, kth).unwrap();
+                let route = self.yens.kth_shortest_path(src.into(), dst.into(), kth).unwrap();
                 vis[tsn][kth] = 1.0 / route.len() as f64 * self.memory[tsn][kth];
             }
         }
@@ -58,7 +60,7 @@ impl ACO {
 
 impl Algorithm for ACO {
     fn candidates(&self, src: usize, dst: usize) -> &Vec<Path> {
-        self.yens.k_shortest_paths(src, dst)
+        self.yens.k_shortest_paths(src.into(), dst.into())
     }
     fn prepare(&mut self, solution: &mut Solution, flowtable: &FlowTable) {
         // before initial scheduler configure

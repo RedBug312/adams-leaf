@@ -1,4 +1,4 @@
-use crate::component::FlowTable;
+use crate::{component::FlowTable, network::EdgeIndex};
 use crate::component::GateCtrlList;
 use crate::network::Edge;
 use std::cmp::max;
@@ -30,7 +30,7 @@ impl Evaluator {
         let latest = latest.selection(avb).current();
         let current = solution.selection(avb).next();
         let wcd = self.evaluate_avb_wcd(avb, solution);
-        let max = flowtable.avb_spec(avb).unwrap().deadline;
+        let max = flowtable.avb_spec(avb).deadline;
 
         let mut objs = [0.0; 4];
         objs[0] = 0.0;
@@ -47,7 +47,7 @@ impl Evaluator {
         let mut avb_failed_count = 0;
         let mut avb_wcd_sum = 0.0;
 
-        for nth in 0..flowtable.len() {
+        for nth in flowtable.backgrounds() {
             let latest = latest.selection(nth).current();
             let current = solution.selection(nth).next();
             all_rerouted_count += is_rerouted(latest, current) as usize;
@@ -57,7 +57,7 @@ impl Evaluator {
         }
         for &avb in flowtable.avbs() {
             let wcd = self.evaluate_avb_wcd(avb, solution);
-            let max = flowtable.avb_spec(avb).unwrap().deadline;
+            let max = flowtable.avb_spec(avb).deadline;
             avb_failed_count += (wcd > max) as usize;
             avb_wcd_sum += wcd as f64;
         }
@@ -92,15 +92,15 @@ impl Evaluator {
         let route = flowtable.candidate(avb, kth);
         let gcl = &solution.allocated_tsns;
         let mut end_to_end = 0.0;
-        for ends in route.windows(2) {
-            let edge = network.edge(ends);
-            let traversed_avbs = solution.traversed_avbs.get(&edge.ends)
-                .map_or_else(|| vec![], |set| set.iter().cloned().collect());
+        for &eid in route {
+            let traversed_avbs = solution.traversed_avbs[eid.index()]
+                .iter().cloned().collect();
+            let edge = network.edge(eid);
             let mut per_hop = 0.0;
             per_hop += transmit_avb_itself(edge, avb, &flowtable);
             per_hop += interfere_from_be(edge);
             per_hop += interfere_from_avb(edge, avb, traversed_avbs, &flowtable);
-            per_hop += interfere_from_tsn(edge, per_hop, gcl);
+            per_hop += interfere_from_tsn(eid, per_hop, gcl);
             end_to_end += per_hop;
         }
         end_to_end as u32
@@ -114,7 +114,7 @@ fn is_rerouted(latest: Option<usize>, current: Option<usize>) -> bool {
 
 fn transmit_avb_itself(edge: &Edge, avb: usize, flowtable: &FlowTable) -> f64 {
     let bandwidth = MAX_AVB_SETTING * edge.bandwidth;
-    let spec = flowtable.avb_spec(avb).unwrap();
+    let spec = flowtable.avb_spec(avb);
     spec.size as f64 / bandwidth
 }
 
@@ -130,10 +130,10 @@ fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
     flowtable: &FlowTable) -> f64 {
     let mut interfere = 0.0;
     let bandwidth = MAX_AVB_SETTING * edge.bandwidth;
-    let spec = flowtable.avb_spec(avb).unwrap();
+    let spec = flowtable.avb_spec(avb);
     for other in others {
         if avb == other { continue; }
-        let other_spec = flowtable.avb_spec(other).unwrap();
+        let other_spec = flowtable.avb_spec(other);
         if spec.class == 'B' || other_spec.class == 'A' {
             interfere += other_spec.size as f64 / bandwidth;
         }
@@ -146,9 +146,9 @@ fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
 // in TSN networks. SIGBED Rev. 13, 4 (September 2016), 43–48.
 // DOI:https://doi.org/10.1145/3015037.3015044
 
-fn interfere_from_tsn(edge: &Edge, wcd: f64, gcl: &GateCtrlList) -> f64 {
+fn interfere_from_tsn(edge: EdgeIndex, wcd: f64, gcl: &GateCtrlList) -> f64 {
     let mut max_interfere = 0;
-    let events = gcl.get_gate_events(edge.ends);
+    let events = gcl.get_gate_events(edge);
     for i in 0..events.len() {
         let mut interfere = 0;
         let mut remained = wcd as i32;
@@ -207,9 +207,10 @@ mod tests {
     #[test]
     fn it_evaluates_avb_interfere() {
         let cnc = setup();
-        let edge = cnc.network.edge(&[0, 1]);
+        let edge = cnc.network.edge(0.into());
         let flowtable = &cnc.flowtable;
         let mut solution = cnc.solution.clone();
+        println!("---{:?}", solution.traversed_avbs);
         cnc.scheduler.configure(&mut solution);
         assert_eq!(interfere_from_avb(&edge, 0, vec![0, 1, 2], flowtable), 2.0);
         assert_eq!(interfere_from_avb(&edge, 1, vec![0, 1, 2], flowtable), 1.0);
@@ -219,17 +220,18 @@ mod tests {
     #[test]
     fn it_evaluates_tsn_interfere() {
         let cnc = setup();
-        let edge = cnc.network.edge(&[0, 1]);
+        let edge = 0.into();
         let mut solution = cnc.solution.clone();
+        let network = solution.network();
         cnc.scheduler.configure(&mut solution);
         // GCL: 3 - - - - 4 - 5 5 -
-        let mut gcl = GateCtrlList::new(10);
-        gcl.insert_gate_evt(edge.ends, 3, 0..1);
-        gcl.insert_gate_evt(edge.ends, 4, 5..6);
-        gcl.insert_gate_evt(edge.ends, 5, 7..9);
+        let mut gcl = GateCtrlList::new(&network, 10);
+        gcl.insert_gate_evt(edge, 3, 0..1);
+        gcl.insert_gate_evt(edge, 4, 5..6);
+        gcl.insert_gate_evt(edge, 5, 7..9);
         println!("{:?}", gcl);
-        assert_eq!(interfere_from_tsn(&edge, 1.0, &gcl), 3.0);  // should be 2.0
-        assert_eq!(interfere_from_tsn(&edge, 2.0, &gcl), 3.0);  // should be 3.0
-        assert_eq!(interfere_from_tsn(&edge, 3.0, &gcl), 3.0);  // should be 4.0
+        assert_eq!(interfere_from_tsn(edge, 1.0, &gcl), 3.0);  // should be 2.0
+        assert_eq!(interfere_from_tsn(edge, 2.0, &gcl), 3.0);  // should be 3.0
+        assert_eq!(interfere_from_tsn(edge, 3.0, &gcl), 3.0);  // should be 4.0
     }
 }
