@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use hashbrown::HashSet;
 use super::heap::MyMinHeap;
 use crate::network::{EdgeIndex, NodeIndex, Network};
 

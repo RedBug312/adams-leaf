@@ -1,6 +1,6 @@
 use crate::component::GateCtrlList;
 use crate::network::Network;
-use std::collections::HashSet;
+use hashbrown::HashSet;
 use std::rc::{Rc, Weak};
 
 use super::FlowTable;
