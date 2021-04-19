@@ -7,7 +7,7 @@ _tsn() {
     period=$(shuf -n 1 -e 100 200 250)
     echo - src: $(echo $ends | cut -d ' ' -f 1)
     echo ' ' dst: $(echo $ends | cut -d ' ' -f 2)
-    echo ' ' size: $(shuf -n 1 -e 1500 3000 4500)
+    echo ' ' size: "$(shuf -n 1 -i 15-45)00"
     echo ' ' period: $period
     echo ' ' deadline: $period
     echo ' ' offset: 0
