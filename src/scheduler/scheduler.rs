@@ -5,9 +5,7 @@ use crate::utils::stream::TSN;
 use std::cmp::{Ordering, max};
 use std::ops::Range;
 
-
-const MTU: f64 = 1500.0;
-
+const MTU: u32 = 1500;
 
 #[derive(Debug, Default)]
 struct Schedule {
@@ -75,7 +73,7 @@ impl Scheduler {
 
         solution.allocated_tsns.clear();
         targets = tsns.clone();
-        self.try_schedule_tsns(solution, targets).unwrap();
+        let _result = self.try_schedule_tsns(solution, targets);
     }
 
     // M. L. Raagaard, P. Pop, M. Gutiérrez and W. Steiner, "Runtime reconfiguration of time-sensitive
@@ -124,8 +122,10 @@ impl Scheduler {
         // let queue = schedule.queue;
 
         for (r, &edge) in route.iter().enumerate() {
-            let transmit_time = network.duration_on(edge, MTU).ceil() as u32;
             for f in 0..frame_len {
+                let frame_size = MTU;
+                let transmit_time = network.duration_on(edge, frame_size).ceil() as u32;
+
                 let prev_frame_done = match f {
                     0 => spec.offset,
                     _ => windows[r][f-1].end,
@@ -208,7 +208,7 @@ fn compare_tsn(tsn1: usize, tsn2: usize,
 
 #[inline]
 fn count_frames(spec: &TSN) -> usize {
-    (spec.size as f64 / MTU).ceil() as usize
+    (spec.size as f64 / MTU as f64).ceil() as usize
 }
 
 fn assert_within_deadline(delay: u32, spec: &TSN) -> Result<u32, ()> {
@@ -269,12 +269,12 @@ fn insert_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize, schedul
 
 #[cfg(test)]
 mod tests {
-    use crate::component::GateCtrlList;
     use crate::algorithm::Algorithm;
     use crate::cnc::CNC;
+    use crate::component::GateCtrlList;
     use crate::network::Network;
     use crate::utils::yaml;
-    use crate::utils::stream::TSN;
+    use super::*;
 
     fn setup() -> CNC {
         // TODO use a more straight-forward scenario
@@ -302,12 +302,12 @@ mod tests {
     fn it_calculates_windows() {
         let mut cnc = setup();
         let network = cnc.network;
-        cnc.solution.allocated_tsns = GateCtrlList::new(&network, 60);
+        cnc.solution.allocated_tsns = GateCtrlList::new(&network, 600);
         let result = cnc.scheduler.try_calculate_windows(0, 0, &cnc.solution);
         let windows = result.unwrap().windows;
-        assert_eq!(windows, vec![vec![0..15], vec![15..30]]);
+        assert_eq!(windows, [[0..15], [15..30]]);
         let result = cnc.scheduler.try_calculate_windows(2, 0, &cnc.solution);
         let windows = result.unwrap().windows;
-        assert_eq!(windows, vec![vec![0..15, 15..30], vec![15..30, 30..45]]);
+        assert_eq!(windows, [[0..15, 15..30], [15..30, 30..45]]);
     }
 }
