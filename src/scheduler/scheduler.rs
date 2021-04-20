@@ -1,4 +1,4 @@
-use crate::MAX_QUEUE;
+use crate::{MAX_QUEUE, network::EdgeIndex};
 use crate::component::Solution;
 use crate::component::FlowTable;
 use crate::utils::stream::TSN;
@@ -16,8 +16,16 @@ struct Schedule {
 }
 
 impl Schedule {
-    fn new() -> Self {
-        Schedule { ..Default::default() }
+    fn new(route: &Vec<EdgeIndex>, size: usize, queue: u8) -> Self {
+        let route_len = route.len();
+        let frame_len = (size as f64 / MTU).ceil() as usize;
+        static MAX: Range<u32> = std::u32::MAX..std::u32::MAX;
+        let windows = vec![vec![MAX.clone(); frame_len]; route_len];
+        Schedule { windows, queue }
+    }
+    fn shape(&self) -> (usize, usize) {
+        debug_assert!(0 < self.windows.len());
+        (self.windows.len(), self.windows[0].len())
     }
 }
 
@@ -114,16 +122,15 @@ impl Scheduler {
         let spec = flowtable.tsn_spec(tsn);
         let kth = solution.selection(tsn).next().unwrap();
         let route = flowtable.candidate(tsn, kth);
-        let frame_len = count_frames(spec);
         let gcl = &solution.allocated_tsns;
         let hyperperiod = gcl.hyperperiod();
 
-        let mut schedule = Schedule::new();
-        schedule.windows = vec![vec![std::u32::MAX..std::u32::MAX; frame_len]; route.len()];
+        let mut schedule = Schedule::new(route, spec.size, queue);
+        let (route_len, frame_len) = schedule.shape();
         let windows = &mut schedule.windows;
-        // let queue = schedule.queue;
 
-        for (r, &edge) in route.iter().enumerate() {
+        for r in 0..route_len {
+            let edge = route[r];
             let transmit_time = network.duration_on(edge, MTU).ceil() as u32;
             for f in 0..frame_len {
                 let prev_frame_done = match f {
@@ -206,11 +213,6 @@ fn compare_tsn(tsn1: usize, tsn2: usize,
         .then(routelen(tsn1).cmp(&routelen(tsn2)).reverse())
 }
 
-#[inline]
-fn count_frames(spec: &TSN) -> usize {
-    (spec.size as f64 / MTU).ceil() as usize
-}
-
 fn assert_within_deadline(delay: u32, spec: &TSN) -> Result<u32, ()> {
     match delay < spec.offset + spec.deadline {
         true  => Ok(spec.offset + spec.deadline - delay),
@@ -250,9 +252,13 @@ fn insert_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize, schedul
     let route = flowtable.candidate(tsn, kth);  // kth_route without clone
     let gcl = &mut solution.allocated_tsns;
     let hyperperiod = gcl.hyperperiod();
+
+    let (route_len, frame_len) = schedule.shape();
     let windows = schedule.windows;
-    for (r, &edge) in route.iter().enumerate() {
-        for f in 0..windows[r].len() {
+
+    for r in 0..route_len {
+        let edge = route[r];
+        for f in 0..frame_len {
             for timeshift in (0..hyperperiod).step_by(period as usize) {
                 let window = (timeshift + windows[r][f].start)
                     ..(timeshift + windows[r][f].end);
