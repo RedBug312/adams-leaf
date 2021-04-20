@@ -30,34 +30,36 @@ impl FlowTable {
     pub fn avbs(&self) -> &Vec<usize> {
         &self.avbs
     }
+    pub fn backgrounds(&self) -> Range<usize> {
+        0..self.inputs.start
+    }
     pub fn inputs(&self) -> Range<usize> {
         self.inputs.clone()
     }
     pub fn len(&self) -> usize {
         self.streams.len()
     }
-    pub fn tsn_spec(&self, id: usize) -> Option<&TSN> {
-        let either = self.streams.get(id)
-            .expect("Failed to obtain TSN spec from an invalid id");
-        match either {
-            Either::TSN(_, spec) => Some(spec),
-            Either::AVB(_, _) => None,
+    pub fn tsn_spec(&self, nth: usize) -> &TSN {
+        debug_assert!(nth < self.streams.len());
+        debug_assert!(matches!(self.streams[nth], Either::TSN(..)));
+        match &self.streams[nth] {
+            Either::TSN(_, spec) => &spec,
+            Either::AVB(..) => unreachable!(),
         }
     }
-    pub fn avb_spec(&self, id: usize) -> Option<&AVB> {
-        let either = self.streams.get(id)
-            .expect("Failed to obtain AVB spec from an invalid id");
-        match either {
-            Either::TSN(_, _) => None,
-            Either::AVB(_, spec) => Some(spec),
+    pub fn avb_spec(&self, nth: usize) -> &AVB {
+        debug_assert!(nth < self.streams.len());
+        debug_assert!(matches!(self.streams[nth], Either::AVB(..)));
+        match &self.streams[nth] {
+            Either::TSN(..) => unreachable!(),
+            Either::AVB(_, spec) => &spec,
         }
     }
-    pub fn ends(&self, id: usize) -> (usize, usize) {
-        let either = self.streams.get(id)
-            .expect("Failed to obtain end devices from an invalid id");
-        match either {
-            Either::TSN(_, tsn) => (tsn.src, tsn.dst),
-            Either::AVB(_, avb) => (avb.src, avb.dst),
+    pub fn ends(&self, nth: usize) -> (usize, usize) {
+        debug_assert!(nth < self.streams.len());
+        match &self.streams[nth] {
+            Either::TSN(_, spec) => (spec.src, spec.dst),
+            Either::AVB(_, spec) => (spec.src, spec.dst),
         }
     }
     pub fn append(&mut self, tsns: Vec<TSN>, avbs: Vec<AVB>) {

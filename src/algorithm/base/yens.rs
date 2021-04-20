@@ -11,6 +11,7 @@ type Path = Vec<usize>;
 #[derive(Default)]
 pub struct Yens {
     path: HashMap<(usize, usize), Vec<Path>>,
+    #[allow(dead_code)]
     k: usize,
     dijkstra: Dijkstra,
 }

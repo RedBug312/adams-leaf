@@ -92,7 +92,7 @@ impl Scheduler {
         for tsn in tsns {
             let mut queue = 0;
             let kth = solution.selection(tsn).next().unwrap();
-            let period = flowtable.tsn_spec(tsn).unwrap().period;
+            let period = flowtable.tsn_spec(tsn).period;
             loop {
                 if let Ok(schedule) = self.try_calculate_windows(tsn, queue, solution) {
                     insert_allocated_tsn(solution, tsn, kth, schedule, period);
@@ -111,7 +111,7 @@ impl Scheduler {
         solution: &Solution) -> Result<Schedule, ()> {
         let flowtable = solution.flowtable();
         let network = solution.network();
-        let spec = flowtable.tsn_spec(tsn).unwrap();
+        let spec = flowtable.tsn_spec(tsn);
         let kth = solution.selection(tsn).next().unwrap();
         let route = flowtable.candidate(tsn, kth);
         let links = network.get_links_id_bandwidth(route);
@@ -196,8 +196,8 @@ impl Scheduler {
 /// * `route length` - 路徑長的要排前面
 fn compare_tsn(tsn1: usize, tsn2: usize,
     solution: &Solution, flowtable: &FlowTable) -> Ordering {
-    let spec1 = flowtable.tsn_spec(tsn1).unwrap();
-    let spec2 = flowtable.tsn_spec(tsn2).unwrap();
+    let spec1 = flowtable.tsn_spec(tsn1);
+    let spec2 = flowtable.tsn_spec(tsn2);
     let routelen = |tsn: usize| {
         let kth = solution.selection(tsn).next().unwrap();
         solution.flowtable().candidate(tsn, kth).len()
