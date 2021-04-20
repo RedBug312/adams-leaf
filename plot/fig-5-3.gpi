@@ -18,4 +18,4 @@ set logscale y
 set grid y
 
 plot [][10:1000] 'fig-5-3.dat' \
-    u 1:($2/1000) lt 1 pt 9 ps 2 t 'OSACO'
+    u 1:($2/1000) lt 1 pt 8 ps 2 t 'OSACO'
