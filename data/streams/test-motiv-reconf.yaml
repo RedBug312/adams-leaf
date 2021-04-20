@@ -1,0 +1,71 @@
+name: UNKNOWN
+
+scale:
+  tsns: 3
+  avbs: 7
+  hyperperiod: 1000
+  end_devices: 10
+
+tsns:
+- src: 7
+  dst: 8
+  size: 500
+  period: 100
+  deadline: 100
+  offset: 0
+- src: 0
+  dst: 1
+  size: 1100
+  period: 200
+  deadline: 200
+  offset: 0
+- src: 7
+  dst: 2
+  size: 1500
+  period: 200
+  deadline: 200
+  offset: 0
+
+avbs:
+- src: 3
+  dst: 7
+  size: 400
+  period: 400
+  deadline: 400
+  class: A
+- src: 1
+  dst: 6
+  size: 400
+  period: 400
+  deadline: 400
+  class: B
+- src: 2
+  dst: 3
+  size: 400
+  period: 100
+  deadline: 100
+  class: A
+- src: 4
+  dst: 3
+  size: 400
+  period: 400
+  deadline: 400
+  class: A
+- src: 4
+  dst: 5
+  size: 400
+  period: 400
+  deadline: 400
+  class: A
+- src: 0
+  dst: 4
+  size: 400
+  period: 200
+  deadline: 200
+  class: B
+- src: 0
+  dst: 2
+  size: 400
+  period: 400
+  deadline: 400
+  class: B
