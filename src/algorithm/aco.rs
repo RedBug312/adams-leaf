@@ -96,6 +96,7 @@ impl Algorithm for ACO {
         let mut best_state = WeightedState::new(dist, Some(cur_state));
         #[allow(unused_variables)]
         let mut epoch = 0;
+        let flowtable = solution.flowtable();
         while Instant::now() < deadline {
             epoch += 1;
             // let (should_stop, local_best_state) =
@@ -104,12 +105,20 @@ impl Algorithm for ACO {
             let mut max_heap: BinaryHeap<WeightedState> = BinaryHeap::new();
             let mut should_stop = false;
             for _ in 0..self.ants.r {
-                let mut cur_state = Vec::<usize>::with_capacity(state_len);
-                for i in 0..state_len {
-                    let next = select_cluster(&visibility[i], &self.ants.pheromone[i], self.ants.k, self.ants.q0, &mut rng);
-                    cur_state.push(next);
-                    // TODO online pharamon update
+                let mut cur_state = vec![0; state_len];
+                for &i in flowtable.avbs() {
+                    let next = select_cluster(&visibility[i], &self.ants.pheromone[i], self.ants.k, 0.6, &mut rng);
+                    cur_state[i] = next;
                 }
+                for &i in flowtable.avbs() {
+                    let next = select_cluster(&visibility[i], &self.ants.pheromone[i], self.ants.k, self.ants.q0, &mut rng);
+                    cur_state[i] = next;
+                }
+                // for i in 0..state_len {
+                //     let next = select_cluster(&visibility[i], &self.ants.pheromone[i], self.ants.k, self.ants.q0, &mut rng);
+                //     cur_state.push(next);
+                //     // TODO online pharamon update
+                // }
 
                 let cost = compute_aco_dist(solution, &cur_state, &mut best_dist, &toolbox);
                 let dist = distance(cost.0);

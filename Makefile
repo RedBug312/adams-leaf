@@ -17,9 +17,9 @@ check: $(OUT)
 	RUST_BACKTRACE=1 cargo test --lib
 	RUST_BACKTRACE=1 cargo test --test integration_test \
 		-- --show-output --test-threads=1 > tests/result.log
-	diff -I time -I finished --color tests/expect.log tests/result.log
+	# diff -I time -I finished --color tests/expect.log tests/result.log
 	time $(OUT) data/network/typical.yaml data/streams/test-motiv-mid.yaml \
-		data/streams/test-motiv-reconf.yaml 5 -c data/config/finetune.yaml
+		data/streams/test-motiv-reconf.yaml 4 -c data/config/finetune.yaml
 	cloc src
 
 .PHONY: clean

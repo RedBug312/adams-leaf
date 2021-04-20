@@ -47,18 +47,21 @@ impl IntervalMap {
             Err(_) => true,
         }
     }
+    #[inline]
     fn pred_connected(&self, pos: usize, key: &Range<u32>) -> Option<usize> {
         match pos > 0 && self.intervals[pos - 1].0.end >= key.start {
             true => Some(self.intervals[pos - 1].1),
             false => None,
         }
     }
+    #[inline]
     fn pred_conflicted(&self, pos: usize, key: &Range<u32>) -> Option<usize> {
         match pos > 0 && self.intervals[pos - 1].0.end > key.start {
             true => Some(self.intervals[pos - 1].1),
             false => None,
         }
     }
+    #[inline]
     fn succ_conflicted(&self, pos: usize, key: &Range<u32>) -> Option<usize> {
         let len = self.intervals.len();
         match pos < len && key.end > self.intervals[pos].0.start {

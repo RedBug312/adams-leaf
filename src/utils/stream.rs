@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct TSN {
     pub src: usize,
     pub dst: usize,
@@ -10,7 +10,7 @@ pub struct TSN {
     pub offset: u32,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct AVB {
     pub src: usize,
     pub dst: usize,
