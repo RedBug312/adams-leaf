@@ -1,7 +1,8 @@
+use itertools::Itertools;
 use crate::{MAX_QUEUE, network::{EdgeIndex, Network}};
 use num::integer::lcm;
-use std::ops::Range;
-use super::base::intervalmap::IntervalMap;
+use std::{iter, ops::Range};
+use super::base::intervalmap_veb::IntervalMap;
 
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -44,8 +45,8 @@ impl GateCtrlList {
     pub fn hyperperiod(&self) -> u32 {
         self.hyperperiod
     }
-    pub fn events(&self, entry: Entry) -> &Vec<Event> {
-        &self.events[entry.index()].intervals()
+    pub fn events(&self, entry: Entry) -> Vec<Event> {
+        self.events[entry.index()].intervals().collect()
     }
     pub fn insert(&mut self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) {
         let hyperperiod = self.hyperperiod;
@@ -86,10 +87,10 @@ impl GateCtrlList {
         if window.end > hyperperiod { return None; }
 
         let padded = (hyperperiod..hyperperiod, usize::MAX);
-        let mut afters = Vec::from(intmap.intervals_after(window.start));
-        afters.push(padded);
-        afters.windows(2)
-            .map(|pair| pair[0].0.end..pair[1].0.start)
+        let afters = intmap.intervals_after(window.start);
+        let afters = afters.chain(iter::once(padded));
+        afters.tuple_windows()
+            .map(|(prev, next)| prev.0.end..next.0.start)
             .find(|vacant| vacant.end - vacant.start >= window.end - window.start)
             .map(|vacant| vacant.start - window.start)
     }
@@ -102,13 +103,17 @@ impl GateCtrlList {
             let increment = (0..hyperperiod).step_by(period as usize)
                 .map(|offset| shift(&window, result + offset))
                 .map(|inst| self.query_later_vacant_once(entry, tsn, inst))
-                .collect::<Option<Vec<_>>>()
-                .and_then(|incrs| incrs.into_iter().max())?;
+                .try_fold(0, try_max)?;
             debug_assert!(increment > 0);
             result += increment;
         }
         Some(result)
     }
+}
+
+#[inline]
+fn try_max(x: u32, y: Option<u32>) -> Option<u32> {
+    y.map(|y| u32::max(x, y))
 }
 
 #[inline]
