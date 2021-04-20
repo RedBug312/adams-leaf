@@ -6,7 +6,7 @@ use std::cmp::{Ordering, max};
 use std::ops::Range;
 use super::gatectrllist::Entry;
 
-const MTU: u32 = 250;
+const MTU: u32 = 1522;
 const BYTES: u32 = 8;
 
 #[derive(Debug, Default)]
@@ -127,7 +127,11 @@ impl Scheduler {
             let port = Entry::Port(edge);
             let queue = Entry::Queue(edge, queue);
             for f in 0..frame_len {
-                let frame_size = MTU * BYTES;
+                // let frame_size = MTU * BYTES;
+                let frame_size = match f == frame_len - 1 {
+                    true  => ((spec.size - 1) % MTU + 1) * BYTES,
+                    false => MTU * BYTES,
+                };
                 let transmit_time = network.duration_on(edge, frame_size).ceil() as u32;
 
                 let prev_frame_done = match f {
@@ -142,17 +146,18 @@ impl Scheduler {
                 let mut egress = ingress;  // ignore bridge processing time
 
                 // let start = std::time::Instant::now();
-                let window = egress..(egress + transmit_time);
-
-                if r + 1 < route.len() {
-                    let queue_peek = Entry::Queue(route[r+1], schedule.queue);
-                    egress += gcl.query_later_vacant(queue_peek, tsn, window, spec.period).ok_or(())?;
-                }
+//                 let window = egress..(egress + transmit_time);
+// 
+//                 if r + 1 < route.len() {
+//                     let queue_peek = Entry::Queue(route[r+1], schedule.queue);
+//                     egress += gcl.query_later_vacant_once(queue_peek, tsn, window).ok_or(())?;
+//                 }
                 // let elapsed = start.elapsed().as_nanos();
                 // println!("-pass{:?}", elapsed);
                 // let start = std::time::Instant::now();
 
                 let window = egress..(egress + transmit_time);
+                assert_within_deadline(egress + transmit_time, spec)?;
 
                 egress += gcl.query_later_vacant(port, usize::MAX, window, spec.period)
                     .ok_or(())?;
@@ -326,6 +331,6 @@ mod tests {
         assert_eq!(windows, [[0..2], [2..4]]);
         let result = cnc.scheduler.try_calculate_windows(2, 0, &cnc.solution);
         let windows = result.unwrap().windows;
-        assert_eq!(windows, [[0..2, 2..4], [2..4, 4..6]]);
+        assert_eq!(windows, [[0..4], [4..8]]);
     }
 }

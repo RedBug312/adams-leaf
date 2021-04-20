@@ -59,7 +59,7 @@ $(LOCK): $(OUT)
 	$(RM) log/*.log
 	# use GNU parallel for progress bar
 	parallel --bar --tag --lb --colsep '-' $(OUT) \
-		../data/network/typical.yaml ../data/streams/scaled-motiv-{2}.yaml ../data/streams/scaled-motiv-reconf.yaml {3} \
+		../data/network/typical.yaml ../data/streams/test-motiv-{2}.yaml ../data/streams/test-motiv-reconf.yaml {3} \
 		--config ../data/config/finetune.yaml --algorithm {1} --memory {4} --seed {5} \
 		'>' log/{1}-{2}-{3}-{4}-{5}.log \
 		::: $(LOG1:log/%.log=%) $(LOG2:log/%.log=%) $(LOG3:log/%.log=%)
