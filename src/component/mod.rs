@@ -1,10 +1,7 @@
-mod solution;
+mod evaluator;
 mod flowtable;
-mod gcl;
-
-pub mod evaluator;
+mod solution;
 
 pub use evaluator::Evaluator;
 pub use flowtable::FlowTable;
-pub use gcl::GateCtrlList;
 pub use solution::Solution;

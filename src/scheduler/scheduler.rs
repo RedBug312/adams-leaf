@@ -275,12 +275,12 @@ fn insert_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize, schedul
 
 #[cfg(test)]
 mod tests {
-    use crate::component::GateCtrlList;
     use crate::algorithm::Algorithm;
     use crate::cnc::CNC;
     use crate::network::Network;
+    use crate::scheduler::GateCtrlList;
     use crate::utils::yaml;
-    use crate::utils::stream::TSN;
+    use super::*;
 
     fn setup() -> CNC {
         // TODO use a more straight-forward scenario
