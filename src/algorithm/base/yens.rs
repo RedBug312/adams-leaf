@@ -1,50 +1,50 @@
-use crate::network::Network;
+use crate::network::{EdgeIndex, NodeIndex, Network};
 use itertools::Itertools;
-use std::collections::HashMap;
 use super::dijkstra::Dijkstra;
 use super::heap::MyMinHeap;
 
-
-type Path = Vec<usize>;
-
+type Path = Vec<EdgeIndex>;
 
 #[derive(Default)]
 pub struct Yens {
-    path: HashMap<(usize, usize), Vec<Path>>,
-    k: usize,
     dijkstra: Dijkstra,
+    paths: Vec<Vec<Vec<Path>>>,
+    k: usize,
 }
 
 impl Yens {
-    pub fn new(graph: &Network, max_k: usize) -> Self {
-        let mut yens = Self::default();
-        yens.compute(graph, max_k);
-        yens
+    pub fn new(graph: &Network, k: usize) -> Self {
+        let node_count = graph.node_count();
+        let dijkstra = Dijkstra::new(graph);
+        let paths = vec![vec![Vec::with_capacity(k); node_count]; node_count];
+        Yens { dijkstra, paths, k, ..Default::default() }
     }
-    pub fn compute(&mut self, graph: &Network, k: usize) {
-        self.k = k;
-        self.dijkstra.compute(graph);
+    pub fn compute(&mut self, graph: &Network) {
         // compute_pair on all end devices pair takes 20 sec on test case
         for (&src, &dst) in graph.end_devices.iter().tuple_combinations() {
-            self.compute_pair(graph, src, dst, 10);
-            self.compute_pair(graph, dst, src, 10);
+            self.compute_pair(graph, src.into(), dst.into());
+            self.compute_pair(graph, dst.into(), src.into());
         }
     }
-    pub fn compute_pair(&mut self, graph: &Network, src: usize, dst: usize, k: usize) {
-        if self.path.contains_key(&(src, dst)) { return }
+    pub fn compute_pair(&mut self, graph: &Network, src: NodeIndex, dst: NodeIndex) {
         debug_assert!(src != dst);
+        if self.paths[src.index()][dst.index()].len() > 0 { return; }
 
-        self.dijkstra.compute_pair(graph, src);
+        self.dijkstra.compute_root(graph, src);
         // TODO dump panic message for not connected
         let shortest = self.dijkstra.shortest_path(src, dst).unwrap();
+        let k = self.k;
         let mut list_a = vec![shortest];
         let mut heap_b = MyMinHeap::new();
 
-        for k in 0..=k-2 {
+        for k in 0..k-1 {
             let prev_path_len = list_a[k].len();
-            for i in 0..=(prev_path_len - 2) {
-                let spur_node = list_a[k][i];
+            for i in 0..=(prev_path_len-1) {
+                let spur_edge = list_a[k][i];  // where endpoints.0 is the spur-node
+                let spur_node = graph.endpoints(spur_edge).0;
                 let mut root_path = list_a[k][..=i].to_vec();
+                // println!("{:?}", (k, i));
+                // println!("{:?}", node_sequence(graph, &root_path));
 
                 // For example, if search for 4th shortest path with spur-node (2)
                 // We should ignore edges (2)───(3), (2)───(5) and node (1)
@@ -54,16 +54,16 @@ impl Yens {
                 //  └────(7)───(8)───(4)  3rd
 
                 let ignored_edges = list_a.iter()
-                    .filter(|path| path.len() > i && path[..=i] == list_a[k][..=i])
-                    .map(|path| (path[i], path[i+1]))
+                    .filter(|path| i < path.len() && path[..i] == list_a[k][..i])
+                    .map(|path| path[i])
                     .collect();
                 let ignored_nodes = list_a[k][..i].iter()
-                    .cloned()
+                    .map(|&edge| graph.endpoints(edge).0)
                     .collect();
 
-                let mut dijkstra = Dijkstra::default();
+                let mut dijkstra = Dijkstra::new(&graph);
                 dijkstra.ignore(ignored_nodes, ignored_edges);
-                dijkstra.compute_pair(graph, spur_node);
+                dijkstra.compute_root(graph, spur_node);
 
                 match dijkstra.shortest_path(spur_node, dst) {
                     Some(spur_path) => {
@@ -81,35 +81,51 @@ impl Yens {
                 None       => break,  // src-dst exists no more paths
             }
         }
-        self.path.insert((src, dst), list_a);
+        self.paths[src.index()][dst.index()] = list_a;
     }
-    pub fn kth_shortest_path(&self, src: usize, dst: usize, k: usize) -> Option<&Path> {
-        self.path.get(&(src, dst))
-            .and_then(|paths| paths.get(k))
+    pub fn kth_shortest_path(&self, src: NodeIndex, dst: NodeIndex, k: usize) -> Option<&Path> {
+        self.paths[src.index()][dst.index()].get(k)
     }
-    pub fn count_shortest_paths(&self, src: usize, dst: usize) -> usize {
-        self.path.get(&(src, dst))
-            .map(|paths| paths.len())
-            .unwrap_or(0)
+    pub fn count_shortest_paths(&self, src: NodeIndex, dst: NodeIndex) -> usize {
+        self.paths[src.index()][dst.index()].len()
     }
-    pub fn k_shortest_paths(&self, src: usize, dst: usize) -> &Vec<Path> {
-        static EMPTY: Vec<Path> = vec![];
-        let ends = (src, dst);
-        self.path.get(&ends).unwrap_or(&EMPTY)
+    pub fn k_shortest_paths(&self, src: NodeIndex, dst: NodeIndex) -> &Vec<Path> {
+        &self.paths[src.index()][dst.index()]
     }
 }
 
 
-
 #[cfg(test)]
 mod tests {
-    use crate::network::Network;
-    use itertools::Itertools;
-    use super::Yens;
+    use super::*;
+
     #[test]
-    #[ignore]
-    fn it_runs_yens_on_pairs() {
-        let mut network = Network::default();
+    fn it_runs_yens_on_case1() {
+        let mut network = Network::new();
+        network.add_nodes(4, 0);
+        network.add_edges(vec![  // classic trap topology
+            (0, 1, 10.0), (1, 2, 10.0), (2, 3, 10.0), (0, 2, 2.0), (1, 3, 1.0)
+        ]);
+
+        let mut yens = Yens::new(&network, 10);
+        yens.compute_pair(&network, 0.into(), 3.into());
+
+        let kth = |src: usize, dst: usize, kth: usize| {
+            yens.kth_shortest_path(src.into(), dst.into(), kth)
+                .map(|path| network.node_sequence(&path))
+        };
+
+        assert_eq!(yens.count_shortest_paths(0.into(), 3.into()), 4);
+        assert_eq!(kth(0, 3, 0), Some(vec![0, 1, 2, 3]));
+        assert_eq!(kth(0, 3, 1), Some(vec![0, 2, 3]));
+        assert_eq!(kth(0, 3, 2), Some(vec![0, 1, 3]));
+        assert_eq!(kth(0, 3, 3), Some(vec![0, 2, 1, 3]));
+        assert_eq!(kth(0, 3, 5), None);
+    }
+
+    #[test]
+    fn it_runs_yens_on_case2() {
+        let mut network = Network::new();
         network.add_nodes(6, 93);  // 0..=5 + 99, 6..=98
         network.add_nodes(1, 0);
         network.add_edges(vec![
@@ -117,31 +133,35 @@ mod tests {
             (1, 3, 15.0), (2, 3, 10.0), (2, 4, 10.0)
         ]);
         let more_edges = (4..100).tuple_combinations()
-            .map(|(src, dst)| (src, dst, src as f64 * dst as f64))
+            .map(|(src, dst)| (src, dst, (src * dst) as f64))
             .collect();
         network.add_edges(more_edges);
 
-        let mut yens = Yens::default();
-        yens.compute_pair(&network, 0, 2, 10);
-        yens.compute_pair(&network, 0, 5, 10);
-        yens.compute_pair(&network, 0, 99, 10);
-        let yens_kth = |src, dst, kth| yens.kth_shortest_path(src, dst, kth);
+        let mut yens = Yens::new(&network, 10);
+        yens.compute_pair(&network, 0.into(), 2.into());
+        yens.compute_pair(&network, 0.into(), 5.into());
+        yens.compute_pair(&network, 0.into(), 99.into());
 
-        assert_eq!(yens.count_shortest_paths(0, 2), 4);
-        assert_eq!(yens_kth(0, 2, 0), Some(&vec![0, 1, 2]));
-        assert_eq!(yens_kth(0, 2, 1), Some(&vec![0, 1, 3, 2]));
-        assert_eq!(yens_kth(0, 2, 2), Some(&vec![0, 1, 4, 2]));
+        let kth = |src: usize, dst: usize, kth: usize| {
+            yens.kth_shortest_path(src.into(), dst.into(), kth)
+                .map(|path| network.node_sequence(&path))
+        };
 
-        assert_eq!(yens.count_shortest_paths(0, 5), 10);
-        assert_eq!(yens_kth(0, 5, 0), Some(&vec![0, 1, 4, 99, 5]));
-        assert_eq!(yens_kth(0, 5, 1), Some(&vec![0, 1, 4, 98, 5]));
-        assert_eq!(yens_kth(0, 5, 2), Some(&vec![0, 1, 4, 97, 5]));
-        assert_eq!(yens_kth(0, 5, 3), Some(&vec![0, 1, 4, 99, 98, 5]));
-        assert_eq!(yens_kth(0, 5, 4), Some(&vec![0, 1, 4, 98, 99, 5]));
+        assert_eq!(yens.count_shortest_paths(0.into(), 2.into()), 4);
+        assert_eq!(kth(0, 2, 0), Some(vec![0, 1, 2]));
+        assert_eq!(kth(0, 2, 1), Some(vec![0, 1, 3, 2]));
+        assert_eq!(kth(0, 2, 2), Some(vec![0, 1, 4, 2]));
 
-        assert_eq!(yens.count_shortest_paths(0, 99), 10);
-        assert_eq!(yens_kth(0, 99, 0), Some(&vec![0, 1, 4, 99]));
-        assert_eq!(yens_kth(0, 99, 1), Some(&vec![0, 1, 4, 98, 99]));
-        assert_eq!(yens_kth(0, 99, 2), Some(&vec![0, 1, 4, 97, 99]));
+        assert_eq!(yens.count_shortest_paths(0.into(), 5.into()), 10);
+        assert_eq!(kth(0, 5, 0), Some(vec![0, 1, 4, 99, 5]));
+        assert_eq!(kth(0, 5, 1), Some(vec![0, 1, 4, 98, 5]));
+        assert_eq!(kth(0, 5, 2), Some(vec![0, 1, 4, 97, 5]));
+        assert_eq!(kth(0, 5, 3), Some(vec![0, 1, 4, 99, 98, 5]));
+        assert_eq!(kth(0, 5, 4), Some(vec![0, 1, 4, 98, 99, 5]));
+
+        assert_eq!(yens.count_shortest_paths(0.into(), 99.into()), 10);
+        assert_eq!(kth(0, 99, 0), Some(vec![0, 1, 4, 99]));
+        assert_eq!(kth(0, 99, 1), Some(vec![0, 1, 4, 98, 99]));
+        assert_eq!(kth(0, 99, 2), Some(vec![0, 1, 4, 97, 99]));
     }
 }

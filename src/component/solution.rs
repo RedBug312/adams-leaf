@@ -1,6 +1,7 @@
-use std::{collections::{HashMap, HashSet}, rc::{Rc, Weak}};
-use crate::network::Network;
 use crate::component::GateCtrlList;
+use crate::network::Network;
+use hashbrown::HashSet;
+use std::rc::{Rc, Weak};
 
 use super::FlowTable;
 
@@ -14,7 +15,7 @@ pub struct Solution {
     selections: Vec<Select>,
     outcomes: Vec<Outcome>,
     pub allocated_tsns: GateCtrlList,
-    pub traversed_avbs: HashMap<(usize, usize), HashSet<usize>>,
+    pub traversed_avbs: Vec<HashSet<usize>>,
     pub flowtable: Weak<FlowTable>,
     pub network: Weak<Network>,
 }
@@ -35,14 +36,12 @@ pub enum Outcome {
 
 impl Solution {
     pub fn new(graph: &Network) -> Self {
-        let traversed_avbs = graph.edges.keys()
-            .map(|&ends| (ends, HashSet::new()))
-            .collect();
+        let edge_count = graph.edge_count();
         Solution {
             selections: vec![],
             outcomes: vec![],
-            allocated_tsns: GateCtrlList::new(1),
-            traversed_avbs,
+            allocated_tsns: GateCtrlList::new(graph, 1),
+            traversed_avbs: vec![HashSet::new(); edge_count],
             flowtable: Weak::new(),
             network: Weak::new(),
         }
