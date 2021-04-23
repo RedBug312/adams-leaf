@@ -130,14 +130,14 @@ impl Network {
             self.edges.push(Edge::new(ends, bandwidth));
         }
     }
-    pub fn duration_on(&self, edge: EdgeIndex, size: f64) -> f64 {
+    pub fn duration_on(&self, edge: EdgeIndex, size: u32) -> f64 {
         debug_assert!(edge.index() < self.edges.len());
-        size / self.edges[edge.index()].bandwidth
+        size as f64 / self.edges[edge.index()].bandwidth
     }
-    pub fn duration_along(&self, path: &[EdgeIndex], size: f64) -> f64 {
+    pub fn duration_along(&self, path: &[EdgeIndex], size: u32) -> f64 {
         path.iter()
-            .map(|&e| self.duration_on(e, 1f64))
-            .sum::<f64>() * size
+            .map(|&e| self.duration_on(e, 1))
+            .sum::<f64>() * size as f64
     }
     pub fn node_sequence(&self, path: &[EdgeIndex]) -> Vec<usize> {
         if path.len() == 0 { return vec![]; }

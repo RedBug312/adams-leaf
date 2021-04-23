@@ -1,13 +1,10 @@
 use crate::{MAX_QUEUE, network::EdgeIndex};
 use crate::component::Solution;
 use crate::component::FlowTable;
+use crate::network::MTU;
 use crate::utils::stream::TSN;
 use std::cmp::{Ordering, max};
 use std::ops::Range;
-
-
-const MTU: f64 = 1500.0;
-
 
 #[derive(Debug, Default)]
 struct Schedule {
@@ -16,9 +13,9 @@ struct Schedule {
 }
 
 impl Schedule {
-    fn new(route: &Vec<EdgeIndex>, size: usize, queue: u8) -> Self {
+    fn new(route: &Vec<EdgeIndex>, size: u32, queue: u8) -> Self {
         let route_len = route.len();
-        let frame_len = (size as f64 / MTU).ceil() as usize;
+        let frame_len = ((size - 1) / MTU + 1) as usize;
         static MAX: Range<u32> = std::u32::MAX..std::u32::MAX;
         let windows = vec![vec![MAX.clone(); frame_len]; route_len];
         Schedule { windows, queue }
@@ -311,9 +308,9 @@ mod tests {
         cnc.solution.allocated_tsns = GateCtrlList::new(&network, 60);
         let result = cnc.scheduler.try_calculate_windows(0, 0, &cnc.solution);
         let windows = result.unwrap().windows;
-        assert_eq!(windows, vec![vec![0..15], vec![15..30]]);
+        assert_eq!(windows, [[0..15], [15..30]]);
         let result = cnc.scheduler.try_calculate_windows(2, 0, &cnc.solution);
         let windows = result.unwrap().windows;
-        assert_eq!(windows, vec![vec![0..15, 15..30], vec![15..30, 30..45]]);
+        assert_eq!(windows, [[0..15, 15..30], [15..30, 30..45]]);
     }
 }

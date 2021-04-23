@@ -8,3 +8,5 @@ pub use network::Node;
 pub use network::NodeIndex;
 
 pub type Path = Vec<EdgeIndex>;
+
+pub const MTU: u32 = 1500;

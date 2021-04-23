@@ -70,7 +70,7 @@ impl Yens {
                         root_path.pop();
                         root_path.extend(spur_path);
                         let total_path = root_path;
-                        let total_dist = graph.duration_along(&total_path, 1.0);
+                        let total_dist = graph.duration_along(&total_path, 1);
                         heap_b.push(total_path, total_dist.into());
                     }
                     None => continue,  // spur-dst exists no more paths
