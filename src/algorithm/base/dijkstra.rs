@@ -48,7 +48,7 @@ impl Dijkstra {
                 if self.ignore_nodes.contains(&u)
                     || self.ignore_edges.contains(&vu) { continue; }
 
-                let cost = graph.duration_on(vu, 1.0);
+                let cost = graph.duration_on(vu, 1);
                 let ru_dist = dist[v.index()] + cost;
 
                 if dist[u.index()] != f64::INFINITY
