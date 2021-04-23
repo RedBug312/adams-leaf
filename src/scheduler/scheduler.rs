@@ -16,7 +16,7 @@ impl Schedule {
     fn new(route: &Vec<EdgeIndex>, size: u32, queue: u8) -> Self {
         let route_len = route.len();
         let frame_len = ((size - 1) / MTU + 1) as usize;
-        static MAX: Range<u32> = std::u32::MAX..std::u32::MAX;
+        const MAX: Range<u32> = std::u32::MAX..std::u32::MAX;
         let windows = vec![vec![MAX.clone(); frame_len]; route_len];
         Schedule { windows, queue }
     }
@@ -75,12 +75,12 @@ impl Scheduler {
         targets.extend(flowtable.tsns().iter()
             .filter(|&&tsn| solution.selection(tsn).is_pending()));
         let result = self.try_schedule_tsns(solution, targets);
-
         if result.is_ok() { return; }
 
         solution.allocated_tsns.clear();
         targets = tsns.clone();
-        self.try_schedule_tsns(solution, targets).unwrap();
+        let result = self.try_schedule_tsns(solution, targets);
+        if result.is_err() { println!("Error: all TSN streams are unschedulable"); }
     }
 
     // M. L. Raagaard, P. Pop, M. Gutiérrez and W. Steiner, "Runtime reconfiguration of time-sensitive
@@ -129,7 +129,10 @@ impl Scheduler {
         for r in 0..route_len {
             let edge = route[r];
             for f in 0..frame_len {
-                let frame_size = MTU * BYTES;
+                let frame_size = match f == frame_len - 1 {
+                    true  => ((spec.size - 1) % MTU + 1) * BYTES,
+                    false => MTU * BYTES,
+                };
                 let transmit_time = network.duration_on(edge, frame_size).ceil() as u32;
 
                 let prev_frame_done = match f {
@@ -291,10 +294,10 @@ mod tests {
             (2, 3, 1000.0), (2, 5, 1000.0), (3, 5, 1000.0),
         ]);
         let tsns = vec![
-            TSN::new(0, 4, 250, 100, 100, 0),
-            TSN::new(0, 5, 750, 150, 150, 0),
-            TSN::new(0, 4, 500, 200, 200, 0),
-            TSN::new(0, 4, 750, 300, 300, 0),
+            TSN::new(0, 4, 1500, 100, 100, 0),
+            TSN::new(0, 5, 4500, 150, 150, 0),
+            TSN::new(0, 4, 3000, 200, 200, 0),
+            TSN::new(0, 4, 4500, 300, 300, 0),
         ];
         let avbs = vec![];
         let config = yaml::load_config("data/config/default.yaml");
@@ -311,9 +314,9 @@ mod tests {
         cnc.solution.allocated_tsns = GateCtrlList::new(&network, 60);
         let result = cnc.scheduler.try_calculate_windows(0, 0, &cnc.solution);
         let windows = result.unwrap().windows;
-        assert_eq!(windows, [[0..2], [2..4]]);
+        assert_eq!(windows, [[0..12], [12..24]]);
         let result = cnc.scheduler.try_calculate_windows(2, 0, &cnc.solution);
         let windows = result.unwrap().windows;
-        assert_eq!(windows, [[0..2, 2..4], [2..4, 4..6]]);
+        assert_eq!(windows, [[0..13, 13..25], [13..26, 26..38]]);
     }
 }
