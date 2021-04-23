@@ -1,7 +1,7 @@
 use crate::{MAX_QUEUE, network::EdgeIndex};
 use crate::component::Solution;
 use crate::component::FlowTable;
-use crate::network::MTU;
+use crate::network::{MTU, BYTES};
 use crate::utils::stream::TSN;
 use std::cmp::{Ordering, max};
 use std::ops::Range;
@@ -128,8 +128,10 @@ impl Scheduler {
 
         for r in 0..route_len {
             let edge = route[r];
-            let transmit_time = network.duration_on(edge, MTU).ceil() as u32;
             for f in 0..frame_len {
+                let frame_size = MTU * BYTES;
+                let transmit_time = network.duration_on(edge, frame_size).ceil() as u32;
+
                 let prev_frame_done = match f {
                     0 => spec.offset,
                     _ => windows[r][f-1].end,
@@ -210,9 +212,10 @@ fn compare_tsn(tsn1: usize, tsn2: usize,
         .then(routelen(tsn1).cmp(&routelen(tsn2)).reverse())
 }
 
-fn assert_within_deadline(delay: u32, spec: &TSN) -> Result<u32, ()> {
-    match delay < spec.offset + spec.deadline {
-        true  => Ok(spec.offset + spec.deadline - delay),
+fn assert_within_deadline(arrival: u32, spec: &TSN) -> Result<u32, ()> {
+    let latency = arrival - spec.offset;
+    match latency < spec.deadline {
+        true  => Ok(latency),
         false => Err(()),
     }
 }
@@ -284,14 +287,14 @@ mod tests {
         let mut network = Network::new();
         network.add_nodes(6, 0);
         network.add_edges(vec![
-            (0, 1, 100.0), (0, 2, 100.0), (1, 3, 100.0), (1, 4, 100.0),
-            (2, 3, 100.0), (2, 5, 100.0), (3, 5, 100.0),
+            (0, 1, 1000.0), (0, 2, 1000.0), (1, 3, 1000.0), (1, 4, 1000.0),
+            (2, 3, 1000.0), (2, 5, 1000.0), (3, 5, 1000.0),
         ]);
         let tsns = vec![
-            TSN::new(0, 4, 1500, 100, 100, 0),
-            TSN::new(0, 5, 4500, 150, 150, 0),
-            TSN::new(0, 4, 3000, 200, 200, 0),
-            TSN::new(0, 4, 4500, 300, 300, 0),
+            TSN::new(0, 4, 250, 100, 100, 0),
+            TSN::new(0, 5, 750, 150, 150, 0),
+            TSN::new(0, 4, 500, 200, 200, 0),
+            TSN::new(0, 4, 750, 300, 300, 0),
         ];
         let avbs = vec![];
         let config = yaml::load_config("data/config/default.yaml");
@@ -308,9 +311,9 @@ mod tests {
         cnc.solution.allocated_tsns = GateCtrlList::new(&network, 60);
         let result = cnc.scheduler.try_calculate_windows(0, 0, &cnc.solution);
         let windows = result.unwrap().windows;
-        assert_eq!(windows, [[0..15], [15..30]]);
+        assert_eq!(windows, [[0..2], [2..4]]);
         let result = cnc.scheduler.try_calculate_windows(2, 0, &cnc.solution);
         let windows = result.unwrap().windows;
-        assert_eq!(windows, [[0..15, 15..30], [15..30, 30..45]]);
+        assert_eq!(windows, [[0..2, 2..4], [2..4, 4..6]]);
     }
 }

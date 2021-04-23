@@ -9,4 +9,5 @@ pub use network::NodeIndex;
 
 pub type Path = Vec<EdgeIndex>;
 
-pub const MTU: u32 = 1500;
+pub const MTU: u32 = 250;  // FIXME
+pub const BYTES: u32 = 8;
