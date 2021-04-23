@@ -2,6 +2,7 @@ use crate::{component::FlowTable, scheduler::Entry};
 use crate::network::{Edge, EdgeIndex};
 use crate::scheduler::GateCtrlList;
 use std::cmp::max;
+use hashbrown::HashSet;
 use super::Solution;
 
 
@@ -93,8 +94,7 @@ impl Evaluator {
         let gcl = &solution.allocated_tsns;
         let mut end_to_end = 0.0;
         for &eid in route {
-            let traversed_avbs = solution.traversed_avbs[eid.index()]
-                .iter().cloned().collect();
+            let traversed_avbs = &solution.traversed_avbs[eid.index()];
             let edge = network.edge(eid);
             let mut per_hop = 0.0;
             per_hop += transmit_avb_itself(edge, avb, &flowtable);
@@ -126,12 +126,12 @@ fn interfere_from_be(edge: &Edge) -> f64 {
 // "IEEE Standard for Local and metropolitan area networks--Audio Video Bridging (AVB) Systems," in
 // IEEE Std 802.1BA-2011, pp.1-45, 30 Sept. 2011, doi: 10.1109/IEEESTD.2011.6032690.
 
-fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
+fn interfere_from_avb(edge: &Edge, avb: usize, others: &HashSet<usize>,
     flowtable: &FlowTable) -> f64 {
     let mut interfere = 0.0;
     let bandwidth = MAX_AVB_SETTING * edge.bandwidth;
     let spec = flowtable.avb_spec(avb);
-    for other in others {
+    for &other in others {
         if avb == other { continue; }
         let other_spec = flowtable.avb_spec(other);
         if spec.class == 'B' || other_spec.class == 'A' {
@@ -214,9 +214,10 @@ mod tests {
         let mut solution = cnc.solution.clone();
         println!("---{:?}", solution.traversed_avbs);
         cnc.scheduler.configure(&mut solution);
-        assert_eq!(interfere_from_avb(&edge, 0, vec![0, 1, 2], flowtable), 2.0);
-        assert_eq!(interfere_from_avb(&edge, 1, vec![0, 1, 2], flowtable), 1.0);
-        assert_eq!(interfere_from_avb(&edge, 2, vec![0, 1, 2], flowtable), 3.0);
+        let hashset: HashSet<usize> = vec![0, 1, 2].into_iter().collect();
+        assert_eq!(interfere_from_avb(&edge, 0, &hashset, flowtable), 2.0);
+        assert_eq!(interfere_from_avb(&edge, 1, &hashset, flowtable), 1.0);
+        assert_eq!(interfere_from_avb(&edge, 2, &hashset, flowtable), 3.0);
     }
 
     #[test]

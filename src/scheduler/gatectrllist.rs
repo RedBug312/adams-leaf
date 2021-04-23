@@ -2,7 +2,7 @@ use itertools::Itertools;
 use crate::{MAX_QUEUE, network::{EdgeIndex, Network}};
 use num::integer::lcm;
 use std::{iter, ops::Range};
-use super::base::intervalmap::IntervalMap;
+use super::base::IntervalMap;
 
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -45,8 +45,8 @@ impl GateCtrlList {
     pub fn hyperperiod(&self) -> u32 {
         self.hyperperiod
     }
-    pub fn events(&self, entry: Entry) -> &Vec<Event> {
-        self.events[entry.index()].intervals()
+    pub fn events(&self, entry: Entry) -> Vec<Event> {
+        self.events[entry.index()].iter().cloned().collect_vec()
     }
     pub fn insert(&mut self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) {
         let hyperperiod = self.hyperperiod;
@@ -87,12 +87,12 @@ impl GateCtrlList {
         if window.end > hyperperiod { return None; }
 
         let padded = (hyperperiod..hyperperiod, usize::MAX);
-        let afters = intmap.intervals_after(window.start);
-        let afters = afters.iter().chain(iter::once(&padded));
-        afters.tuple_windows()
+        let afters = intmap.iter_after(window.start);
+        let afters = afters.chain(iter::once(&padded));
+        let x = afters.tuple_windows()
             .map(|(prev, next)| prev.0.end..next.0.start)
             .find(|vacant| vacant.end - vacant.start >= window.end - window.start)
-            .map(|vacant| vacant.start - window.start)
+            .map(|vacant| vacant.start - window.start); x
     }
     pub fn query_later_vacant(&self, entry: Entry, tsn: usize, window: Range<u32>, period: u32) -> Option<u32> {
         debug_assert!(window.end <= period);

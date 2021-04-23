@@ -1,3 +1,5 @@
+#![feature(btree_retain)]
+#![feature(option_insert)]
 pub mod algorithm;
 pub mod scheduler;
 pub mod component;

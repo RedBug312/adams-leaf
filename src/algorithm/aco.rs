@@ -106,8 +106,8 @@ impl Algorithm for ACO {
             let mut should_stop = false;
             for _ in 0..self.ants.r {
                 let mut cur_state = vec![0; state_len];
-                for &i in flowtable.avbs() {
-                    let next = select_cluster(&visibility[i], &self.ants.pheromone[i], self.ants.k, 0.6, &mut rng);
+                for &i in flowtable.tsns() {
+                    let next = select_cluster(&visibility[i], &self.ants.pheromone[i], self.ants.k, 0.0, &mut rng);
                     cur_state[i] = next;
                 }
                 for &i in flowtable.avbs() {
