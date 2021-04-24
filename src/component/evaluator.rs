@@ -108,7 +108,7 @@ fn is_rerouted(latest: Option<usize>, current: Option<usize>) -> bool {
 }
 
 fn transmit_avb_itself(edge: &Edge, avb: usize, flowtable: &FlowTable) -> f64 {
-    let bandwidth = MAX_AVB_SETTING * edge.bandwidth;
+    let bandwidth = edge.bandwidth;
     let spec = flowtable.avb_spec(avb);
     ((spec.size + SFD) * BYTES) as f64 / bandwidth
 }
