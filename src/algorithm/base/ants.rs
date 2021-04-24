@@ -9,11 +9,6 @@ const Q0: f64 = 0.0;
 const MAX_PH: f64 = 30.0;
 const MIN_PH: f64 = 1.0;
 
-pub enum ACOJudgeResult {
-    Stop(f64),
-    KeepOn(f64),
-}
-
 pub struct AntColony {
     pub pheromone: Vec<[f64; MAX_K]>,
     pub k: usize,

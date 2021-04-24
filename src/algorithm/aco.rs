@@ -5,9 +5,9 @@ use crate::network::Path;
 use crate::{MAX_K, cnc::Toolbox, utils::config::Parameters};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
+use rand::prelude::SliceRandom;
 use std::time::Instant;
 use super::Algorithm;
-use super::base::ants::ACOJudgeResult;
 use super::base::ants::AntColony;
 use super::base::yens::Yens;
 use super::base::heap::MyMinHeap;
@@ -86,12 +86,11 @@ impl Algorithm for ACO {
 
         let mut rng = ChaChaRng::seed_from_u64(self.seed);
         let state_len = solution.flowtable().len();
-        let mut cur_state = Vec::<usize>::with_capacity(state_len);
+        let mut trail = Vec::<usize>::with_capacity(state_len);
         for i in 0..state_len {
             let next = solution.selection(i).current().unwrap();
-            cur_state.push(next);
+            trail.push(next);
         }
-        let mut best_state = (cur_state, best_dist);
         #[allow(unused_variables)]
         let mut epoch = 0;
         while Instant::now() < deadline {
@@ -100,43 +99,32 @@ impl Algorithm for ACO {
             //     self.aco.do_single_epoch(&visibility, &mut judge_func, &mut rng);
             let mut heap = MyMinHeap::new();
             let mut should_stop = false;
+
             for _ in 0..self.ants.r {
-                let mut cur_state = Vec::<usize>::with_capacity(state_len);
-                for i in 0..state_len {
-                    let next = select_cluster(&visibility[i], &self.ants.pheromone[i], self.ants.k, self.ants.q0, &mut rng);
-                    cur_state.push(next);
-                    // TODO online pharamon update
+                let mut trail = Vec::<usize>::with_capacity(state_len);
+                let mut neighbor = solution.clone();
+
+                for nth in 0..state_len {
+                    let kth = select_cluster(&visibility[nth], &self.ants.pheromone[nth], self.ants.k, self.ants.q0, &mut rng);
+                    trail.push(kth);
+                    neighbor.select(nth, kth);
                 }
+                let (cost, stop) = toolbox.evaluate_cost(&mut neighbor);
 
-                let cost = compute_aco_dist(solution, &cur_state, &mut best_dist, &toolbox);
-                let dist = distance(cost.0);
-                let judge = if cost.1 {
-                    // 找到可行解，且為快速終止模式
-                    ACOJudgeResult::Stop(dist)
-                } else {
-                    ACOJudgeResult::KeepOn(dist)
-                };
+                let dist = distance(cost);
+                if stop || dist < best_dist {
+                    best_dist = dist;
+                    *solution = neighbor;
+                }
+                heap.push(trail, dist.into());
 
-                match judge {
-                    ACOJudgeResult::KeepOn(dist) => {
-                        heap.push(cur_state, dist.into());
-                    }
-                    ACOJudgeResult::Stop(dist) => {
-                        heap.push(cur_state, dist.into());
-                        should_stop = true;
-                        break;
-                    }
+                if stop {
+                    should_stop = true;
+                    break;
                 }
             }
             self.ants.evaporate();
-
             self.ants.offline_update(&heap);
-            let local_best_state = heap.pop().unwrap();
-            let local_best_state = (local_best_state.0, local_best_state.1.into());
-
-            if local_best_state.1 < best_state.1 {
-                best_state = local_best_state;
-            }
             if should_stop {
                 break;
             }
@@ -148,68 +136,19 @@ impl Algorithm for ACO {
     }
 }
 
-
 fn select_cluster(visibility: &[f64; MAX_K], pheromone: &[f64; MAX_K], k: usize, q0: f64, rng: &mut ChaChaRng) -> usize {
-    if rng.gen_range(0.0..1.0) < q0 {
-        // 直接選可能性最大者
-        let (mut max_i, mut max) = (0, std::f64::MIN);
-        for i in 0..k {
-            if max < pheromone[i] * visibility[i] {
-                max = pheromone[i] * visibility[i];
-                max_i = i;
-            }
-        }
-        max_i
-    } else {
-        // 走隨機過程
-        let mut sum = 0.0;
-        for i in 0..k {
-            sum += pheromone[i] * visibility[i];
-        }
-        let rand_f = rng.gen_range(0.0..sum);
-        let mut accumulation = 0.0;
-        for i in 0..k {
-            accumulation += pheromone[i] * visibility[i];
-            if accumulation >= rand_f {
-                return i;
-            }
-        }
-        k - 1
+    let choices = (0..k)
+        .map(|kth| (kth, pheromone[kth] * visibility[kth]));
+    match rng.gen_bool(q0) {
+        true  => choices.max_by(|x, y| f64::partial_cmp(&x.1, &y.1).unwrap())
+                        .map_or(k - 1, |c| c.0),
+        false => choices.collect::<Vec<_>>()
+                        .choose_weighted(rng, |item| item.1)
+                        .map_or(k - 1, |c| c.0)
     }
 }
 
-/// 本函式不只會計算距離，如果看見最佳解，還會把該解的網路包裝器記錄回 solution 參數
-fn compute_aco_dist(
-    solution: &mut Solution,
-    state: &Vec<usize>,
-    best_dist: &mut f64,
-    toolbox: &Toolbox,
-) -> (f64, bool) {
-    let mut current = solution.clone();
-
-    for (id, &kth) in state.iter().enumerate() {
-        // NOTE: 若發現和舊的資料一樣，這個 update_info 函式會自動把它忽略掉
-        current.select(id, kth);
-    }
-
-    let cost = toolbox.evaluate_cost(&mut current);
-    let dist = distance(cost.0);
-
-    if cost.1 {
-        // 快速終止！
-        *solution = current;
-        return cost;
-    }
-
-    if dist < *best_dist {
-        *best_dist = dist;
-        // 記錄 FlowTable 及 GCL
-        *solution = current;
-    }
-    cost
-}
-
+#[inline]
 fn distance(cost: f64) -> f64 {
-    let base: f64 = 10.0;
-    base.powf(cost - 1.0)
+    f64::powf(10.0, cost - 1.0)
 }
