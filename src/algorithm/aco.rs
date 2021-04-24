@@ -63,7 +63,7 @@ impl Algorithm for ACO {
     }
     fn prepare(&mut self, solution: &mut Solution, flowtable: &FlowTable) {
         // before initial scheduler configure
-        self.ants.extend_state_len(flowtable.len());
+        self.ants.resize_pheromone(flowtable.len());
         self.memory = vec![[1.0; MAX_K]; flowtable.len()];
         for &tsn in flowtable.tsns() {
             if let Some(kth) = solution.selection(tsn).current() {
@@ -85,7 +85,7 @@ impl Algorithm for ACO {
         let visibility = &vis;
 
         let mut rng = ChaChaRng::seed_from_u64(self.seed);
-        let state_len = self.ants.get_state_len();
+        let state_len = solution.flowtable().len();
         let mut cur_state = Vec::<usize>::with_capacity(state_len);
         for i in 0..state_len {
             let next = solution.selection(i).current().unwrap();
@@ -130,7 +130,9 @@ impl Algorithm for ACO {
             }
             self.ants.evaporate();
 
-            let local_best_state = self.ants.offline_update(heap);
+            self.ants.offline_update(&heap);
+            let local_best_state = heap.pop().unwrap();
+            let local_best_state = (local_best_state.0, local_best_state.1.into());
 
             if local_best_state.1 < best_state.1 {
                 best_state = local_best_state;
