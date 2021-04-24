@@ -7,65 +7,65 @@ scale:
   end_devices: 10
 
 tsns:
-- src: 7
-  dst: 8
-  size: 500
+- src: 4
+  dst: 0
+  size: 1700
+  period: 200
+  deadline: 200
+  offset: 0
+- src: 6
+  dst: 0
+  size: 2600
+  period: 250
+  deadline: 250
+  offset: 0
+- src: 9
+  dst: 5
+  size: 2300
   period: 100
   deadline: 100
-  offset: 0
-- src: 0
-  dst: 1
-  size: 1100
-  period: 200
-  deadline: 200
-  offset: 0
-- src: 7
-  dst: 2
-  size: 1500
-  period: 200
-  deadline: 200
   offset: 0
 
 avbs:
-- src: 3
-  dst: 7
-  size: 400
-  period: 400
-  deadline: 400
-  class: A
-- src: 1
-  dst: 6
-  size: 400
-  period: 400
-  deadline: 400
-  class: B
-- src: 2
-  dst: 3
-  size: 400
-  period: 100
-  deadline: 100
-  class: A
-- src: 4
-  dst: 3
-  size: 400
-  period: 400
-  deadline: 400
-  class: A
-- src: 4
-  dst: 5
-  size: 400
-  period: 400
-  deadline: 400
-  class: A
-- src: 0
+- src: 9
   dst: 4
   size: 400
   period: 200
   deadline: 200
+  class: A
+- src: 2
+  dst: 5
+  size: 400
+  period: 100
+  deadline: 100
   class: B
 - src: 0
+  dst: 3
+  size: 400
+  period: 250
+  deadline: 250
+  class: A
+- src: 2
+  dst: 3
+  size: 400
+  period: 200
+  deadline: 200
+  class: A
+- src: 6
+  dst: 0
+  size: 400
+  period: 100
+  deadline: 100
+  class: A
+- src: 2
+  dst: 1
+  size: 400
+  period: 250
+  deadline: 250
+  class: A
+- src: 8
   dst: 2
   size: 400
-  period: 400
-  deadline: 400
+  period: 250
+  deadline: 250
   class: B

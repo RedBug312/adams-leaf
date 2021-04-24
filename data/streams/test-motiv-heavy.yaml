@@ -1,467 +1,239 @@
 name: UNKNOWN
 
 scale:
-  tsns: 16
-  avbs: 60
+  tsns: 8
+  avbs: 30
   hyperperiod: 1000
   end_devices: 10
 
 tsns:
-- src: 0
-  dst: 9
-  size: 1000
-  period: 100
-  deadline: 100
-  offset: 0
-- src: 1
-  dst: 7
-  size: 500
-  period: 100
-  deadline: 100
-  offset: 0
-- src: 7
-  dst: 5
-  size: 500
-  period: 400
-  deadline: 400
-  offset: 0
-- src: 2
+- src: 9
   dst: 1
-  size: 500
-  period: 400
-  deadline: 400
+  size: 3300
+  period: 200
+  deadline: 200
   offset: 0
-- src: 9
+- src: 1
   dst: 0
-  size: 900
-  period: 200
-  deadline: 200
-  offset: 0
-- src: 9
-  dst: 0
-  size: 700
-  period: 400
-  deadline: 400
-  offset: 0
-- src: 3
-  dst: 8
-  size: 600
-  period: 200
-  deadline: 200
-  offset: 0
-- src: 7
-  dst: 5
-  size: 1100
-  period: 200
-  deadline: 200
-  offset: 0
-- src: 5
-  dst: 7
-  size: 1400
-  period: 200
-  deadline: 200
+  size: 2400
+  period: 250
+  deadline: 250
   offset: 0
 - src: 0
   dst: 2
-  size: 700
-  period: 400
-  deadline: 400
+  size: 2400
+  period: 100
+  deadline: 100
   offset: 0
-- src: 5
-  dst: 2
-  size: 1500
-  period: 400
-  deadline: 400
-  offset: 0
-- src: 4
-  dst: 8
-  size: 500
-  period: 200
-  deadline: 200
-  offset: 0
-- src: 2
-  dst: 8
-  size: 800
-  period: 400
-  deadline: 400
-  offset: 0
-- src: 1
-  dst: 6
-  size: 500
-  period: 400
-  deadline: 400
+- src: 8
+  dst: 4
+  size: 1800
+  period: 250
+  deadline: 250
   offset: 0
 - src: 8
   dst: 3
-  size: 500
+  size: 2400
   period: 100
   deadline: 100
   offset: 0
+- src: 6
+  dst: 3
+  size: 2200
+  period: 250
+  deadline: 250
+  offset: 0
 - src: 3
-  dst: 9
-  size: 500
-  period: 400
-  deadline: 400
+  dst: 4
+  size: 1900
+  period: 100
+  deadline: 100
+  offset: 0
+- src: 9
+  dst: 4
+  size: 3000
+  period: 250
+  deadline: 250
   offset: 0
 
 avbs:
-- src: 9
-  dst: 0
-  size: 400
-  period: 100
-  deadline: 100
-  class: B
-- src: 0
+- src: 7
   dst: 9
   size: 400
-  period: 400
-  deadline: 400
+  period: 250
+  deadline: 250
   class: A
-- src: 9
-  dst: 3
+- src: 7
+  dst: 4
   size: 400
-  period: 100
-  deadline: 100
-  class: A
+  period: 200
+  deadline: 200
+  class: B
 - src: 5
-  dst: 1
-  size: 400
-  period: 400
-  deadline: 400
-  class: A
-- src: 6
   dst: 0
-  size: 400
-  period: 200
-  deadline: 200
-  class: A
-- src: 2
-  dst: 1
-  size: 400
-  period: 400
-  deadline: 400
-  class: A
-- src: 0
-  dst: 1
-  size: 400
-  period: 200
-  deadline: 200
-  class: A
-- src: 9
-  dst: 5
   size: 400
   period: 100
   deadline: 100
   class: A
 - src: 3
-  dst: 0
+  dst: 1
   size: 400
-  period: 100
-  deadline: 100
-  class: B
-- src: 1
-  dst: 9
+  period: 250
+  deadline: 250
+  class: A
+- src: 0
+  dst: 1
   size: 400
   period: 200
   deadline: 200
   class: A
+- src: 7
+  dst: 2
+  size: 400
+  period: 250
+  deadline: 250
+  class: B
+- src: 9
+  dst: 0
+  size: 400
+  period: 250
+  deadline: 250
+  class: B
+- src: 8
+  dst: 1
+  size: 400
+  period: 100
+  deadline: 100
+  class: A
+- src: 4
+  dst: 8
+  size: 400
+  period: 200
+  deadline: 200
+  class: B
+- src: 9
+  dst: 1
+  size: 400
+  period: 250
+  deadline: 250
+  class: A
 - src: 5
+  dst: 2
+  size: 400
+  period: 250
+  deadline: 250
+  class: B
+- src: 9
   dst: 8
   size: 400
   period: 100
   deadline: 100
   class: A
-- src: 8
+- src: 2
+  dst: 4
+  size: 400
+  period: 100
+  deadline: 100
+  class: A
+- src: 1
+  dst: 5
+  size: 400
+  period: 250
+  deadline: 250
+  class: B
+- src: 3
+  dst: 0
+  size: 400
+  period: 250
+  deadline: 250
+  class: A
+- src: 2
+  dst: 8
+  size: 400
+  period: 200
+  deadline: 200
+  class: A
+- src: 7
   dst: 4
   size: 400
   period: 200
   deadline: 200
   class: A
 - src: 7
-  dst: 9
-  size: 400
-  period: 200
-  deadline: 200
-  class: B
-- src: 2
-  dst: 0
-  size: 400
-  period: 400
-  deadline: 400
-  class: B
-- src: 2
-  dst: 8
-  size: 400
-  period: 400
-  deadline: 400
-  class: B
-- src: 1
-  dst: 0
-  size: 400
-  period: 400
-  deadline: 400
-  class: B
-- src: 0
-  dst: 1
-  size: 400
-  period: 200
-  deadline: 200
-  class: B
-- src: 1
-  dst: 4
-  size: 400
-  period: 200
-  deadline: 200
-  class: A
-- src: 1
-  dst: 9
-  size: 400
-  period: 100
-  deadline: 100
-  class: A
-- src: 0
-  dst: 2
-  size: 400
-  period: 100
-  deadline: 100
-  class: B
-- src: 8
-  dst: 5
-  size: 400
-  period: 200
-  deadline: 200
-  class: A
-- src: 2
-  dst: 8
-  size: 400
-  period: 100
-  deadline: 100
-  class: A
-- src: 4
   dst: 3
   size: 400
-  period: 400
-  deadline: 400
-  class: A
-- src: 1
-  dst: 8
-  size: 400
-  period: 100
-  deadline: 100
-  class: A
+  period: 250
+  deadline: 250
+  class: B
 - src: 0
-  dst: 4
-  size: 400
-  period: 400
-  deadline: 400
-  class: B
-- src: 4
-  dst: 8
-  size: 400
-  period: 100
-  deadline: 100
-  class: B
-- src: 4
-  dst: 1
-  size: 400
-  period: 100
-  deadline: 100
-  class: A
-- src: 1
-  dst: 2
-  size: 400
-  period: 400
-  deadline: 400
-  class: B
-- src: 5
-  dst: 8
-  size: 400
-  period: 100
-  deadline: 100
-  class: A
-- src: 4
-  dst: 8
-  size: 400
-  period: 400
-  deadline: 400
-  class: B
-- src: 6
-  dst: 3
-  size: 400
-  period: 200
-  deadline: 200
-  class: A
-- src: 0
-  dst: 9
-  size: 400
-  period: 200
-  deadline: 200
-  class: A
-- src: 2
-  dst: 4
-  size: 400
-  period: 100
-  deadline: 100
-  class: B
-- src: 2
-  dst: 1
-  size: 400
-  period: 200
-  deadline: 200
-  class: B
-- src: 4
   dst: 2
   size: 400
   period: 200
   deadline: 200
-  class: B
-- src: 7
-  dst: 4
+  class: A
+- src: 4
+  dst: 7
   size: 400
-  period: 100
-  deadline: 100
+  period: 250
+  deadline: 250
   class: B
 - src: 3
   dst: 4
   size: 400
+  period: 200
+  deadline: 200
+  class: B
+- src: 1
+  dst: 8
+  size: 400
+  period: 250
+  deadline: 250
+  class: B
+- src: 6
+  dst: 7
+  size: 400
   period: 100
   deadline: 100
-  class: B
-- src: 5
+  class: A
+- src: 0
+  dst: 9
+  size: 400
+  period: 200
+  deadline: 200
+  class: A
+- src: 0
+  dst: 7
+  size: 400
+  period: 100
+  deadline: 100
+  class: A
+- src: 1
   dst: 7
   size: 400
   period: 100
   deadline: 100
   class: A
 - src: 3
-  dst: 5
-  size: 400
-  period: 100
-  deadline: 100
-  class: A
-- src: 1
-  dst: 2
-  size: 400
-  period: 200
-  deadline: 200
-  class: A
-- src: 8
-  dst: 2
-  size: 400
-  period: 400
-  deadline: 400
-  class: B
-- src: 0
-  dst: 5
-  size: 400
-  period: 400
-  deadline: 400
-  class: B
-- src: 7
-  dst: 2
-  size: 400
-  period: 200
-  deadline: 200
-  class: A
-- src: 0
   dst: 1
   size: 400
-  period: 100
-  deadline: 100
-  class: A
-- src: 2
-  dst: 5
-  size: 400
-  period: 100
-  deadline: 100
-  class: B
-- src: 2
-  dst: 9
-  size: 400
-  period: 400
-  deadline: 400
-  class: A
-- src: 3
-  dst: 9
-  size: 400
-  period: 400
-  deadline: 400
+  period: 200
+  deadline: 200
   class: A
 - src: 9
-  dst: 8
-  size: 400
-  period: 400
-  deadline: 400
-  class: B
-- src: 6
-  dst: 8
-  size: 400
-  period: 200
-  deadline: 200
-  class: A
-- src: 4
-  dst: 3
-  size: 400
-  period: 400
-  deadline: 400
-  class: A
-- src: 5
-  dst: 9
+  dst: 0
   size: 400
   period: 100
   deadline: 100
   class: A
-- src: 4
-  dst: 1
+- src: 6
+  dst: 9
   size: 400
-  period: 200
-  deadline: 200
-  class: A
-- src: 3
-  dst: 6
-  size: 400
-  period: 200
-  deadline: 200
-  class: B
-- src: 1
-  dst: 6
-  size: 400
-  period: 400
-  deadline: 400
+  period: 250
+  deadline: 250
   class: A
 - src: 6
-  dst: 0
-  size: 400
-  period: 400
-  deadline: 400
-  class: B
-- src: 7
-  dst: 0
-  size: 400
-  period: 200
-  deadline: 200
-  class: B
-- src: 2
-  dst: 1
-  size: 400
-  period: 400
-  deadline: 400
-  class: A
-- src: 4
-  dst: 8
-  size: 400
-  period: 400
-  deadline: 400
-  class: A
-- src: 1
   dst: 9
   size: 400
   period: 100
   deadline: 100
-  class: A
-- src: 0
-  dst: 3
-  size: 400
-  period: 200
-  deadline: 200
-  class: A
+  class: B

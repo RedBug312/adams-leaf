@@ -3,8 +3,8 @@ use adams_leaf::utils::yaml;
 
 #[test]
 fn it_runs_aco() {
-    let (tsns1, avbs1) = yaml::load_streams("data/streams/scale-motiv-heavy.yaml", 1);
-    let (tsns2, avbs2) = yaml::load_streams("data/streams/scale-motiv-reconf.yaml", 2);
+    let (tsns1, avbs1) = yaml::load_streams("data/streams/test-motiv-heavy.yaml", 1);
+    let (tsns2, avbs2) = yaml::load_streams("data/streams/test-motiv-reconf.yaml", 2);
     let network = yaml::load_network("data/network/typical.yaml");
 
     let mut config = yaml::load_config("data/config/default.yaml");
@@ -24,8 +24,8 @@ fn it_runs_aco() {
 
 #[test]
 fn it_runs_ro() {
-    let (tsns1, avbs1) = yaml::load_streams("data/streams/scale-motiv-heavy.yaml", 1);
-    let (tsns2, avbs2) = yaml::load_streams("data/streams/scale-motiv-reconf.yaml", 2);
+    let (tsns1, avbs1) = yaml::load_streams("data/streams/test-motiv-heavy.yaml", 1);
+    let (tsns2, avbs2) = yaml::load_streams("data/streams/test-motiv-reconf.yaml", 2);
     let network = yaml::load_network("data/network/typical.yaml");
 
     let mut config = yaml::load_config("data/config/default.yaml");
@@ -45,8 +45,8 @@ fn it_runs_ro() {
 
 #[test]
 fn it_runs_spf() {
-    let (tsns1, avbs1) = yaml::load_streams("data/streams/scale-motiv-heavy.yaml", 1);
-    let (tsns2, avbs2) = yaml::load_streams("data/streams/scale-motiv-reconf.yaml", 2);
+    let (tsns1, avbs1) = yaml::load_streams("data/streams/test-motiv-heavy.yaml", 1);
+    let (tsns2, avbs2) = yaml::load_streams("data/streams/test-motiv-reconf.yaml", 2);
     let network = yaml::load_network("data/network/typical.yaml");
 
     let mut config = yaml::load_config("data/config/default.yaml");
