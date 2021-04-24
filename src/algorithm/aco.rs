@@ -5,13 +5,12 @@ use crate::network::Path;
 use crate::{MAX_K, cnc::Toolbox, utils::config::Parameters};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
-use std::collections::BinaryHeap;
 use std::time::Instant;
 use super::Algorithm;
 use super::base::ants::ACOJudgeResult;
 use super::base::ants::AntColony;
-use super::base::ants::WeightedState;
 use super::base::yens::Yens;
+use super::base::heap::MyMinHeap;
 
 
 pub struct ACO {
@@ -80,7 +79,6 @@ impl Algorithm for ACO {
     fn configure(&mut self, solution: &mut Solution, deadline: Instant, toolbox: Toolbox) {
         let vis = self.compute_visibility(solution, &toolbox);
         let cost = toolbox.evaluate_cost(solution);
-        let dist = distance(cost.0);
 
         let mut best_dist = distance(cost.0);
 
@@ -93,15 +91,14 @@ impl Algorithm for ACO {
             let next = solution.selection(i).current().unwrap();
             cur_state.push(next);
         }
-        let mut best_state = WeightedState::new(dist, Some(cur_state));
+        let mut best_state = (cur_state, best_dist);
         #[allow(unused_variables)]
         let mut epoch = 0;
         while Instant::now() < deadline {
             epoch += 1;
             // let (should_stop, local_best_state) =
             //     self.aco.do_single_epoch(&visibility, &mut judge_func, &mut rng);
-
-            let mut max_heap: BinaryHeap<WeightedState> = BinaryHeap::new();
+            let mut heap = MyMinHeap::new();
             let mut should_stop = false;
             for _ in 0..self.ants.r {
                 let mut cur_state = Vec::<usize>::with_capacity(state_len);
@@ -122,10 +119,10 @@ impl Algorithm for ACO {
 
                 match judge {
                     ACOJudgeResult::KeepOn(dist) => {
-                        max_heap.push(WeightedState::new(dist, Some(cur_state)));
+                        heap.push(cur_state, dist.into());
                     }
                     ACOJudgeResult::Stop(dist) => {
-                        max_heap.push(WeightedState::new(dist, Some(cur_state)));
+                        heap.push(cur_state, dist.into());
                         should_stop = true;
                         break;
                     }
@@ -133,9 +130,9 @@ impl Algorithm for ACO {
             }
             self.ants.evaporate();
 
-            let local_best_state = self.ants.offline_update(max_heap);
+            let local_best_state = self.ants.offline_update(heap);
 
-            if local_best_state.get_dist() < best_state.get_dist() {
+            if local_best_state.1 < best_state.1 {
                 best_state = local_best_state;
             }
             if should_stop {
@@ -146,7 +143,6 @@ impl Algorithm for ACO {
         }
         #[cfg(debug_assertions)]
         println!("ACO epoch = {}", epoch);
-        best_state.state.expect("找不到最好的解");
     }
 }
 

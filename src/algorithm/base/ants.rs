@@ -1,5 +1,5 @@
 use crate::MAX_K;
-use std::collections::BinaryHeap;
+use super::heap::MyMinHeap;
 
 const R: usize = 60;
 const L: usize = 20;
@@ -9,43 +9,7 @@ const Q0: f64 = 0.0;
 const MAX_PH: f64 = 30.0;
 const MIN_PH: f64 = 1.0;
 
-
-pub type State = Vec<usize>;
-
-
-#[derive(PartialOrd)]
-pub struct WeightedState {
-    pub neg_dist: f64,
-    pub state: Option<State>,
-}
-impl WeightedState {
-    pub fn new(dist: f64, state: Option<State>) -> Self {
-        WeightedState {
-            neg_dist: -dist,
-            state,
-        }
-    }
-    pub fn get_dist(&self) -> f64 {
-        -self.neg_dist
-    }
-}
-impl PartialEq for WeightedState {
-    fn eq(&self, other: &Self) -> bool {
-        return self.neg_dist == other.neg_dist;
-    }
-}
-impl Eq for WeightedState {}
-impl Ord for WeightedState {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        if self.neg_dist > other.neg_dist {
-            std::cmp::Ordering::Greater
-        } else if self.neg_dist < other.neg_dist {
-            std::cmp::Ordering::Less
-        } else {
-            std::cmp::Ordering::Equal
-        }
-    }
-}
+pub type State = (Vec<usize>, f64);
 
 pub enum ACOJudgeResult {
     Stop(f64),
@@ -109,26 +73,27 @@ impl AntColony {
             }
         }
     }
-    pub fn offline_update(&mut self, mut max_heap: BinaryHeap<WeightedState>) -> WeightedState {
+    pub fn offline_update(&mut self, mut max_heap: MyMinHeap<Vec<usize>>) -> State {
         let best_state = max_heap.pop().unwrap();
-        self.update_pheromon(&best_state);
+        let best = (best_state.0, best_state.1.into());
+        self.update_pheromone(&best);
         for _ in 0..self.l - 1 {
-            if let Some(w_state) = max_heap.pop() {
-                self.update_pheromon(&w_state);
+            if let Some(state) = max_heap.pop() {
+                let state = (state.0, state.1.into());
+                self.update_pheromone(&state);
             } else {
                 break;
             }
         }
-        best_state
+        best
     }
-    fn update_pheromon(&mut self, w_state: &WeightedState) {
-        let dist = w_state.get_dist();
+    fn update_pheromone(&mut self, state: &State) {
         let state_len = self.pheromone.len();
         for i in 0..state_len {
             for j in 0..self.k {
                 let mut ph = self.pheromone[i][j];
-                if w_state.state.as_ref().unwrap()[i] == j {
-                    ph += 1.0 / dist;
+                if state.0[i] == j {
+                    ph += 1.0 / state.1;
                 }
                 if ph > self.max_ph {
                     ph = self.max_ph;
