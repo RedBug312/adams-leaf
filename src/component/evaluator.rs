@@ -1,21 +1,16 @@
 use crate::{component::FlowTable, network::EdgeIndex};
 use crate::component::GateCtrlList;
-use crate::network::Edge;
+use crate::network::{Edge, BYTES, MTU, SFD, IPG};
 use std::cmp::max;
 use super::Solution;
 
-
 /// AVB 資料流最多可以佔用的資源百分比（模擬 Credit Base Shaper 的效果）
 const MAX_AVB_SETTING: f64 = 0.75;
-/// BE 資料流最多可以多大
-const MAX_BE_SIZE: f64 = 1500.0;
-
 
 #[derive(Default)]
 pub struct Evaluator {
     weights: [f64; 4],
 }
-
 
 impl Evaluator {
     pub fn new(weights: [f64; 4]) -> Self {
@@ -115,30 +110,31 @@ fn is_rerouted(latest: Option<usize>, current: Option<usize>) -> bool {
 fn transmit_avb_itself(edge: &Edge, avb: usize, flowtable: &FlowTable) -> f64 {
     let bandwidth = MAX_AVB_SETTING * edge.bandwidth;
     let spec = flowtable.avb_spec(avb);
-    spec.size as f64 / bandwidth
+    ((spec.size + SFD) * BYTES) as f64 / bandwidth
 }
 
 fn interfere_from_be(edge: &Edge) -> f64 {
-    MAX_BE_SIZE / edge.bandwidth
+    ((MTU + SFD + IPG) * BYTES) as f64 / edge.bandwidth
 }
 
-// FIXME incomplete implemnetation
 // "IEEE Standard for Local and metropolitan area networks--Audio Video Bridging (AVB) Systems," in
 // IEEE Std 802.1BA-2011, pp.1-45, 30 Sept. 2011, doi: 10.1109/IEEESTD.2011.6032690.
 
 fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
     flowtable: &FlowTable) -> f64 {
-    let mut interfere = 0.0;
-    let bandwidth = MAX_AVB_SETTING * edge.bandwidth;
+    let mut blocking = 0;
+    // let bandwidth = MAX_AVB_SETTING * edge.bandwidth;
     let spec = flowtable.avb_spec(avb);
     for other in others {
         if avb == other { continue; }
         let other_spec = flowtable.avb_spec(other);
         if spec.class == 'B' || other_spec.class == 'A' {
-            interfere += other_spec.size as f64 / bandwidth;
+            let num = (125 - 1) / other_spec.period + 1;
+            blocking += num * (other_spec.size + SFD + IPG) * BYTES;
         }
     }
-    interfere
+    let max = (125.0 * MAX_AVB_SETTING * edge.bandwidth) / edge.bandwidth;
+    num::clamp(blocking as f64 / edge.bandwidth, 0.0, max) / MAX_AVB_SETTING
 }
 
 // FIXME incomplete implemnetation
@@ -182,12 +178,12 @@ mod tests {
     fn setup() -> CNC {
         let mut network = Network::new();
         network.add_nodes(3, 0);
-        network.add_edges(vec![(0, 1, 100.0), (1, 2, 100.0)]);
+        network.add_edges(vec![(0, 1, 1000.0), (1, 2, 1000.0)]);
         let tsns = vec![];
         let avbs = vec![
-            AVB::new(0, 2, 075, 10000, 200, 'A'),
-            AVB::new(0, 2, 150, 10000, 200, 'A'),
-            AVB::new(0, 2, 075, 10000, 200, 'B'),
+            AVB::new(0, 2, 64, 100, 100, 'A'),
+            AVB::new(0, 2, 64, 200, 200, 'A'),
+            AVB::new(0, 2, 64, 100, 100, 'B'),
         ];
         let config = yaml::load_config("data/config/default.yaml");
         let mut cnc = CNC::new(network, config);
@@ -210,11 +206,13 @@ mod tests {
         let edge = cnc.network.edge(0.into());
         let flowtable = &cnc.flowtable;
         let mut solution = cnc.solution.clone();
-        println!("---{:?}", solution.traversed_avbs);
         cnc.scheduler.configure(&mut solution);
-        assert_eq!(interfere_from_avb(&edge, 0, vec![0, 1, 2], flowtable), 2.0);
-        assert_eq!(interfere_from_avb(&edge, 1, vec![0, 1, 2], flowtable), 1.0);
-        assert_eq!(interfere_from_avb(&edge, 2, vec![0, 1, 2], flowtable), 3.0);
+        let expect = 1.0 * 84.0 * 8.0 / (1000.0 * 0.75);
+        assert_eq!(interfere_from_avb(&edge, 0, vec![0, 1, 2], flowtable), expect);
+        let expect = 2.0 * 84.0 * 8.0 / (1000.0 * 0.75);
+        assert_eq!(interfere_from_avb(&edge, 1, vec![0, 1, 2], flowtable), expect);
+        let expect = 3.0 * 84.0 * 8.0 / (1000.0 * 0.75);
+        assert_eq!(interfere_from_avb(&edge, 2, vec![0, 1, 2], flowtable), expect);
     }
 
     #[test]
@@ -229,7 +227,6 @@ mod tests {
         gcl.insert_gate_evt(edge, 3, 0..1);
         gcl.insert_gate_evt(edge, 4, 5..6);
         gcl.insert_gate_evt(edge, 5, 7..9);
-        println!("{:?}", gcl);
         assert_eq!(interfere_from_tsn(edge, 1.0, &gcl), 3.0);  // should be 2.0
         assert_eq!(interfere_from_tsn(edge, 2.0, &gcl), 3.0);  // should be 3.0
         assert_eq!(interfere_from_tsn(edge, 3.0, &gcl), 3.0);  // should be 4.0
