@@ -1,21 +1,15 @@
-use crate::{component::FlowTable, network::EdgeIndex};
-use crate::component::GateCtrlList;
-use crate::network::Edge;
+use crate::network::{EdgeIndex, MTU, Network};
+use crate::component::{FlowTable, GateCtrlList};
 use std::cmp::max;
 use super::Solution;
 
-
 /// AVB 資料流最多可以佔用的資源百分比（模擬 Credit Base Shaper 的效果）
 const MAX_AVB_SETTING: f64 = 0.75;
-/// BE 資料流最多可以多大
-const MAX_BE_SIZE: f64 = 1500.0;
-
 
 #[derive(Default)]
 pub struct Evaluator {
     weights: [f64; 4],
 }
-
 
 impl Evaluator {
     pub fn new(weights: [f64; 4]) -> Self {
@@ -84,7 +78,6 @@ impl Evaluator {
     /// * `flow` - 該 AVB 資料流的詳細資訊
     /// * `route` - 該 AVB 資料流的路徑
     /// * `flow_table` - 資料流表。需注意的是，這裡僅用了資料流本身的資料，而未使用其隨附資訊
-    /// TODO: 改用 FlowTable?
     /// * `gcl` - 所有 TT 資料流的 Gate Control List
     pub fn evaluate_avb_wcd_for_kth(&self, avb: usize, kth: usize, solution: &Solution) -> u32 {
         let flowtable = solution.flowtable();
@@ -92,15 +85,14 @@ impl Evaluator {
         let route = flowtable.candidate(avb, kth);
         let gcl = &solution.allocated_tsns;
         let mut end_to_end = 0.0;
-        for &eid in route {
-            let traversed_avbs = solution.traversed_avbs[eid.index()]
+        for &edge in route {
+            let traversed_avbs = solution.traversed_avbs[edge.index()]
                 .iter().cloned().collect();
-            let edge = network.edge(eid);
             let mut per_hop = 0.0;
-            per_hop += transmit_avb_itself(edge, avb, &flowtable);
-            per_hop += interfere_from_be(edge);
-            per_hop += interfere_from_avb(edge, avb, traversed_avbs, &flowtable);
-            per_hop += interfere_from_tsn(eid, per_hop, gcl);
+            per_hop += transmit_avb_itself(edge, avb, &flowtable, &network);
+            per_hop += interfere_from_be(edge, &network);
+            per_hop += interfere_from_avb(edge, avb, traversed_avbs, &flowtable, &network);
+            per_hop += interfere_from_tsn(edge, per_hop, gcl);
             end_to_end += per_hop;
         }
         end_to_end as u32
@@ -112,33 +104,31 @@ fn is_rerouted(latest: Option<usize>, current: Option<usize>) -> bool {
     latest.is_some() && current != latest
 }
 
-fn transmit_avb_itself(edge: &Edge, avb: usize, flowtable: &FlowTable) -> f64 {
-    let bandwidth = MAX_AVB_SETTING * edge.bandwidth;
+fn transmit_avb_itself(edge: EdgeIndex, avb: usize, flowtable: &FlowTable, network: &Network) -> f64 {
     let spec = flowtable.avb_spec(avb);
-    spec.size as f64 / bandwidth
+    network.duration_on(edge, spec.size) / MAX_AVB_SETTING
 }
 
-fn interfere_from_be(edge: &Edge) -> f64 {
-    MAX_BE_SIZE / edge.bandwidth
+fn interfere_from_be(edge: EdgeIndex, network: &Network) -> f64 {
+    network.duration_on(edge, MTU)
 }
 
 // FIXME incomplete implemnetation
 // "IEEE Standard for Local and metropolitan area networks--Audio Video Bridging (AVB) Systems," in
 // IEEE Std 802.1BA-2011, pp.1-45, 30 Sept. 2011, doi: 10.1109/IEEESTD.2011.6032690.
 
-fn interfere_from_avb(edge: &Edge, avb: usize, others: Vec<usize>,
-    flowtable: &FlowTable) -> f64 {
-    let mut interfere = 0.0;
-    let bandwidth = MAX_AVB_SETTING * edge.bandwidth;
+fn interfere_from_avb(edge: EdgeIndex, avb: usize, others: Vec<usize>,
+    flowtable: &FlowTable, network: &Network) -> f64 {
+    let mut blocking = 0;
     let spec = flowtable.avb_spec(avb);
     for other in others {
         if avb == other { continue; }
         let other_spec = flowtable.avb_spec(other);
         if spec.class == 'B' || other_spec.class == 'A' {
-            interfere += other_spec.size as f64 / bandwidth;
+            blocking += other_spec.size;
         }
     }
-    interfere
+    network.duration_on(edge, blocking) / MAX_AVB_SETTING
 }
 
 // FIXME incomplete implemnetation
@@ -207,14 +197,14 @@ mod tests {
     #[test]
     fn it_evaluates_avb_interfere() {
         let cnc = setup();
-        let edge = cnc.network.edge(0.into());
-        let flowtable = &cnc.flowtable;
+        let edge = 0.into();
         let mut solution = cnc.solution.clone();
-        println!("---{:?}", solution.traversed_avbs);
+        let flowtable = solution.flowtable();
+        let network = solution.network();
         cnc.scheduler.configure(&mut solution);
-        assert_eq!(interfere_from_avb(&edge, 0, vec![0, 1, 2], flowtable), 2.0);
-        assert_eq!(interfere_from_avb(&edge, 1, vec![0, 1, 2], flowtable), 1.0);
-        assert_eq!(interfere_from_avb(&edge, 2, vec![0, 1, 2], flowtable), 3.0);
+        assert_eq!(interfere_from_avb(edge, 0, vec![0, 1, 2], &flowtable, &network), 2.0);
+        assert_eq!(interfere_from_avb(edge, 1, vec![0, 1, 2], &flowtable, &network), 1.0);
+        assert_eq!(interfere_from_avb(edge, 2, vec![0, 1, 2], &flowtable, &network), 3.0);
     }
 
     #[test]
@@ -229,7 +219,6 @@ mod tests {
         gcl.insert_gate_evt(edge, 3, 0..1);
         gcl.insert_gate_evt(edge, 4, 5..6);
         gcl.insert_gate_evt(edge, 5, 7..9);
-        println!("{:?}", gcl);
         assert_eq!(interfere_from_tsn(edge, 1.0, &gcl), 3.0);  // should be 2.0
         assert_eq!(interfere_from_tsn(edge, 2.0, &gcl), 3.0);  // should be 3.0
         assert_eq!(interfere_from_tsn(edge, 3.0, &gcl), 3.0);  // should be 4.0

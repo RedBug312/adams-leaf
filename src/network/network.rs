@@ -44,14 +44,14 @@ pub enum Device {
 
 #[derive(Clone, Debug)]
 pub struct Node {
-    pub edges: Vec<EdgeIndex>,
-    pub device: Device,
+    edges: Vec<EdgeIndex>,
+    device: Device,
 }
 
 #[derive(Clone, Debug)]
 pub struct Edge {
-    pub ends: (NodeIndex, NodeIndex),
-    pub bandwidth: f64,
+    ends: (NodeIndex, NodeIndex),
+    bandwidth: f64,
 }
 
 
@@ -80,16 +80,8 @@ impl Network {
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
-    pub fn node(&self, node: NodeIndex) -> &Node {
-        debug_assert!(node.index() < self.nodes.len());
-        &self.nodes[node.index()]
-    }
     pub fn edge_count(&self) -> usize {
         self.edges.len()
-    }
-    pub fn edge(&self, edge: EdgeIndex) -> &Edge {
-        debug_assert!(edge.index() < self.edges.len());
-        &self.edges[edge.index()]
     }
     pub fn endpoints(&self, edge: EdgeIndex) -> &(NodeIndex, NodeIndex) {
         debug_assert!(edge.index() < self.edges.len());

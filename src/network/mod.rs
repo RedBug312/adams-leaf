@@ -1,11 +1,9 @@
 mod graph;
 mod network;
 
-pub use network::Edge;
-pub use network::EdgeIndex;
 pub use network::Network;
-pub use network::Node;
 pub use network::NodeIndex;
+pub use network::EdgeIndex;
 
 pub type Path = Vec<EdgeIndex>;
 
