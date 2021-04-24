@@ -86,8 +86,7 @@ impl Evaluator {
         let gcl = &solution.allocated_tsns;
         let mut end_to_end = 0.0;
         for &edge in route {
-            let traversed_avbs = solution.traversed_avbs[edge.index()]
-                .iter().cloned().collect();
+            let traversed_avbs = solution.traversed_avbs[edge.index()].iter();
             let mut per_hop = 0.0;
             per_hop += transmit_avb_itself(edge, avb, &flowtable, &network);
             per_hop += interfere_from_be(edge, &network);
@@ -117,11 +116,12 @@ fn interfere_from_be(edge: EdgeIndex, network: &Network) -> f64 {
 // "IEEE Standard for Local and metropolitan area networks--Audio Video Bridging (AVB) Systems," in
 // IEEE Std 802.1BA-2011, pp.1-45, 30 Sept. 2011, doi: 10.1109/IEEESTD.2011.6032690.
 
-fn interfere_from_avb(edge: EdgeIndex, avb: usize, others: Vec<usize>,
-    flowtable: &FlowTable, network: &Network) -> f64 {
+fn interfere_from_avb<'a, I>(edge: EdgeIndex, avb: usize, others: I,
+    flowtable: &'a FlowTable, network: &Network) -> f64
+    where I: Iterator<Item=&'a usize> {
     let mut blocking = 0;
     let spec = flowtable.avb_spec(avb);
-    for other in others {
+    for &other in others {
         if avb == other { continue; }
         let other_spec = flowtable.avb_spec(other);
         if spec.class == 'B' || other_spec.class == 'A' {
@@ -202,9 +202,9 @@ mod tests {
         let flowtable = solution.flowtable();
         let network = solution.network();
         cnc.scheduler.configure(&mut solution);
-        assert_eq!(interfere_from_avb(edge, 0, vec![0, 1, 2], &flowtable, &network), 2.0);
-        assert_eq!(interfere_from_avb(edge, 1, vec![0, 1, 2], &flowtable, &network), 1.0);
-        assert_eq!(interfere_from_avb(edge, 2, vec![0, 1, 2], &flowtable, &network), 3.0);
+        assert_eq!(interfere_from_avb(edge, 0, [0, 1, 2].iter(), &flowtable, &network), 2.0);
+        assert_eq!(interfere_from_avb(edge, 1, [0, 1, 2].iter(), &flowtable, &network), 1.0);
+        assert_eq!(interfere_from_avb(edge, 2, [0, 1, 2].iter(), &flowtable, &network), 3.0);
     }
 
     #[test]
