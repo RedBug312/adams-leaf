@@ -10,7 +10,7 @@ const KTH_DEFAULT: usize = 0;
 
 
 /// 這個結構預期會被複製很多次，因此其中的每個元件都應儘可能想辦法降低複製成本
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Solution {
     selections: Vec<Select>,
     outcomes: Vec<Outcome>,

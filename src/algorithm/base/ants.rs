@@ -1,7 +1,7 @@
 use crate::MAX_K;
-use super::heap::MyMinHeap;
+use crate::component::Solution;
 
-const R: usize = 60;
+const M: usize = 60;
 const L: usize = 20;
 const TAO0: f64 = 25.0;
 const RHO: f64 = 0.5; // 蒸發率
@@ -9,10 +9,33 @@ const Q0: f64 = 0.0;
 const MAX_PH: f64 = 30.0;
 const MIN_PH: f64 = 1.0;
 
+#[derive(Clone)]
+pub struct Ant {
+    pub solution: Solution,
+    pub distance: f64,
+}
+
+impl Ant {
+    pub fn new(solution: Solution) -> Self {
+        let distance = f64::INFINITY;
+        Ant { solution, distance }
+    }
+    pub fn empty() -> Self {
+        let solution = Solution::default();
+        let distance = f64::INFINITY;
+        Ant { solution, distance }
+    }
+    pub fn set_distance_from_cost(&mut self, cost: f64) {
+        self.distance = f64::powf(10.0, cost - 1.0);
+    }
+}
+
 pub struct AntColony {
     pub pheromone: Vec<[f64; MAX_K]>,
+    pub heuristic: Vec<[f64; MAX_K]>,
+    pub n: usize,
+    pub m: usize,
     pub k: usize,
-    pub r: usize,
     pub l: usize,
     pub rho: f64,
     pub tao0: f64,
@@ -23,10 +46,18 @@ pub struct AntColony {
 
 impl AntColony {
     pub fn new(n: usize, k: usize, tao0: Option<f64>) -> Self {
-        assert!(k <= MAX_K, "K值必需在 {} 以下", MAX_K);
+        assert!(k <= MAX_K, "K 值必需在 {} 以下", MAX_K);
         let tao0 = tao0.unwrap_or(TAO0);
         let pheromone = vec![[tao0; MAX_K]; n];
-        AntColony { pheromone, k, tao0, r: R, l: L, rho: RHO, q0: Q0, max_ph: MAX_PH, min_ph: MIN_PH }
+        let heuristic = vec![[0.0; MAX_K]; n];
+        let n = 0;
+        let m = M;
+        let l = L;
+        let rho = RHO;
+        let q0 = Q0;
+        let max_ph = MAX_PH;
+        let min_ph = MIN_PH;
+        AntColony { pheromone, heuristic, n, m, k, l, tao0, rho, q0, max_ph, min_ph }
     }
     pub fn resize_pheromone(&mut self, new_len: usize) {
         let tao0 = self.tao0;
@@ -34,23 +65,18 @@ impl AntColony {
     }
     pub fn evaporate(&mut self) {
         debug_assert!(self.rho <= 1.0);
-        for nth in 0..self.pheromone.len() {
+        for nth in 0..self.n {
             for kth in 0..self.k {
                 let pheromone = (1.0 - self.rho) * self.pheromone[nth][kth];
                 self.pheromone[nth][kth] = f64::max(pheromone, self.min_ph);
             }
         }
     }
-    pub fn offline_update(&mut self, heap: &MyMinHeap<Vec<usize>>) {
-        for (trail, &dist) in heap.iter() {
-            self.deposit_pheromone(trail, dist.into());
-        }
-    }
-    fn deposit_pheromone(&mut self, trail: &[usize], dist: f64) {
-        debug_assert!(dist.is_sign_positive());
-        for nth in 0..self.pheromone.len() {
-            let kth = trail[nth];
-            let pheromone = self.pheromone[nth][kth] + 1.0 / dist;
+    pub fn deposit_pheromone(&mut self, ant: &Ant) {
+        debug_assert!(ant.distance.is_sign_positive());
+        for nth in 0..self.n {
+            let kth = ant.solution.selection(nth).current().unwrap();
+            let pheromone = self.pheromone[nth][kth] + 1.0 / ant.distance;
             self.pheromone[nth][kth] = f64::min(pheromone, self.max_ph);
         }
     }
