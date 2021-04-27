@@ -14,7 +14,7 @@ use super::base::yens::Yens;
 pub struct ACO {
     colony: AntColony,
     yens: Yens,
-    memory: Vec<[f64; MAX_K]>,
+    mult: Vec<[f64; MAX_K]>,
     seed: u64,
     param: Parameters,
 }
@@ -24,8 +24,8 @@ impl ACO {
         let colony = AntColony::new(0, MAX_K, None);
         let mut yens = Yens::new(network, MAX_K);
         yens.compute(&network);
-        let memory = vec![];
-        ACO { colony, yens, memory, seed, param }
+        let mult = vec![];
+        ACO { colony, yens, mult, seed, param }
     }
     pub fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
         self.yens.count_shortest_paths(src.into(), dst.into())
@@ -40,14 +40,14 @@ impl ACO {
             let (src, dst) = flowtable.ends(avb);
             for kth in 0..self.get_candidate_count(src, dst) {
                 let wcd = toolbox.evaluate_wcd(avb, kth, solution) as f64;
-                vis[avb][kth] = 1.0 / wcd * self.memory[avb][kth];
+                vis[avb][kth] = 1.0 / wcd * self.mult[avb][kth];
             }
         }
         for &tsn in flowtable.tsns() {
             let (src, dst) = flowtable.ends(tsn);
             for kth in 0..self.get_candidate_count(src, dst) {
                 let route = self.yens.kth_shortest_path(src.into(), dst.into(), kth).unwrap();
-                vis[tsn][kth] = 1.0 / route.len() as f64 * self.memory[tsn][kth];
+                vis[tsn][kth] = 1.0 / route.len() as f64 * self.mult[tsn][kth];
             }
         }
         vis
@@ -61,15 +61,15 @@ impl Algorithm for ACO {
     fn prepare(&mut self, solution: &mut Solution, flowtable: &FlowTable) {
         // before initial scheduler configure
         self.colony.resize_pheromone(flowtable.len());
-        self.memory = vec![[1.0; MAX_K]; flowtable.len()];
+        self.mult = vec![[1.0; MAX_K]; flowtable.len()];
         for &tsn in flowtable.tsns() {
             if let Some(kth) = solution.selection(tsn).current() {
-                self.memory[tsn][kth] = self.param.tsn_memory;
+                self.mult[tsn][kth] = self.param.tsn_memory;
             }
         }
         for &avb in flowtable.avbs() {
             if let Some(kth) = solution.selection(avb).current() {
-                self.memory[avb][kth] = self.param.avb_memory;
+                self.mult[avb][kth] = self.param.avb_memory;
             }
         }
     }
@@ -89,7 +89,6 @@ impl Algorithm for ACO {
         'outer: while Instant::now() < deadline {
             epoch += 1;
             let mut iteration_best = Ant::empty();
-            let mut ants = Vec::with_capacity(self.colony.m);
 
             for _mth in 0..self.colony.m {
                 let neighbor = global_best.solution.clone();
@@ -107,18 +106,15 @@ impl Algorithm for ACO {
                 }
 
                 ant.set_distance_from_cost(cost);
-                if ant.distance < iteration_best.distance {
-                    iteration_best = ant.clone();
+                if ant.distance <= iteration_best.distance {
+                    iteration_best = ant;
                 }
-                ants.push(ant);
             }
 
             self.colony.evaporate();
+            self.colony.deposit_pheromone(&iteration_best);
 
-            for ant in ants {
-                self.colony.deposit_pheromone(&ant);
-            }
-            if iteration_best.distance < global_best.distance {
+            if iteration_best.distance <= global_best.distance {
                 global_best = iteration_best;
             }
             #[cfg(debug_assertions)]

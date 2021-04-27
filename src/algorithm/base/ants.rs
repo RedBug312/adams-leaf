@@ -3,11 +3,11 @@ use crate::component::Solution;
 
 const M: usize = 60;
 const L: usize = 20;
-const TAO0: f64 = 25.0;
+const TAO0: f64 = 1.0;
 const RHO: f64 = 0.5; // 蒸發率
 const Q0: f64 = 0.0;
-const MAX_PH: f64 = 30.0;
-const MIN_PH: f64 = 1.0;
+const MAX_PH: f64 = 1.0;
+const MIN_PH: f64 = 0.003;
 
 #[derive(Clone)]
 pub struct Ant {
@@ -26,7 +26,7 @@ impl Ant {
         Ant { solution, distance }
     }
     pub fn set_distance_from_cost(&mut self, cost: f64) {
-        self.distance = f64::powf(10.0, cost - 1.0);
+        self.distance = cost;
     }
 }
 
