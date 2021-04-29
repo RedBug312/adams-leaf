@@ -28,82 +28,84 @@ impl Algorithm for RO {
     fn configure(&mut self, solution: &mut Solution, deadline: Instant, toolbox: Toolbox) {
         let flowtable = solution.flowtable();
         // self.grasp(solution, deadline);
+        let mut epoch = 0;
         let mut rng = ChaChaRng::seed_from_u64(self.seed);
-        let mut iter_times = 0;
-        let mut min_cost = toolbox.evaluate_cost(solution);
-        while Instant::now() < deadline {
-            iter_times += 1;
-            // PHASE 1
-            let mut current = solution.clone();
-            for &avb in flowtable.avbs() {
-                let (src, dst) = flowtable.ends(avb);
+
+        let mut global_best = solution.clone();
+        let (mut global_best_cost, _stop) = toolbox.evaluate_cost(&mut global_best);
+
+        'outer: while Instant::now() < deadline {
+            epoch += 1;
+            let mut neighbor = global_best.clone();
+
+            // PHASE 1: randomized greedy algorithm
+            for &nth in flowtable.avbs() {
+                let (src, dst) = flowtable.ends(nth);
                 let candidate_cnt = self.get_candidate_count(src, dst);
+                // XXX (candidate_cnt as f64 * ALPHA_PORTION).ceil() outperforms
                 let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
-                let set = gen_n_distinct_outof_k(alpha, candidate_cnt, &mut rng);
-                let new_route = self.find_min_cost_route(solution, avb, Some(set), &flowtable, &toolbox);
-                current.select(avb, new_route);
+                // XXX (0..candidate_cnt).choose_multiple outperforms
+                let set = choose_n_within_k(alpha, candidate_cnt, &mut rng);
+                let kth = set.into_iter()
+                    .min_by_key(|&kth| toolbox.evaluate_wcd(nth, kth, &global_best))
+                    .unwrap_or(0);
+                neighbor.select(nth, kth);
             }
-            // PHASE 2
-            let cost = toolbox.evaluate_cost(&mut current);
-            if cost.0 < min_cost.0 {
-                min_cost = cost;
-                // #[cfg(debug_assertions)]
-                // println!("found min_cost = {:?} at first glance!", cost);
+            let (cost, stop) = toolbox.evaluate_cost(&mut neighbor);
+            if cost < global_best_cost {
+                // XXX global_best = neighbor.clone() outperforms
+                global_best_cost = cost;
             }
-
             #[cfg(debug_assertions)]
-            println!("start iteration #{}", iter_times);
-            // self.hill_climbing(solution, &mut rng, &deadline, &mut min_cost, current);
+            println!("start iteration #{}", epoch);
+            if stop {
+                global_best = neighbor;
+                break 'outer;
+            }
 
-            let mut iter_times_inner = 0;
-            while Instant::now() < deadline {
-                if min_cost.1 {
-                    break; // 找到可行解，返回
+            // PHASE 2: local search by hill climbing
+            let mut beta = 0;
+            // XXX flowtable.avbs().len() outperforms
+            while beta < flowtable.len() {
+                if Instant::now() > deadline {
+                    println!("{:?}", epoch);
+                    println!("{:?}", (global_best_cost, stop));
+                    break 'outer; // 找到可行解，返回
                 }
 
-                let target_id = flowtable.avbs()
-                    .choose(&mut rng)
-                    .unwrap().clone();
+                let nth = flowtable.avbs().choose(&mut rng).cloned().unwrap();
+                let old_kth = global_best.selection(nth).current().unwrap();
+                let (src, dst) = flowtable.ends(nth);
+                let kth = (0..self.get_candidate_count(src, dst))
+                    .min_by_key(|&kth| toolbox.evaluate_wcd(nth, kth, &global_best))
+                    .unwrap_or(0);
 
-                let new_route = self.find_min_cost_route(solution, target_id, None, &flowtable, &toolbox);
-                let old_route = solution
-                    .selection(target_id).current()
-                    .unwrap();
-
-                if old_route == new_route {
+                if old_kth == kth {
                     continue;
                 }
 
                 // 實際更新下去，並計算成本
-                current.select(target_id, new_route);
-                let cost = toolbox.evaluate_cost(&mut current);
+                neighbor.select(nth, kth);
+                let (cost, stop) = toolbox.evaluate_cost(&mut neighbor);
+                if stop {
+                    global_best = neighbor;
+                    break 'outer;
+                }
 
-                if cost.0 < min_cost.0 {
-                    *solution = current.clone();
-                    min_cost = cost.clone();
-                    iter_times_inner = 0;
-
-                    // #[cfg(debug_assertions)]
-                    // println!("found min_cost = {:?}", cost);
+                if cost < global_best_cost {
+                    global_best = neighbor.clone();
+                    global_best_cost = cost;
+                    beta = 0;
                 } else {
                     // 恢復上一動
-                    current.select(target_id, old_route);
-                    iter_times_inner += 1;
-                    if iter_times_inner == flowtable.len() {
-                        //  NOTE: 迭代次數上限與資料流數量掛勾
-                        break;
-                    }
+                    neighbor.select(nth, old_kth);
+                    beta += 1;
                 }
             }
-
-            if min_cost.1 {
-                // 找到可行解，且為快速終止模式
-                *solution = current.clone();
-                break;
-            }
-            println!("{:?}", iter_times);
-            println!("{:?}", min_cost);
+            println!("{:?}", epoch);
+            println!("{:?}", (global_best_cost, stop));
         }
+        *solution = global_best;
     }
 }
 
@@ -113,34 +115,12 @@ impl RO {
         yens.compute(&network);
         RO { yens, seed }
     }
-    /// 若有給定候選路徑的子集合，就從中選。若無，則遍歷所有候選路徑
-    fn find_min_cost_route(&self, solution: &Solution, id: usize, set: Option<Vec<usize>>, flowtable: &FlowTable, toolbox: &Toolbox) -> usize {
-        let (src, dst) = flowtable.ends(id);
-        let (mut min_cost, mut best_k) = (std::f64::MAX, 0);
-        let mut closure = |kth: usize| {
-            let wcd = toolbox.evaluate_wcd(id, kth, solution) as f64;
-            if wcd < min_cost {
-                min_cost = wcd;
-                best_k = kth;
-            }
-        };
-        if let Some(vec) = set {
-            for k in vec.into_iter() {
-                closure(k);
-            }
-        } else {
-            for k in 0..self.get_candidate_count(src, dst) {
-                closure(k);
-            }
-        }
-        best_k
-    }
     fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
         self.yens.count_shortest_paths(src.into(), dst.into())
     }
 }
 
-fn gen_n_distinct_outof_k(n: usize, k: usize, rng: &mut ChaChaRng) -> Vec<usize> {
+fn choose_n_within_k(n: usize, k: usize, rng: &mut ChaChaRng) -> Vec<usize> {
     let mut vec = Vec::with_capacity(n);
     for i in 0..k {
         let rand = rng.gen();
