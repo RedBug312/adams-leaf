@@ -129,7 +129,6 @@ impl Outcome {
 
 #[cfg(test)]
 mod tests {
-    use crate::algorithm::Algorithm;
     use crate::cnc::CNC;
     use crate::utils::yaml;
     use crate::utils::stream::TSN;
@@ -145,7 +144,6 @@ mod tests {
         let config = yaml::load_config("data/config/default.yaml");
         let mut cnc = CNC::new(network, config);
         cnc.add_streams(tsns, avbs);
-        cnc.algorithm.prepare(&mut cnc.solution, &cnc.flowtable);
         cnc
     }
 

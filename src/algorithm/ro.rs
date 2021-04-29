@@ -1,6 +1,5 @@
 use crate::{MAX_K, cnc::Toolbox, network::Path};
 use crate::component::Solution;
-use crate::component::FlowTable;
 use crate::network::Network;
 use rand::{Rng, SeedableRng};
 use rand::seq::SliceRandom;
@@ -23,7 +22,6 @@ impl Algorithm for RO {
     fn candidates(&self, src: usize, dst: usize) -> &Vec<Path> {
         self.yens.k_shortest_paths(src.into(), dst.into())
     }
-    fn prepare(&mut self, _solution: &mut Solution, _flowtable: &FlowTable) {}
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
     fn configure(&mut self, solution: &mut Solution, deadline: Instant, toolbox: Toolbox) {
         let flowtable = solution.flowtable();
@@ -41,11 +39,11 @@ impl Algorithm for RO {
             // PHASE 1: randomized greedy algorithm
             for &nth in flowtable.avbs() {
                 let (src, dst) = flowtable.ends(nth);
-                let candidate_cnt = self.get_candidate_count(src, dst);
+                let candidate_count = self.candidates(src, dst).len();
                 // XXX (candidate_cnt as f64 * ALPHA_PORTION).ceil() outperforms
-                let alpha = (candidate_cnt as f64 * ALPHA_PORTION) as usize;
+                let alpha = (candidate_count as f64 * ALPHA_PORTION) as usize;
                 // XXX (0..candidate_cnt).choose_multiple outperforms
-                let set = choose_n_within_k(alpha, candidate_cnt, &mut rng);
+                let set = choose_n_within_k(alpha, candidate_count, &mut rng);
                 let kth = set.into_iter()
                     .min_by_key(|&kth| toolbox.evaluate_wcd(nth, kth, &global_best))
                     .unwrap_or(0);
@@ -76,7 +74,8 @@ impl Algorithm for RO {
                 let nth = flowtable.avbs().choose(&mut rng).cloned().unwrap();
                 let old_kth = global_best.selection(nth).current().unwrap();
                 let (src, dst) = flowtable.ends(nth);
-                let kth = (0..self.get_candidate_count(src, dst))
+                let candidate_count = self.candidates(src, dst).len();
+                let kth = (0..candidate_count)
                     .min_by_key(|&kth| toolbox.evaluate_wcd(nth, kth, &global_best))
                     .unwrap_or(0);
 
@@ -114,9 +113,6 @@ impl RO {
         let mut yens = Yens::new(&network, MAX_K);
         yens.compute(&network);
         RO { yens, seed }
-    }
-    fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
-        self.yens.count_shortest_paths(src.into(), dst.into())
     }
 }
 

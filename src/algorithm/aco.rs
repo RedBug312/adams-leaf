@@ -1,4 +1,3 @@
-use crate::component::FlowTable;
 use crate::component::Solution;
 use crate::network::Network;
 use crate::network::Path;
@@ -27,9 +26,6 @@ impl ACO {
         let mult = vec![];
         ACO { colony, yens, mult, seed, param }
     }
-    pub fn get_candidate_count(&self, src: usize, dst: usize) -> usize {
-        self.yens.count_shortest_paths(src.into(), dst.into())
-    }
     fn compute_visibility(&self, solution: &Solution, toolbox: &Toolbox) -> Vec<[f64; MAX_K]> {
         // TODO 好好設計能見度函式！
         // 目前：路徑長的倒數
@@ -38,14 +34,16 @@ impl ACO {
         let mut vis = vec![[0.0; MAX_K]; len];
         for &avb in flowtable.avbs() {
             let (src, dst) = flowtable.ends(avb);
-            for kth in 0..self.get_candidate_count(src, dst) {
+            let candidate_count = self.candidates(src, dst).len();
+            for kth in 0..candidate_count {
                 let wcd = toolbox.evaluate_wcd(avb, kth, solution) as f64;
                 vis[avb][kth] = 1.0 / wcd * self.mult[avb][kth];
             }
         }
         for &tsn in flowtable.tsns() {
             let (src, dst) = flowtable.ends(tsn);
-            for kth in 0..self.get_candidate_count(src, dst) {
+            let candidate_count = self.candidates(src, dst).len();
+            for kth in 0..candidate_count {
                 let route = self.yens.kth_shortest_path(src.into(), dst.into(), kth).unwrap();
                 vis[tsn][kth] = 1.0 / route.len() as f64 * self.mult[tsn][kth];
             }
@@ -58,8 +56,8 @@ impl Algorithm for ACO {
     fn candidates(&self, src: usize, dst: usize) -> &Vec<Path> {
         self.yens.k_shortest_paths(src.into(), dst.into())
     }
-    fn prepare(&mut self, solution: &mut Solution, flowtable: &FlowTable) {
-        // before initial scheduler configure
+    fn configure(&mut self, solution: &mut Solution, deadline: Instant, toolbox: Toolbox) {
+        let flowtable = solution.flowtable();
         self.colony.resize_pheromone(flowtable.len());
         self.mult = vec![[1.0; MAX_K]; flowtable.len()];
         for &tsn in flowtable.tsns() {
@@ -72,8 +70,7 @@ impl Algorithm for ACO {
                 self.mult[avb][kth] = self.param.avb_memory;
             }
         }
-    }
-    fn configure(&mut self, solution: &mut Solution, deadline: Instant, toolbox: Toolbox) {
+
         self.colony.heuristic = self.compute_visibility(solution, &toolbox);
         self.colony.n = solution.flowtable().len();
 

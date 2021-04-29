@@ -83,14 +83,11 @@ impl Yens {
         }
         self.paths[src.index()][dst.index()] = list_a;
     }
-    pub fn kth_shortest_path(&self, src: NodeIndex, dst: NodeIndex, k: usize) -> Option<&Path> {
-        self.paths[src.index()][dst.index()].get(k)
-    }
-    pub fn count_shortest_paths(&self, src: NodeIndex, dst: NodeIndex) -> usize {
-        self.paths[src.index()][dst.index()].len()
-    }
     pub fn k_shortest_paths(&self, src: NodeIndex, dst: NodeIndex) -> &Vec<Path> {
         &self.paths[src.index()][dst.index()]
+    }
+    pub fn kth_shortest_path(&self, src: NodeIndex, dst: NodeIndex, k: usize) -> Option<&Path> {
+        self.paths[src.index()][dst.index()].get(k)
     }
 }
 
@@ -115,7 +112,7 @@ mod tests {
                 .map(|path| network.node_sequence(&path))
         };
 
-        assert_eq!(yens.count_shortest_paths(0.into(), 3.into()), 4);
+        assert_eq!(yens.k_shortest_paths(0.into(), 3.into()).len(), 4);
         assert_eq!(kth(0, 3, 0), Some(vec![0, 1, 2, 3]));
         assert_eq!(kth(0, 3, 1), Some(vec![0, 2, 3]));
         assert_eq!(kth(0, 3, 2), Some(vec![0, 1, 3]));
@@ -147,19 +144,19 @@ mod tests {
                 .map(|path| network.node_sequence(&path))
         };
 
-        assert_eq!(yens.count_shortest_paths(0.into(), 2.into()), 4);
+        assert_eq!(yens.k_shortest_paths(0.into(), 2.into()).len(), 4);
         assert_eq!(kth(0, 2, 0), Some(vec![0, 1, 2]));
         assert_eq!(kth(0, 2, 1), Some(vec![0, 1, 3, 2]));
         assert_eq!(kth(0, 2, 2), Some(vec![0, 1, 4, 2]));
 
-        assert_eq!(yens.count_shortest_paths(0.into(), 5.into()), 10);
+        assert_eq!(yens.k_shortest_paths(0.into(), 5.into()).len(), 10);
         assert_eq!(kth(0, 5, 0), Some(vec![0, 1, 4, 99, 5]));
         assert_eq!(kth(0, 5, 1), Some(vec![0, 1, 4, 98, 5]));
         assert_eq!(kth(0, 5, 2), Some(vec![0, 1, 4, 97, 5]));
         assert_eq!(kth(0, 5, 3), Some(vec![0, 1, 4, 99, 98, 5]));
         assert_eq!(kth(0, 5, 4), Some(vec![0, 1, 4, 98, 99, 5]));
 
-        assert_eq!(yens.count_shortest_paths(0.into(), 99.into()), 10);
+        assert_eq!(yens.k_shortest_paths(0.into(), 99.into()).len(), 10);
         assert_eq!(kth(0, 99, 0), Some(vec![0, 1, 4, 99]));
         assert_eq!(kth(0, 99, 1), Some(vec![0, 1, 4, 98, 99]));
         assert_eq!(kth(0, 99, 2), Some(vec![0, 1, 4, 97, 99]));
