@@ -1,14 +1,14 @@
-use crate::{MAX_QUEUE, network::EdgeIndex};
-use crate::component::Solution;
-use crate::component::FlowTable;
-use crate::network::MTU;
-use crate::utils::stream::TSN;
-use std::cmp::{Ordering, max};
+use std::cmp::{max, Ordering};
 use std::ops::Range;
+
+use crate::component::{FlowTable, Solution};
+use crate::network::{EdgeIndex, MTU};
+use crate::utils::stream::TSN;
+use crate::MAX_QUEUE;
 
 #[derive(Debug, Default)]
 struct Schedule {
-    windows: Vec<Vec<Range<u32>>>,  // windows[#hop][#frame]
+    windows: Vec<Vec<Range<u32>>>, // windows[#hop][#frame]
     queue: u8,
 }
 
@@ -28,7 +28,6 @@ impl Schedule {
 
 #[derive(Default)]
 pub struct Scheduler {}
-
 
 impl Scheduler {
     pub fn new() -> Self {
@@ -132,15 +131,15 @@ impl Scheduler {
             for f in 0..frame_len {
                 let prev_frame_done = match f {
                     0 => spec.offset,
-                    _ => windows[r][f-1].end,
+                    _ => windows[r][f - 1].end,
                 };
                 let prev_link_done = match r {
                     0 => spec.offset,
-                    _ => windows[r-1][f].end,
+                    _ => windows[r - 1][f].end,
                 };
                 let ingress = max(prev_frame_done, prev_link_done);
 
-                let mut egress = ingress;  // ignore bridge processing time
+                let mut egress = ingress; // ignore bridge processing time
                 let p = spec.period as usize;
                 for time_shift in (0..hyperperiod).step_by(p) {
                     // 考慮 hyper period 中每種狀況
@@ -219,7 +218,7 @@ fn assert_within_deadline(delay: u32, spec: &TSN) -> Result<u32, ()> {
 
 fn remove_traversed_avb(solution: &mut Solution, avb: usize, kth: usize) {
     let flowtable = solution.flowtable();
-    let route = flowtable.candidate(avb, kth);  // kth_route without clone
+    let route = flowtable.candidate(avb, kth); // kth_route without clone
     for edge in route {
         let set = &mut solution.traversed_avbs[edge.index()];
         set.remove(&avb);
@@ -228,7 +227,7 @@ fn remove_traversed_avb(solution: &mut Solution, avb: usize, kth: usize) {
 
 fn insert_traversed_avb(solution: &mut Solution, avb: usize, kth: usize) {
     let flowtable = solution.flowtable();
-    let route = flowtable.candidate(avb, kth);  // kth_route without clone
+    let route = flowtable.candidate(avb, kth); // kth_route without clone
     for edge in route {
         let set = &mut solution.traversed_avbs[edge.index()];
         set.insert(avb);
@@ -237,7 +236,7 @@ fn insert_traversed_avb(solution: &mut Solution, avb: usize, kth: usize) {
 
 fn remove_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize) {
     let flowtable = solution.flowtable();
-    let route = flowtable.candidate(tsn, kth);  // kth_route without clone
+    let route = flowtable.candidate(tsn, kth); // kth_route without clone
     let gcl = &mut solution.allocated_tsns;
     for &edge in route {
         gcl.remove(edge, tsn);
@@ -246,7 +245,7 @@ fn remove_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize) {
 
 fn insert_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize, schedule: Schedule, period: u32) {
     let flowtable = solution.flowtable();
-    let route = flowtable.candidate(tsn, kth);  // kth_route without clone
+    let route = flowtable.candidate(tsn, kth); // kth_route without clone
     let gcl = &mut solution.allocated_tsns;
     let hyperperiod = gcl.hyperperiod();
 
@@ -269,14 +268,13 @@ fn insert_allocated_tsn(solution: &mut Solution, tsn: usize, kth: usize, schedul
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use crate::component::GateCtrlList;
     use crate::cnc::CNC;
+    use crate::component::GateCtrlList;
     use crate::network::Network;
-    use crate::utils::yaml;
     use crate::utils::stream::TSN;
+    use crate::utils::yaml;
 
     fn setup() -> CNC {
         // TODO use a more straight-forward scenario

@@ -1,6 +1,7 @@
 use hashbrown::HashSet;
+
 use super::heap::MyMinHeap;
-use crate::network::{EdgeIndex, NodeIndex, Network};
+use crate::network::{EdgeIndex, Network, NodeIndex};
 
 pub type Path = Vec<EdgeIndex>;
 

@@ -1,22 +1,22 @@
-use crate::{MAX_K, cnc::Toolbox, network::Path};
-use crate::component::Solution;
-use crate::network::Network;
-use rand::{Rng, SeedableRng};
-use rand::seq::SliceRandom;
-use rand_chacha::ChaChaRng;
 use std::time::Instant;
+
+use rand::seq::SliceRandom;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaChaRng;
+
 use super::base::yens::Yens;
 use super::Algorithm;
-
+use crate::cnc::Toolbox;
+use crate::component::Solution;
+use crate::network::{Network, Path};
+use crate::MAX_K;
 
 const ALPHA_PORTION: f64 = 0.5;
-
 
 pub struct RO {
     yens: Yens,
     seed: u64,
 }
-
 
 impl Algorithm for RO {
     fn candidates(&self, src: usize, dst: usize) -> &Vec<Path> {

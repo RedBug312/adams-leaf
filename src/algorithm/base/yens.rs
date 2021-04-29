@@ -1,7 +1,8 @@
-use crate::network::{EdgeIndex, NodeIndex, Network};
 use itertools::Itertools;
+
 use super::dijkstra::Dijkstra;
 use super::heap::MyMinHeap;
+use crate::network::{EdgeIndex, Network, NodeIndex};
 
 type Path = Vec<EdgeIndex>;
 
@@ -37,10 +38,10 @@ impl Yens {
         let mut list_a = vec![shortest];
         let mut heap_b = MyMinHeap::new();
 
-        for k in 0..k-1 {
+        for k in 0..(k - 1) {
             let prev_path_len = list_a[k].len();
-            for i in 0..=(prev_path_len-1) {
-                let spur_edge = list_a[k][i];  // where endpoints.0 is the spur-node
+            for i in 0..=(prev_path_len - 1) {
+                let spur_edge = list_a[k][i]; // where endpoints.0 is the spur-node
                 let spur_node = graph.endpoints(spur_edge).0;
                 let mut root_path = list_a[k][..=i].to_vec();
                 // println!("{:?}", (k, i));
@@ -73,12 +74,12 @@ impl Yens {
                         let total_dist = graph.duration_along(&total_path, 1);
                         heap_b.push(total_path, total_dist.into());
                     }
-                    None => continue,  // spur-dst exists no more paths
+                    None => continue, // spur-dst exists no more paths
                 }
             }
             match heap_b.pop() {
                 Some(path) => list_a.push(path.0),
-                None       => break,  // src-dst exists no more paths
+                None => break, // src-dst exists no more paths
             }
         }
         self.paths[src.index()][dst.index()] = list_a;
@@ -90,7 +91,6 @@ impl Yens {
         self.paths[src.index()][dst.index()].get(k)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -123,7 +123,7 @@ mod tests {
     #[test]
     fn it_runs_yens_on_case2() {
         let mut network = Network::new();
-        network.add_nodes(6, 93);  // 0..=5 + 99, 6..=98
+        network.add_nodes(6, 93); // 0..=5 + 99, 6..=98
         network.add_nodes(1, 0);
         network.add_edges(vec![
             (0, 1, 10.0), (1, 2, 20.0), (0, 2, 02.0), (1, 4, 10.0),

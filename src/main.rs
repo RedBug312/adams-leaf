@@ -1,6 +1,6 @@
+use adams_leaf::cnc::CNC;
 use adams_leaf::utils::config::Args;
 use adams_leaf::utils::yaml;
-use adams_leaf::cnc::CNC;
 use docopt::Docopt;
 
 const USAGE: &'static str = "

@@ -1,16 +1,14 @@
+use std::time::Instant;
+
+use super::base::yens::Yens;
+use super::Algorithm;
 use crate::cnc::Toolbox;
 use crate::component::Solution;
-use crate::network::Network;
-use crate::network::Path;
-use std::time::Instant;
-use super::Algorithm;
-use super::base::yens::Yens;
-
+use crate::network::{Network, Path};
 
 pub struct SPF {
     yens: Yens,
 }
-
 
 impl Algorithm for SPF {
     fn candidates(&self, src: usize, dst: usize) -> &Vec<Path> {

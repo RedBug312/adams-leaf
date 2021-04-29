@@ -54,7 +54,6 @@ pub struct Edge {
     bandwidth: f64,
 }
 
-
 impl Node {
     pub fn new(device: Device) -> Self {
         Self { device, edges: vec![] }
@@ -90,8 +89,7 @@ impl Network {
     pub fn outgoings<'a>(&'a self, node: NodeIndex)
         -> impl Iterator<Item=EdgeIndex> + 'a {
         debug_assert!(node.index() < self.nodes.len());
-        self.nodes[node.index()].edges.iter()
-            .cloned()
+        self.nodes[node.index()].edges.iter().cloned()
     }
     pub fn neighbors<'a>(&'a self, node: NodeIndex)
         -> impl Iterator<Item=NodeIndex> + 'a {

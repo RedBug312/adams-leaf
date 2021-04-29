@@ -1,7 +1,9 @@
-use crate::{MAX_QUEUE, network::{EdgeIndex, Network}};
-use num::integer::lcm;
 use std::ops::Range;
 
+use num::integer::lcm;
+
+use crate::network::{EdgeIndex, Network};
+use crate::MAX_QUEUE;
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 enum Entry {
@@ -30,7 +32,6 @@ pub struct GateCtrlList {
     hyperperiod: u32,
     events: Vec<Vec<Event>>,
 }
-
 
 impl GateCtrlList {
     pub fn new(network: &Network, hyperperiod: u32) -> Self {

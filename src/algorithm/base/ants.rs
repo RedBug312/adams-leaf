@@ -1,5 +1,5 @@
-use crate::MAX_K;
 use crate::component::Solution;
+use crate::MAX_K;
 
 const M: usize = 60;
 const L: usize = 20;

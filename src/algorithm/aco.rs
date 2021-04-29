@@ -1,14 +1,17 @@
-use crate::component::Solution;
-use crate::network::Network;
-use crate::network::Path;
-use crate::{MAX_K, cnc::Toolbox, utils::config::Parameters};
+use std::time::Instant;
+
+use rand::prelude::SliceRandom;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
-use rand::prelude::SliceRandom;
-use std::time::Instant;
-use super::Algorithm;
+
 use super::base::ants::{Ant, AntColony};
 use super::base::yens::Yens;
+use super::Algorithm;
+use crate::cnc::Toolbox;
+use crate::component::Solution;
+use crate::network::{Network, Path};
+use crate::utils::config::Parameters;
+use crate::MAX_K;
 
 pub struct ACO {
     colony: AntColony,

@@ -1,8 +1,10 @@
-use crate::network::Network;
-use serde::Deserialize;
 use std::fs;
-use super::stream::{AVB, TSN};
+
+use serde::Deserialize;
+
 use super::config::Config;
+use super::stream::{AVB, TSN};
+use crate::network::Network;
 
 #[derive(Deserialize)]
 struct NetworkYaml {

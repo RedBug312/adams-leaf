@@ -1,13 +1,12 @@
-use crate::component::GateCtrlList;
-use crate::network::Network;
-use hashbrown::HashSet;
 use std::rc::{Rc, Weak};
 
-use super::FlowTable;
+use hashbrown::HashSet;
 
+use super::FlowTable;
+use crate::component::GateCtrlList;
+use crate::network::Network;
 
 const KTH_DEFAULT: usize = 0;
-
 
 /// 這個結構預期會被複製很多次，因此其中的每個元件都應儘可能想辦法降低複製成本
 #[derive(Clone, Default)]
@@ -53,7 +52,7 @@ impl Solution {
         self.network.upgrade().unwrap()
     }
     pub fn select(&mut self, nth: usize, kth: usize) {
-         self.selections[nth].select(kth);
+        self.selections[nth].select(kth);
     }
     pub fn selection(&self, nth: usize) -> &Select {
         debug_assert!(nth < self.selections.len());
@@ -130,8 +129,8 @@ impl Outcome {
 #[cfg(test)]
 mod tests {
     use crate::cnc::CNC;
-    use crate::utils::yaml;
     use crate::utils::stream::TSN;
+    use crate::utils::yaml;
 
     fn setup() -> CNC {
         let network = yaml::load_network("data/network/trap.yaml");

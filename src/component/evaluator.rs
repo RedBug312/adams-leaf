@@ -1,7 +1,8 @@
-use crate::network::{EdgeIndex, MTU, Network};
-use crate::component::{FlowTable, GateCtrlList};
 use std::cmp::max;
+
 use super::Solution;
+use crate::component::{FlowTable, GateCtrlList};
+use crate::network::{EdgeIndex, Network, MTU};
 
 /// AVB 資料流最多可以佔用的資源百分比（模擬 Credit Base Shaper 的效果）
 const MAX_AVB_SETTING: f64 = 0.75;
@@ -159,14 +160,13 @@ fn interfere_from_tsn(edge: EdgeIndex, wcd: f64, gcl: &GateCtrlList) -> f64 {
     max_interfere as f64
 }
 
-
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::cnc::CNC;
     use crate::network::Network;
-    use crate::utils::yaml;
     use crate::utils::stream::AVB;
-    use super::*;
+    use crate::utils::yaml;
 
     fn setup() -> CNC {
         let mut network = Network::new();
@@ -217,8 +217,8 @@ mod tests {
         gcl.insert_gate_evt(edge, 3, 0..1);
         gcl.insert_gate_evt(edge, 4, 5..6);
         gcl.insert_gate_evt(edge, 5, 7..9);
-        assert_eq!(interfere_from_tsn(edge, 1.0, &gcl), 3.0);  // should be 2.0
-        assert_eq!(interfere_from_tsn(edge, 2.0, &gcl), 3.0);  // should be 3.0
-        assert_eq!(interfere_from_tsn(edge, 3.0, &gcl), 3.0);  // should be 4.0
+        assert_eq!(interfere_from_tsn(edge, 1.0, &gcl), 3.0); // should be 2.0
+        assert_eq!(interfere_from_tsn(edge, 2.0, &gcl), 3.0); // should be 3.0
+        assert_eq!(interfere_from_tsn(edge, 3.0, &gcl), 3.0); // should be 4.0
     }
 }

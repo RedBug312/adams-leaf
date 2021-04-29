@@ -1,13 +1,13 @@
-use crate::algorithm::{ACO, Algorithm, AlgorithmEnum, RO, SPF};
-use crate::component::{Evaluator, FlowTable, Solution};
-use crate::network::Network;
-use crate::scheduler::Scheduler;
-use crate::utils::config::Config;
-use crate::utils::stream::{TSN, AVB};
 use std::fmt::Write;
 use std::rc::{Rc, Weak};
 use std::time::{Duration, Instant};
 
+use crate::algorithm::{Algorithm, AlgorithmEnum, ACO, RO, SPF};
+use crate::component::{Evaluator, FlowTable, Solution};
+use crate::network::Network;
+use crate::scheduler::Scheduler;
+use crate::utils::config::Config;
+use crate::utils::stream::{AVB, TSN};
 
 pub struct CNC {
     pub algorithm: AlgorithmEnum,
@@ -26,7 +26,6 @@ pub struct Toolbox<'a> {
     latest: &'a Solution,
     config: &'a Config,
 }
-
 
 impl CNC {
     pub fn new(graph: Network, config: Config) -> Self {
@@ -121,7 +120,7 @@ impl<'a> Toolbox<'a> {
         self.evaluator.evaluate_avb_wcd_for_kth(avb, kth, solution)
     }
     pub fn evaluate_cost(&'a self, solution: &mut Solution) -> (f64, bool) {
-        self.scheduler.configure(solution);  // where it's mutated
+        self.scheduler.configure(solution); // where it's mutated
         let (cost, objs) = self.evaluator.evaluate_cost_objectives(solution, self.latest);
         let stop = self.config.early_stop && objs[0] == 0.0 && objs[1] == 0.0;
         (cost, stop)

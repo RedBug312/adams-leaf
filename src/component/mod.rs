@@ -1,6 +1,6 @@
-mod solution;
 mod flowtable;
 mod gcl;
+mod solution;
 
 pub mod evaluator;
 

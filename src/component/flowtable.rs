@@ -1,9 +1,8 @@
-use crate::algorithm::AlgorithmEnum;
-use crate::algorithm::Algorithm;
-use crate::network::Path;
-use crate::utils::stream::{AVB, TSN};
 use std::ops::Range;
 
+use crate::algorithm::{Algorithm, AlgorithmEnum};
+use crate::network::Path;
+use crate::utils::stream::{AVB, TSN};
 
 enum Either {
     TSN(usize, TSN),
@@ -18,7 +17,6 @@ pub struct FlowTable {
     inputs: Range<usize>,
     candidates: Vec<Vec<Path>>,
 }
-
 
 impl FlowTable {
     pub fn new() -> Self {
@@ -89,11 +87,10 @@ impl FlowTable {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use crate::utils::stream::{AVB, TSN};
     use super::FlowTable;
+    use crate::utils::stream::{AVB, TSN};
 
     fn setup() -> FlowTable {
         let mut flowtable = FlowTable::new();

@@ -1,12 +1,13 @@
-use crate::cnc::Toolbox;
-use crate::component::Solution;
-use crate::network::Path;
-use enum_dispatch::enum_dispatch;
 use std::time::Instant;
+
+use enum_dispatch::enum_dispatch;
+
 use super::aco::ACO;
 use super::ro::RO;
 use super::spf::SPF;
-
+use crate::cnc::Toolbox;
+use crate::component::Solution;
+use crate::network::Path;
 
 #[enum_dispatch]
 pub enum AlgorithmEnum { ACO, RO, SPF }
