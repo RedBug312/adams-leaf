@@ -1,5 +1,4 @@
 use crate::cnc::Toolbox;
-use crate::component::FlowTable;
 use crate::component::Solution;
 use crate::network::Path;
 use enum_dispatch::enum_dispatch;
@@ -16,6 +15,5 @@ pub enum AlgorithmEnum { ACO, RO, SPF }
 #[enum_dispatch(AlgorithmEnum)]
 pub trait Algorithm {
     fn candidates(&self, src: usize, dst: usize) -> &Vec<Path>;
-    fn prepare(&mut self, solution: &mut Solution, flowtable: &FlowTable);
     fn configure(&mut self, solution: &mut Solution, deadline: Instant, toolbox: Toolbox);
 }

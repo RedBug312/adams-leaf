@@ -62,7 +62,6 @@ impl CNC {
     pub fn configure(&mut self) -> u128 {
         let scheduler = &self.scheduler;
         let evaluator = &self.evaluator;
-        let flowtable = &self.flowtable;
         let latest = &self.solution;
         let config = &self.config;
 
@@ -71,7 +70,6 @@ impl CNC {
         let mut current = latest.clone();
 
         let start = Instant::now();
-        self.algorithm.prepare(&mut current, flowtable);
         self.algorithm.configure(&mut current, start + timeout, toolbox);
         let elapsed = start.elapsed().as_micros();
 

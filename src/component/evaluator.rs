@@ -162,7 +162,6 @@ fn interfere_from_tsn(edge: EdgeIndex, wcd: f64, gcl: &GateCtrlList) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::algorithm::Algorithm;
     use crate::cnc::CNC;
     use crate::network::Network;
     use crate::utils::yaml;
@@ -182,7 +181,6 @@ mod tests {
         let config = yaml::load_config("data/config/default.yaml");
         let mut cnc = CNC::new(network, config);
         cnc.add_streams(tsns, avbs);
-        cnc.algorithm.prepare(&mut cnc.solution, &cnc.flowtable);
         cnc
     }
 

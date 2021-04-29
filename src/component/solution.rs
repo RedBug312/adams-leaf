@@ -10,7 +10,7 @@ const KTH_DEFAULT: usize = 0;
 
 
 /// 這個結構預期會被複製很多次，因此其中的每個元件都應儘可能想辦法降低複製成本
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Solution {
     selections: Vec<Select>,
     outcomes: Vec<Outcome>,
@@ -129,7 +129,6 @@ impl Outcome {
 
 #[cfg(test)]
 mod tests {
-    use crate::algorithm::Algorithm;
     use crate::cnc::CNC;
     use crate::utils::yaml;
     use crate::utils::stream::TSN;
@@ -145,7 +144,6 @@ mod tests {
         let config = yaml::load_config("data/config/default.yaml");
         let mut cnc = CNC::new(network, config);
         cnc.add_streams(tsns, avbs);
-        cnc.algorithm.prepare(&mut cnc.solution, &cnc.flowtable);
         cnc
     }
 

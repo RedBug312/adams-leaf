@@ -1,5 +1,4 @@
 use crate::cnc::Toolbox;
-use crate::component::FlowTable;
 use crate::component::Solution;
 use crate::network::Network;
 use crate::network::Path;
@@ -17,7 +16,6 @@ impl Algorithm for SPF {
     fn candidates(&self, src: usize, dst: usize) -> &Vec<Path> {
         self.yens.k_shortest_paths(src.into(), dst.into())
     }
-    fn prepare(&mut self, _solution: &mut Solution, _flowtable: &FlowTable) {}
     fn configure(&mut self, solution: &mut Solution, _deadline: Instant, toolbox: Toolbox) {
         toolbox.evaluate_cost(solution);
     }
