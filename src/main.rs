@@ -3,7 +3,7 @@ use adams_leaf::utils::config::Args;
 use adams_leaf::utils::yaml;
 use docopt::Docopt;
 
-const USAGE: &'static str = "
+const USAGE: &str = "
 Usage: adams_leaf [options] <network> <backgrounds> <inputs> <fold>
        adams_leaf (--help | --version)
 
@@ -27,7 +27,7 @@ fn main() {
     let (tsns2, avbs2) = yaml::load_streams(&args.arg_inputs, args.arg_fold);
 
     let path = args.flag_config.clone()
-        .unwrap_or(String::from("data/config/default.yaml"));
+        .unwrap_or_else(|| String::from("data/config/default.yaml"));
     let mut config = yaml::load_config(&path);
     config.override_from_args(args);
 

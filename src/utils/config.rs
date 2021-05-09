@@ -31,15 +31,15 @@ pub struct Parameters {
 
 impl Config {
     pub fn override_from_args(&mut self, args: Args) {
-        args.flag_algorithm
-            .map(|a| self.algorithm = a);
-        args.flag_memory
-            .map(|m| num::clamp(m, 0.0, 9999999.9))
-            .map(|m| {
-                self.parameters.tsn_memory = m;
-                self.parameters.avb_memory = m;
-            });
-        args.flag_seed
-            .map(|s| self.seed = s);
+        if let Some(flag) = args.flag_algorithm {
+            self.algorithm = flag;
+        }
+        if let Some(flag) = args.flag_memory {
+            self.parameters.tsn_memory = num::clamp(flag, 0.0, 9999999.9);
+            self.parameters.avb_memory = num::clamp(flag, 0.0, 9999999.9);
+        }
+        if let Some(flag) = args.flag_seed {
+            self.seed = flag;
+        }
     }
 }

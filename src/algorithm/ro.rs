@@ -124,6 +124,6 @@ fn choose_n_within_k(n: usize, k: usize, rng: &mut ChaChaRng) -> Vec<usize> {
         let random: usize = rand;
         vec.push((random, i));
     }
-    vec.sort();
+    vec.sort_unstable();
     vec.into_iter().map(|(_, i)| i).take(n).collect()
 }

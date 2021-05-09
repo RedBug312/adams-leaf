@@ -13,7 +13,7 @@ struct Schedule {
 }
 
 impl Schedule {
-    fn new(route: &Vec<EdgeIndex>, size: u32, queue: u8) -> Self {
+    fn new(route: &[EdgeIndex], size: u32, queue: u8) -> Self {
         let route_len = route.len();
         let frame_len = ((size - 1) / MTU + 1) as usize;
         static MAX: Range<u32> = std::u32::MAX..std::u32::MAX;
@@ -21,7 +21,7 @@ impl Schedule {
         Schedule { windows, queue }
     }
     fn shape(&self) -> (usize, usize) {
-        debug_assert!(0 < self.windows.len());
+        debug_assert!(!self.windows.is_empty());
         (self.windows.len(), self.windows[0].len())
     }
 }
@@ -31,7 +31,7 @@ pub struct Scheduler {}
 
 impl Scheduler {
     pub fn new() -> Self {
-        Scheduler { ..Default::default() }
+        Scheduler {}
     }
     pub fn configure(&self, solution: &mut Solution) {
         self.configure_avbs(solution);
@@ -103,6 +103,7 @@ impl Scheduler {
                     solution.flag_schedulable(tsn, kth);
                     break;
                 }
+                #[allow(clippy::redundant_pattern_matching)]
                 if let Err(_) = self.try_increment_queue(&mut queue) {
                     solution.flag_unschedulable(tsn, kth);
                     return Err(());

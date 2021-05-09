@@ -14,7 +14,7 @@ pub struct Evaluator {
 
 impl Evaluator {
     pub fn new(weights: [f64; 4]) -> Self {
-        Evaluator { weights, ..Default::default() }
+        Evaluator { weights }
     }
     pub fn evaluate_avb_wcd(&self, avb: usize, solution: &Solution) -> u32 {
         let kth = solution.selection(avb).next().unwrap();

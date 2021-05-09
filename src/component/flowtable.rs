@@ -37,6 +37,9 @@ impl FlowTable {
     pub fn len(&self) -> usize {
         self.streams.len()
     }
+    pub fn is_empty(&self) -> bool {
+        self.streams.len() == 0
+    }
     pub fn tsn_spec(&self, nth: usize) -> &TSN {
         debug_assert!(nth < self.streams.len());
         debug_assert!(matches!(self.streams[nth], Either::TSN(..)));

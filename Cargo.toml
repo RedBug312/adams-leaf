@@ -19,6 +19,3 @@ docopt = "1.1.1"
 
 [lib]
 doctest = false
-
-[features]
-batch-eval = []

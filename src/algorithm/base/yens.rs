@@ -18,18 +18,17 @@ impl Yens {
         let node_count = graph.node_count();
         let dijkstra = Dijkstra::new(graph);
         let paths = vec![vec![Vec::with_capacity(k); node_count]; node_count];
-        Yens { dijkstra, paths, k, ..Default::default() }
+        Yens { dijkstra, paths, k }
     }
     pub fn compute(&mut self, graph: &Network) {
-        // compute_pair on all end devices pair takes 20 sec on test case
         for (&src, &dst) in graph.end_devices.iter().tuple_combinations() {
-            self.compute_pair(graph, src.into(), dst.into());
-            self.compute_pair(graph, dst.into(), src.into());
+            self.compute_pair(graph, src, dst);
+            self.compute_pair(graph, dst, src);
         }
     }
     pub fn compute_pair(&mut self, graph: &Network, src: NodeIndex, dst: NodeIndex) {
         debug_assert!(src != dst);
-        if self.paths[src.index()][dst.index()].len() > 0 { return; }
+        if !self.paths[src.index()][dst.index()].is_empty() { return; }
 
         self.dijkstra.compute_root(graph, src);
         // TODO dump panic message for not connected

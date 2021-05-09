@@ -86,13 +86,13 @@ impl Network {
         debug_assert!(edge.index() < self.edges.len());
         &self.edges[edge.index()].ends
     }
-    pub fn outgoings<'a>(&'a self, node: NodeIndex)
-        -> impl Iterator<Item=EdgeIndex> + 'a {
+    pub fn outgoings(&self, node: NodeIndex)
+        -> impl Iterator<Item=EdgeIndex> + '_ {
         debug_assert!(node.index() < self.nodes.len());
         self.nodes[node.index()].edges.iter().cloned()
     }
-    pub fn neighbors<'a>(&'a self, node: NodeIndex)
-        -> impl Iterator<Item=NodeIndex> + 'a {
+    pub fn neighbors(&self, node: NodeIndex)
+        -> impl Iterator<Item=NodeIndex> + '_ {
         debug_assert!(node.index() < self.nodes.len());
         self.nodes[node.index()].edges.iter()
             .map(move |&e| self.edges[e.index()].ends.1)
@@ -100,7 +100,7 @@ impl Network {
     pub fn add_nodes(&mut self, end_device_count: usize, bridge_count: usize) {
         let node_count = self.nodes.len();
         let new_devices = (node_count..node_count + end_device_count)
-            .map(|id| NodeIndex::new(id));
+            .map(NodeIndex::new);
         self.end_devices.extend(new_devices);
         let devices = iter::repeat_with(|| Node::new(Device::EndDevice))
             .take(end_device_count);
@@ -130,7 +130,9 @@ impl Network {
             .sum::<f64>() * size as f64
     }
     pub fn node_sequence(&self, path: &[EdgeIndex]) -> Vec<usize> {
-        if path.len() == 0 { return vec![]; }
+        if path.is_empty() {
+            return vec![];
+        }
         let head = self.endpoints(path[0]).0.index();
         let tail = path.iter()
             .map(|&e| self.endpoints(e).1.index());

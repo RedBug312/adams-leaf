@@ -67,6 +67,7 @@ pub fn load_streams(path: &str, fold: u32) -> (Vec<TSN>, Vec<AVB>) {
 pub fn load_config(path: &str) -> Config {
     let text = fs::read_to_string(path)
         .expect("Failed to read config yaml file");
+    #[allow(clippy::let_and_return)]
     let yaml = serde_yaml::from_str(&text)
         .expect("Failed to parse config yaml file");
     yaml
