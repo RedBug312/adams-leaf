@@ -1,3 +1,3 @@
-mod scheduler;
+mod runtime_reconf;
 
-pub use scheduler::Scheduler;
+pub use runtime_reconf::Scheduler;

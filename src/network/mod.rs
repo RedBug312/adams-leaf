@@ -1,6 +1,6 @@
-mod network;
+mod topology;
 
-pub use network::{EdgeIndex, Network, NodeIndex};
+pub use topology::{EdgeIndex, Network, NodeIndex};
 
 pub type Path = Vec<EdgeIndex>;
 
