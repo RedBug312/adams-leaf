@@ -59,30 +59,29 @@ impl Algorithm for ACO {
     fn candidates(&self, src: usize, dst: usize) -> &Vec<Path> {
         self.yens.k_shortest_paths(src.into(), dst.into())
     }
-    fn configure(&mut self, solution: &mut Solution, deadline: Instant, toolbox: Toolbox) {
-        let flowtable = solution.flowtable();
+    fn configure(&mut self, last_run: Solution, deadline: Instant, toolbox: Toolbox) -> Solution {
+        let flowtable = last_run.flowtable();
         self.colony.resize_pheromone(flowtable.len());
         self.mult = vec![[1.0; MAX_K]; flowtable.len()];
         for &tsn in flowtable.tsns() {
-            if let Some(kth) = solution.selection(tsn).current() {
+            if let Some(kth) = last_run.selection(tsn).current() {
                 self.mult[tsn][kth] = self.param.tsn_memory;
             }
         }
         for &avb in flowtable.avbs() {
-            if let Some(kth) = solution.selection(avb).current() {
+            if let Some(kth) = last_run.selection(avb).current() {
                 self.mult[avb][kth] = self.param.avb_memory;
             }
         }
 
-        self.colony.heuristic = self.compute_visibility(solution, &toolbox);
-        self.colony.n = solution.flowtable().len();
+        self.colony.heuristic = self.compute_visibility(&last_run, &toolbox);
+        self.colony.n = last_run.flowtable().len();
 
         #[allow(unused_variables)]
         let mut epoch = 0;
         let mut rng = ChaChaRng::seed_from_u64(self.seed);
 
-        let neighbor = solution.clone();
-        let mut global_best = Ant::new(neighbor);
+        let mut global_best = Ant::new(last_run);
         let (cost, _stop) = toolbox.evaluate_cost(&mut global_best.solution);
         global_best.set_distance_from_cost(cost);
 
@@ -121,10 +120,10 @@ impl Algorithm for ACO {
             println!("pheromone = {:?}", self.colony.pheromone);
         }
 
-        *solution = global_best.solution;
-
         #[cfg(debug_assertions)]
         println!("ACO epoch = {}", epoch);
+
+        global_best.solution
     }
 }
 

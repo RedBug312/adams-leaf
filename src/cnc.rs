@@ -61,19 +61,18 @@ impl CNC {
     pub fn configure(&mut self) -> u128 {
         let scheduler = &self.scheduler;
         let evaluator = &self.evaluator;
-        let latest = &self.solution;
+        let last_run = &self.solution;
         let config = &self.config;
 
-        let toolbox = Toolbox::pack(scheduler, evaluator, latest, config);
+        let toolbox = Toolbox::pack(scheduler, evaluator, last_run, config);
         let timeout = Duration::from_micros(config.timeout);
-        let mut current = latest.clone();
 
         let start = Instant::now();
-        self.algorithm.configure(&mut current, start + timeout, toolbox);
+        let this_run = self.algorithm.configure(last_run.clone(), start + timeout, toolbox);
         let elapsed = start.elapsed().as_micros();
 
-        self.show_results(&current);
-        self.solution = current;
+        self.show_results(&this_run);
+        self.solution = this_run;
 
         elapsed
     }

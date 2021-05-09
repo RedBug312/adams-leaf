@@ -16,5 +16,5 @@ pub enum AlgorithmEnum { ACO, RO, SPF }
 #[enum_dispatch(AlgorithmEnum)]
 pub trait Algorithm {
     fn candidates(&self, src: usize, dst: usize) -> &Vec<Path>;
-    fn configure(&mut self, solution: &mut Solution, deadline: Instant, toolbox: Toolbox);
+    fn configure(&mut self, last_run: Solution, deadline: Instant, toolbox: Toolbox) -> Solution;
 }

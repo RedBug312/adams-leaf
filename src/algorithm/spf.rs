@@ -14,8 +14,9 @@ impl Algorithm for SPF {
     fn candidates(&self, src: usize, dst: usize) -> &Vec<Path> {
         self.yens.k_shortest_paths(src.into(), dst.into())
     }
-    fn configure(&mut self, solution: &mut Solution, _deadline: Instant, toolbox: Toolbox) {
-        toolbox.evaluate_cost(solution);
+    fn configure(&mut self, mut last_run: Solution, _deadline: Instant, toolbox: Toolbox) -> Solution {
+        toolbox.evaluate_cost(&mut last_run);
+        last_run
     }
 }
 

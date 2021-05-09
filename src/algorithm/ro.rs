@@ -23,13 +23,13 @@ impl Algorithm for RO {
         self.yens.k_shortest_paths(src.into(), dst.into())
     }
     /// 在所有 TT 都被排定的狀況下去執行 GRASP 優化
-    fn configure(&mut self, solution: &mut Solution, deadline: Instant, toolbox: Toolbox) {
-        let flowtable = solution.flowtable();
+    fn configure(&mut self, last_run: Solution, deadline: Instant, toolbox: Toolbox) -> Solution {
+        let flowtable = last_run.flowtable();
         // self.grasp(solution, deadline);
         let mut epoch = 0;
         let mut rng = ChaChaRng::seed_from_u64(self.seed);
 
-        let mut global_best = solution.clone();
+        let mut global_best = last_run;
         let (mut global_best_cost, _stop) = toolbox.evaluate_cost(&mut global_best);
 
         'outer: while Instant::now() < deadline {
@@ -104,7 +104,8 @@ impl Algorithm for RO {
             println!("{:?}", epoch);
             println!("{:?}", (global_best_cost, stop));
         }
-        *solution = global_best;
+
+        global_best
     }
 }
 
